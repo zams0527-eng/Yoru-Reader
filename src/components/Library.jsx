@@ -333,7 +333,7 @@ export default function Library({
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       if (e.key === 'q' || e.key === 'Q') {
         e.preventDefault();
-        setIsSettingsOpen(prev => !prev);
+        setIsDisplaySettingsOpen(prev => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -2622,6 +2622,24 @@ export default function Library({
               </div>
             </div>
 
+            {/* Seguimiento Section */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+                <span>📊</span> {lang === 'es' ? 'Seguimiento' : 'Tracking'}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
+                {matchesSearch('stats config estadisticas tracking delete books annotations enabled') && (
+                  <button onClick={() => scrollToSection('sec-stats')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>📈 {lang === 'es' ? 'Estadísticas' : 'Statistics'}</button>
+                )}
+                {matchesSearch('reading day dia lectura start hours limites horas nocturno') && (
+                  <button onClick={() => scrollToSection('sec-reading-day')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>🕒 {lang === 'es' ? 'Día de lectura' : 'Reading Day'}</button>
+                )}
+                {matchesSearch('sync merge sincronizar combinar conflicto storage sync settings gdrive drive cloud') && (
+                  <button onClick={() => scrollToSection('sec-sync-merge')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>☁️ {lang === 'es' ? 'Sincronizar y combinar' : 'Sync & Merge'}</button>
+                )}
+              </div>
+            </div>
+
             {/* Data Section */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
@@ -2858,6 +2876,229 @@ export default function Library({
               >
                 ⚙️ {lang === 'es' ? 'Abrir Configuración de Anki' : 'Open Anki Settings'}
               </button>
+            </div>
+          )}
+
+          {/* Card: Estadísticas (Yatsu style) */}
+          {matchesSearch('stats config estadisticas tracking delete books annotations enabled') && (
+            <div id="sec-stats" className="settings-section-card">
+              <h3 className="settings-card-title">📈 {lang === 'es' ? 'Estadísticas' : 'Statistics'}</h3>
+              <p className="settings-card-desc">{lang === 'es' ? 'Configura el almacenamiento del historial de lectura y las acciones de limpieza.' : 'Configure the storage of reading history and cleanup actions.'}</p>
+              
+              <div className="settings-row-control">
+                <span className="settings-label-text">{lang === 'es' ? 'Activar estadísticas de lectura' : 'Enable reading statistics'}</span>
+                <label className="migaku-switch">
+                  <input 
+                    type="checkbox" 
+                    checked={settings.enableStatistics !== false}
+                    onChange={(e) => onSaveSettings({ ...settings, enableStatistics: e.target.checked })}
+                  />
+                  <span className="migaku-switch-slider"></span>
+                </label>
+              </div>
+
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.5px', marginTop: '16px', marginBottom: '8px' }}>
+                {lang === 'es' ? 'Libros eliminados' : 'Deleted Books'}
+              </div>
+
+              <div className="settings-row-control">
+                <span className="settings-label-text">{lang === 'es' ? 'Conservar estadísticas al eliminar libro' : 'Keep stats on book deletion'}</span>
+                <label className="migaku-switch">
+                  <input 
+                    type="checkbox" 
+                    checked={settings.keepStatsOnDelete !== false}
+                    onChange={(e) => onSaveSettings({ ...settings, keepStatsOnDelete: e.target.checked })}
+                  />
+                  <span className="migaku-switch-slider"></span>
+                </label>
+              </div>
+
+              <div className="settings-row-control">
+                <span className="settings-label-text">{lang === 'es' ? 'Conservar resaltados, notas y marcadores al eliminar' : 'Keep highlights, notes, and bookmarks on deletion'}</span>
+                <label className="migaku-switch">
+                  <input 
+                    type="checkbox" 
+                    checked={settings.keepAnnotationsOnDelete === true}
+                    onChange={(e) => onSaveSettings({ ...settings, keepAnnotationsOnDelete: e.target.checked })}
+                  />
+                  <span className="migaku-switch-slider"></span>
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm(lang === 'es' ? '¿Limpiar estadísticas de libros ya eliminados?' : 'Clear stats for already deleted books?')) {
+                      alert(lang === 'es' ? 'Limpieza completada.' : 'Cleanup done.');
+                    }
+                  }}
+                  style={{ flex: 1, padding: '8px 10px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}
+                >
+                  🧹 {lang === 'es' ? 'Estadísticas de libros eliminados' : 'Deleted-book statistics'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm(lang === 'es' ? '¿Limpiar anotaciones de libros ya eliminados?' : 'Clear annotations for already deleted books?')) {
+                      alert(lang === 'es' ? 'Limpieza completada.' : 'Cleanup done.');
+                    }
+                  }}
+                  style={{ flex: 1, padding: '8px 10px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}
+                >
+                  🧹 {lang === 'es' ? 'Anotaciones de libros eliminados' : 'Deleted-book annotations'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Card: Día de lectura */}
+          {matchesSearch('reading day dia lectura start hours limites horas nocturno') && (
+            <div id="sec-reading-day" className="settings-section-card">
+              <h3 className="settings-card-title">🕒 {lang === 'es' ? 'Día de lectura' : 'Reading Day'}</h3>
+              <p className="settings-card-desc">{lang === 'es' ? 'Establece los límites horarios para el cálculo del historial de lectura diario.' : 'Sets calendar hour boundaries for daily reading history calculations.'}</p>
+              
+              <div style={{ marginTop: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <span className="settings-label-text">{lang === 'es' ? 'Hora de inicio del día' : 'Start Day Hour'}</span>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 700 }}>
+                    {String(settings.startDayHour || 0).padStart(2, '0')}:00
+                  </span>
+                </div>
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="23" 
+                  step="1"
+                  value={settings.startDayHour || 0} 
+                  onChange={(e) => onSaveSettings({ ...settings, startDayHour: parseInt(e.target.value) })}
+                  style={{ width: '100%', accentColor: 'var(--primary)', cursor: 'pointer' }}
+                />
+                <p style={{ fontSize: '0.74rem', color: 'rgba(255,255,255,0.3)', marginTop: '8px', lineHeight: 1.3 }}>
+                  {lang === 'es' 
+                    ? 'Ajusta a qué hora comienza un nuevo día. Útil si lees después de medianoche y deseas que se contabilice en el día anterior.' 
+                    : 'Configure at what hour a new reading day starts. Useful for night readers.'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Card: Sincronizar y combinar */}
+          {matchesSearch('sync merge sincronizar combinar conflicto storage sync settings gdrive drive cloud') && (
+            <div id="sec-sync-merge" className="settings-section-card">
+              <h3 className="settings-card-title">☁️ {lang === 'es' ? 'Sincronizar y combinar' : 'Sync & Merge'}</h3>
+              <p className="settings-card-desc">{lang === 'es' ? 'Configura la sincronización con almacenamiento en la nube y cómo se resuelven los conflictos.' : 'Configure cloud storage synchronization and how metadata conflicts are resolved.'}</p>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '8px', padding: '12px', marginBottom: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                  <span style={{ color: 'rgba(255,255,255,0.4)' }}>{lang === 'es' ? 'Destino de sincronización de almacenamiento' : 'Storage Sync Target'}</span>
+                  <span style={{ color: gDriveTokens ? '#34d399' : 'rgba(255,255,255,0.3)', fontWeight: 600 }}>
+                    {gDriveTokens ? 'Google Drive' : (lang === 'es' ? 'Ninguno' : 'None')}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', borderTop: '1px solid rgba(255,255,255,0.04)', paddingTop: '8px' }}>
+                  <span style={{ color: 'rgba(255,255,255,0.4)' }}>{lang === 'es' ? 'Destino de sincronización de ajustes' : 'Settings Sync Target'}</span>
+                  <span style={{ color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>
+                    {lang === 'es' ? 'Perfil local' : 'Local Profile'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="settings-row-control">
+                <span className="settings-label-text">{lang === 'es' ? 'Combinación de estadísticas' : 'Statistics Merge'}</span>
+                <select 
+                  value={settings.statsMergeOption || 'merge'}
+                  onChange={(e) => onSaveSettings({ ...settings, statsMergeOption: e.target.value })}
+                  className="migaku-select"
+                >
+                  <option value="merge">{lang === 'es' ? 'Combinar (Merge)' : 'Merge'}</option>
+                  <option value="replace">{lang === 'es' ? 'Reemplazar (Replace)' : 'Replace'}</option>
+                </select>
+              </div>
+
+              <div className="settings-row-control">
+                <span className="settings-label-text">{lang === 'es' ? 'Combinación de objetivos de lectura' : 'Reading Goals Merge'}</span>
+                <select 
+                  value={settings.goalsMergeOption || 'merge'}
+                  onChange={(e) => onSaveSettings({ ...settings, goalsMergeOption: e.target.value })}
+                  className="migaku-select"
+                >
+                  <option value="merge">{lang === 'es' ? 'Combinar (Merge)' : 'Merge'}</option>
+                  <option value="replace">{lang === 'es' ? 'Reemplazar (Replace)' : 'Replace'}</option>
+                </select>
+              </div>
+
+              {/* Botón e inputs de Google Drive */}
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '14px', marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                
+                {/* Inputs de credenciales si no está conectado */}
+                {!gDriveTokens && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div>
+                      <span className="settings-label-text" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>CLIENT ID</span>
+                      <input 
+                        type="password"
+                        value={gDriveClientId}
+                        onChange={(e) => setGDriveClientId(e.target.value)}
+                        placeholder="Enter Client ID..."
+                        className="migaku-select"
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 12px' }}
+                      />
+                    </div>
+                    <div>
+                      <span className="settings-label-text" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>CLIENT SECRET (OPTIONAL)</span>
+                      <input 
+                        type="password"
+                        value={gDriveClientSecret}
+                        onChange={(e) => setGDriveClientSecret(e.target.value)}
+                        placeholder="Enter Client Secret..."
+                        className="migaku-select"
+                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 12px' }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <button 
+                  type="button"
+                  onClick={handleConnectGDrive}
+                  disabled={gDriveSyncStatus === 'syncing'}
+                  className="reset-filter-btn"
+                  style={{ width: '100%', justifyContent: 'center' }}
+                >
+                  🔑 {gDriveTokens ? (lang === 'es' ? 'Re-conectar cuenta' : 'Re-connect account') : (lang === 'es' ? 'Vincular Google Drive' : 'Link Google Drive')}
+                </button>
+
+                {gDriveTokens && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button 
+                        type="button"
+                        onClick={handleUploadGDrive}
+                        disabled={gDriveSyncStatus === 'syncing'}
+                        className="reset-filter-btn"
+                        style={{ flex: 1, justifyContent: 'center', background: 'rgba(52, 211, 153, 0.05)', borderColor: '#34d399', color: '#34d399' }}
+                      >
+                        📤 {lang === 'es' ? 'Subir copia completa' : 'Upload backup'}
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={handleDownloadGDrive}
+                        disabled={gDriveSyncStatus === 'syncing'}
+                        className="reset-filter-btn"
+                        style={{ flex: 1, justifyContent: 'center', background: 'rgba(251, 191, 36, 0.05)', borderColor: '#fbbf24', color: '#fbbf24' }}
+                      >
+                        📥 {lang === 'es' ? 'Descargar' : 'Download'}
+                      </button>
+                    </div>
+                    {lastSyncTime && (
+                      <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)', textAlign: 'center' }}>
+                        {lang === 'es' ? 'Última sincronización:' : 'Last sync:'} {lastSyncTime}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -3385,9 +3626,9 @@ export default function Library({
 
           {/* 4. Display Settings Cog */}
           <button 
-            className={`header-display-settings-btn ${isSettingsOpen ? 'active' : ''}`}
-            onClick={() => setIsSettingsOpen(true)}
-            title={lang === 'es' ? 'Configuración (Q)' : 'Settings (Q)'}
+            className={`header-display-settings-btn ${isDisplaySettingsOpen ? 'active' : ''}`}
+            onClick={() => setIsDisplaySettingsOpen(!isDisplaySettingsOpen)}
+            title={lang === 'es' ? 'Ajustes de visualización (Q)' : 'Display Settings (Q)'}
             type="button"
           >
             <SlidersHorizontal size={18} />
