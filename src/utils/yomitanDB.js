@@ -126,6 +126,57 @@ export async function migrateDictFlags() {
 }
 
 /**
+ * Elimina entradas huérfanas de términos y frecuencias cuyos diccionarios ya no existen en STORE_DICTS.
+ */
+export async function cleanOrphanedEntries() {
+  const db = await getDB();
+  try {
+    const knownTitles = await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_DICTS, 'readonly');
+      const req = tx.objectStore(STORE_DICTS).getAllKeys();
+      req.onsuccess = () => resolve(new Set(req.result));
+      req.onerror = () => reject(req.error);
+    });
+
+    if (knownTitles.size === 0) return;
+
+    // Delete orphaned terms
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_TERMS, 'readwrite');
+      const req = tx.objectStore(STORE_TERMS).openCursor();
+      req.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          if (!knownTitles.has(cursor.value.dictionary)) cursor.delete();
+          cursor.continue();
+        } else resolve();
+      };
+      req.onerror = reject;
+    });
+
+    // Delete orphaned frequencies
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_FREQS, 'readwrite');
+      const req = tx.objectStore(STORE_FREQS).openCursor();
+      req.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          if (!knownTitles.has(cursor.value.dictionary)) cursor.delete();
+          cursor.continue();
+        } else resolve();
+      };
+      req.onerror = reject;
+    });
+
+    console.log('[yomitanDB] Orphaned entries cleaned. Active dicts:', [...knownTitles]);
+  } catch (err) {
+    console.warn('cleanOrphanedEntries failed:', err);
+  } finally {
+    await closeDB();
+  }
+}
+
+/**
  * Elimina un diccionario y sus registros asociados de forma ultra-rápida en una sola transacción.
  */
 export async function deleteDictionary(title) {

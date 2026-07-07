@@ -4,7 +4,7 @@ import SettingsModal from './SettingsModal';
 import JSZip from 'jszip';
 import { importBookFile } from '../utils/fileImport';
 import { db } from '../utils/db';
-import { importYomitanZip, getInstalledDictionaries, deleteDictionary, exportDictionaryDataToZip, importAllDictionaryData, closeDB, getDB, migrateEnglishDictName, migrateDictFlags } from '../utils/yomitanDB';
+import { importYomitanZip, getInstalledDictionaries, deleteDictionary, exportDictionaryDataToZip, importAllDictionaryData, closeDB, getDB, migrateEnglishDictName, migrateDictFlags, cleanOrphanedEntries } from '../utils/yomitanDB';
 const AnkiConfigModal = React.lazy(() => import('./AnkiConfigModal'));
 import { tokenizeText } from '../utils/japanese';
 import { t } from '../utils/i18n';
@@ -270,6 +270,7 @@ export default function Library({
     try {
       await migrateEnglishDictName();
       await migrateDictFlags();
+      await cleanOrphanedEntries();
       const dicts = await getInstalledDictionaries();
       const order = settings.dictionaryOrder || [];
       const sorted = sortDicts(dicts || [], order);
