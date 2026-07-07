@@ -198,6 +198,8 @@ const LOCAL_DICTIONARY = {
   }
 };
 
+const JISHO_CACHE = new Map();
+
 // Look up a word (first in local database, then on Jisho.org API via CORS proxy)
 export async function lookupWord(word, reading = '') {
   // 1. Clean the word: remove trailing particles or spaces
@@ -211,6 +213,8 @@ export async function lookupWord(word, reading = '') {
     entry = { ...LOCAL_DICTIONARY[cleanWord] };
   } else if (reading && LOCAL_DICTIONARY[reading]) {
     entry = { ...LOCAL_DICTIONARY[reading] };
+  } else if (JISHO_CACHE.has(cleanWord)) {
+    entry = { ...JISHO_CACHE.get(cleanWord) };
   } else {
     // 2.5 Query local Yomitan databases (IndexedDB)
     try {
@@ -247,8 +251,12 @@ export async function lookupWord(word, reading = '') {
             isFromJisho: true
           };
           
-          // Cache it locally so subsequent lookups are instant
-          LOCAL_DICTIONARY[cleanWord] = entry;
+          // Cache it locally with eviction policy (max 20 items)
+          JISHO_CACHE.set(cleanWord, entry);
+          if (JISHO_CACHE.size > 20) {
+            const firstKey = JISHO_CACHE.keys().next().value;
+            JISHO_CACHE.delete(firstKey);
+          }
         }
       }
     } catch (error) {

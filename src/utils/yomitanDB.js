@@ -333,6 +333,28 @@ export async function getFrequenciesForWord(word) {
   }
 }
 
+function cleanDefinition(def) {
+  if (typeof def === 'string') {
+    return def;
+  }
+  if (typeof def === 'object' && def !== null) {
+    let text = '';
+    const traverse = (node) => {
+      if (typeof node === 'string') {
+        text += node + ' ';
+      } else if (Array.isArray(node)) {
+        node.forEach(traverse);
+      } else if (typeof node === 'object' && node !== null) {
+        if (node.content) traverse(node.content);
+        if (node.text) text += node.text + ' ';
+      }
+    };
+    traverse(def);
+    return text.trim();
+  }
+  return '';
+}
+
 /**
  * Realiza una búsqueda de palabras en la base de datos IndexedDB usando cursores y proyección
  * para minimizar drásticamente el consumo de RAM, y cierra la conexión inmediatamente al terminar.
@@ -406,9 +428,8 @@ export async function searchYomitanDB(word, reading = '') {
           res.tags.split(' ').filter(t => t.length > 0).forEach(t => tagsSet.add(t));
         }
         res.definitions.forEach(def => {
-          let cleanDef = def;
-          if (typeof def === 'object') cleanDef = JSON.stringify(def);
-          combinedDefs.push(cleanDef);
+          const cleaned = cleanDefinition(def);
+          if (cleaned) combinedDefs.push(cleaned);
         });
       });
       
@@ -416,7 +437,7 @@ export async function searchYomitanDB(word, reading = '') {
       const finalResult = {
         word: results[0].term,
         reading: results[0].reading || reading,
-        definitions: combinedDefs,
+        definitions: combinedDefs.slice(0, 5), // Limit definitions returned to UI to save RAM
         partsOfSpeech: posTags.length > 0 ? posTags : [],
         frequencies: freqs,
         isFromYomitan: true
