@@ -336,16 +336,7 @@ export const db = {
     const settings = this.getSettings();
     let updatedBooks;
     if (settings.keepStatsOnDelete !== false) {
-      updatedBooks = books.map(b => {
-        if (b.id === bookId) {
-          const updated = { ...b, isDeleted: true };
-          if (settings.keepAnnotationsOnDelete === false) {
-            updated.chapters = [];
-          }
-          return updated;
-        }
-        return b;
-      });
+      updatedBooks = books.map(b => b.id === bookId ? { ...b, isDeleted: true, chapters: [] } : b);
     } else {
       updatedBooks = books.filter(b => b.id !== bookId);
     }
@@ -358,16 +349,7 @@ export const db = {
     const settings = this.getSettings();
     let updatedBooks;
     if (settings.keepStatsOnDelete !== false) {
-      updatedBooks = books.map(b => {
-        if (bookIds.includes(b.id)) {
-          const updated = { ...b, isDeleted: true };
-          if (settings.keepAnnotationsOnDelete === false) {
-            updated.chapters = [];
-          }
-          return updated;
-        }
-        return b;
-      });
+      updatedBooks = books.map(b => bookIds.includes(b.id) ? { ...b, isDeleted: true, chapters: [] } : b);
     } else {
       updatedBooks = books.filter(b => !bookIds.includes(b.id));
     }

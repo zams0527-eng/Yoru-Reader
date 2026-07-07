@@ -2922,19 +2922,7 @@ export default function Library({
                 </label>
               </div>
 
-              <div className="settings-row-control">
-                <span className="settings-label-text">{lang === 'es' ? 'Conservar resaltados, notas y marcadores al eliminar' : 'Keep highlights, notes, and bookmarks on deletion'}</span>
-                <label className="migaku-switch">
-                  <input 
-                    type="checkbox" 
-                    checked={settings.keepAnnotationsOnDelete === true}
-                    onChange={(e) => onSaveSettings({ ...settings, keepAnnotationsOnDelete: e.target.checked })}
-                  />
-                  <span className="migaku-switch-slider"></span>
-                </label>
-              </div>
-
-              <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+              <div style={{ marginTop: '16px' }}>
                 <button
                   type="button"
                   onClick={() => {
@@ -2942,20 +2930,9 @@ export default function Library({
                       alert(lang === 'es' ? 'Limpieza completada.' : 'Cleanup done.');
                     }
                   }}
-                  style={{ flex: 1, padding: '8px 10px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}
+                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}
                 >
                   🧹 {lang === 'es' ? 'Estadísticas de libros eliminados' : 'Deleted-book statistics'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (window.confirm(lang === 'es' ? '¿Limpiar anotaciones de libros ya eliminados?' : 'Clear annotations for already deleted books?')) {
-                      alert(lang === 'es' ? 'Limpieza completada.' : 'Cleanup done.');
-                    }
-                  }}
-                  style={{ flex: 1, padding: '8px 10px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}
-                >
-                  🧹 {lang === 'es' ? 'Anotaciones de libros eliminados' : 'Deleted-book annotations'}
                 </button>
               </div>
             </div>
