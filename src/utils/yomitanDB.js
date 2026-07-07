@@ -78,7 +78,7 @@ export async function getInstalledDictionaries() {
 }
 
 /**
- * Elimina un diccionario y sus registros asociados en micro-lotes para evitar consumo de memoria.
+ * Elimina un diccionario y sus registros asociados de forma ultra-rápida en una sola transacción.
  */
 export async function deleteDictionary(title) {
   const db = await getDB();
@@ -92,55 +92,43 @@ export async function deleteDictionary(title) {
       tx.onerror = reject;
     });
     
-    // 2. Borrar todos los términos en lotes usando cursores ligeros
-    let hasMoreTerms = true;
-    while (hasMoreTerms) {
-      hasMoreTerms = await new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_TERMS, 'readwrite');
-        const store = tx.objectStore(STORE_TERMS);
-        const index = store.index('dictionary');
-        const request = index.openCursor(IDBKeyRange.only(title));
-        let count = 0;
-        
-        request.onsuccess = (e) => {
-          const cursor = e.target.result;
-          if (cursor && count < 5000) {
-            cursor.delete();
-            count++;
-            cursor.continue();
-          } else {
-            resolve(!!cursor);
-          }
-        };
-        request.onerror = reject;
-      });
-      await new Promise(r => setTimeout(r, 20));
-    }
+    // 2. Borrar todos los términos en una sola transacción rápida
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_TERMS, 'readwrite');
+      const store = tx.objectStore(STORE_TERMS);
+      const index = store.index('dictionary');
+      const request = index.openCursor(IDBKeyRange.only(title));
+      
+      request.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          cursor.delete();
+          cursor.continue();
+        } else {
+          resolve();
+        }
+      };
+      request.onerror = reject;
+    });
     
-    // 3. Borrar todas las frecuencias en lotes
-    let hasMoreFreqs = true;
-    while (hasMoreFreqs) {
-      hasMoreFreqs = await new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_FREQS, 'readwrite');
-        const store = tx.objectStore(STORE_FREQS);
-        const index = store.index('dictionary');
-        const request = index.openCursor(IDBKeyRange.only(title));
-        let count = 0;
-        
-        request.onsuccess = (e) => {
-          const cursor = e.target.result;
-          if (cursor && count < 5000) {
-            cursor.delete();
-            count++;
-            cursor.continue();
-          } else {
-            resolve(!!cursor);
-          }
-        };
-        request.onerror = reject;
-      });
-      await new Promise(r => setTimeout(r, 20));
-    }
+    // 3. Borrar todas las frecuencias en una sola transacción rápida
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_FREQS, 'readwrite');
+      const store = tx.objectStore(STORE_FREQS);
+      const index = store.index('dictionary');
+      const request = index.openCursor(IDBKeyRange.only(title));
+      
+      request.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          cursor.delete();
+          cursor.continue();
+        } else {
+          resolve();
+        }
+      };
+      request.onerror = reject;
+    });
   } finally {
     await closeDB();
   }
@@ -206,7 +194,7 @@ export async function importYomitanZip(file, onProgress) {
           
           termsArray.forEach(termData => {
             if (Array.isArray(termData)) {
-              store.put({
+              store.add({
                 dictionary: dictTitle,
                 term: termData[0],
                 reading: termData[1] || '',
@@ -267,7 +255,7 @@ export async function importYomitanZip(file, onProgress) {
                 }
               }
               
-              store.put({
+              store.add({
                 dictionary: dictTitle,
                 term,
                 value,
@@ -303,6 +291,20 @@ export async function importYomitanZip(file, onProgress) {
 export async function getFrequenciesForWord(word) {
   const db = await getDB();
   const freqs = [];
+  
+  let disabledDicts = [];
+  let dictOrder = [];
+  try {
+    const settingsStr = localStorage.getItem('yoru_settings');
+    if (settingsStr) {
+      const parsed = JSON.parse(settingsStr);
+      disabledDicts = parsed.disabledDictionaries || [];
+      dictOrder = parsed.dictionaryOrder || [];
+    }
+  } catch (errSettings) {
+    console.warn(errSettings);
+  }
+
   try {
     await new Promise((resolve) => {
       const tx = db.transaction(STORE_FREQS, 'readonly');
@@ -314,12 +316,13 @@ export async function getFrequenciesForWord(word) {
         const cursor = e.target.result;
         if (cursor) {
           const val = cursor.value;
-          // Consultas selectivas: Extraer únicamente las propiedades necesarias
-          freqs.push({
-            dictionary: val.dictionary,
-            value: val.value,
-            displayValue: val.displayValue
-          });
+          if (!disabledDicts.includes(val.dictionary)) {
+            freqs.push({
+              dictionary: val.dictionary,
+              value: val.value,
+              displayValue: val.displayValue
+            });
+          }
           cursor.continue();
         } else {
           resolve();
@@ -327,6 +330,18 @@ export async function getFrequenciesForWord(word) {
       };
       request.onerror = () => resolve();
     });
+    
+    if (dictOrder.length > 0) {
+      freqs.sort((a, b) => {
+        const idxA = dictOrder.indexOf(a.dictionary);
+        const idxB = dictOrder.indexOf(b.dictionary);
+        if (idxA === -1 && idxB === -1) return 0;
+        if (idxA === -1) return 1;
+        if (idxB === -1) return -1;
+        return idxA - idxB;
+      });
+    }
+    
     return freqs;
   } finally {
     await closeDB();
@@ -363,6 +378,19 @@ export async function searchYomitanDB(word, reading = '') {
   const db = await getDB();
   let results = [];
   
+  let disabledDicts = [];
+  let dictOrder = [];
+  try {
+    const settingsStr = localStorage.getItem('yoru_settings');
+    if (settingsStr) {
+      const parsed = JSON.parse(settingsStr);
+      disabledDicts = parsed.disabledDictionaries || [];
+      dictOrder = parsed.dictionaryOrder || [];
+    }
+  } catch (errSettings) {
+    console.warn(errSettings);
+  }
+
   try {
     // 1. Buscar coincidencia de término exacto usando cursores (Consultas selectivas)
     await new Promise((resolve, reject) => {
@@ -375,13 +403,15 @@ export async function searchYomitanDB(word, reading = '') {
         const cursor = e.target.result;
         if (cursor) {
           const val = cursor.value;
-          // Guardar únicamente lo requerido para ahorrar memoria
-          results.push({
-            term: val.term,
-            reading: val.reading,
-            definitions: val.definitions,
-            tags: val.tags
-          });
+          if (!disabledDicts.includes(val.dictionary)) {
+            results.push({
+              term: val.term,
+              reading: val.reading,
+              definitions: val.definitions,
+              tags: val.tags,
+              dictionary: val.dictionary
+            });
+          }
           cursor.continue();
         } else {
           resolve();
@@ -402,12 +432,15 @@ export async function searchYomitanDB(word, reading = '') {
           const cursor = e.target.result;
           if (cursor) {
             const val = cursor.value;
-            results.push({
-              term: val.term,
-              reading: val.reading,
-              definitions: val.definitions,
-              tags: val.tags
-            });
+            if (!disabledDicts.includes(val.dictionary)) {
+              results.push({
+                term: val.term,
+                reading: val.reading,
+                definitions: val.definitions,
+                tags: val.tags,
+                dictionary: val.dictionary
+              });
+            }
             cursor.continue();
           } else {
             resolve();
@@ -420,6 +453,18 @@ export async function searchYomitanDB(word, reading = '') {
     const freqs = await getFrequenciesForWord(word);
     
     if (results.length > 0) {
+      // Sort results by dictionaryOrder
+      if (dictOrder.length > 0) {
+        results.sort((a, b) => {
+          const idxA = dictOrder.indexOf(a.dictionary);
+          const idxB = dictOrder.indexOf(b.dictionary);
+          if (idxA === -1 && idxB === -1) return 0;
+          if (idxA === -1) return 1;
+          if (idxB === -1) return -1;
+          return idxA - idxB;
+        });
+      }
+
       const combinedDefs = [];
       const tagsSet = new Set();
       
@@ -595,7 +640,7 @@ export async function importAllDictionaryData({ dictionaries, terms, frequencies
         await new Promise((resolve, reject) => {
           const tx = db.transaction(STORE_TERMS, 'readwrite');
           const store = tx.objectStore(STORE_TERMS);
-          chunk.forEach(t => store.put(t));
+          chunk.forEach(t => store.add(t));
           tx.oncomplete = resolve;
           tx.onerror = reject;
         });
@@ -611,7 +656,7 @@ export async function importAllDictionaryData({ dictionaries, terms, frequencies
         await new Promise((resolve, reject) => {
           const tx = db.transaction(STORE_FREQS, 'readwrite');
           const store = tx.objectStore(STORE_FREQS);
-          chunk.forEach(f => store.put(f));
+          chunk.forEach(f => store.add(f));
           tx.oncomplete = resolve;
           tx.onerror = reject;
         });

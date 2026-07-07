@@ -571,7 +571,7 @@ export default function Library({
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '16px', flexWrap: 'wrap' }}>
         <button
           type="button"
-          onClick={() => setIsLibraryModalOpen(true)}
+          onClick={() => setIsLibraryModalOpen(isFreq ? 'freq' : 'dict')}
           style={{
             background: 'linear-gradient(135deg, #ff5e62, #ff9966)',
             border: 'none',
@@ -647,6 +647,9 @@ export default function Library({
   };
 
   const renderLibraryModal = () => {
+    const showDicts = isLibraryModalOpen === 'dict';
+    const showFreqs = isLibraryModalOpen === 'freq';
+
     const presetDicts = [
       {
         title: 'JMDict Español',
@@ -732,81 +735,85 @@ export default function Library({
           <div style={{ padding: '20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
             
             {/* Dictionaries Section */}
-            <div>
-              <h4 style={{ color: '#8b5cf6', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px', marginTop: 0 }}>
-                {lang === 'es' ? '📖 Diccionarios de Traducción' : '📖 Translation Dictionaries'}
-              </h4>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {presetDicts.map(d => {
-                  const isDownloading = downloadingDictUrl === d.url;
-                  return (
+            {showDicts && (
+              <div>
+                <h4 style={{ color: '#8b5cf6', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px', marginTop: 0 }}>
+                  {lang === 'es' ? '📖 Diccionarios de Traducción' : '📖 Translation Dictionaries'}
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {presetDicts.map(d => {
+                    const isDownloading = downloadingDictUrl === d.url;
+                    return (
+                      <div key={d.title} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.88rem' }}>{d.title}</div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '3px' }}>{d.desc}</div>
+                        </div>
+                        <button
+                          disabled={isImportingDict}
+                          onClick={() => handleInstallPresetDict(d.title, d.url)}
+                          style={{
+                            background: isDownloading ? 'rgba(255,255,255,0.1)' : 'var(--primary)',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            padding: '6px 12px',
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            cursor: isImportingDict ? 'not-allowed' : 'pointer',
+                            whiteSpace: 'nowrap',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          {isDownloading ? `${downloadProgress}%` : (lang === 'es' ? 'Instalar' : 'Install')}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Frequencies Section */}
+            {showFreqs && (
+              <div>
+                <h4 style={{ color: '#ff9966', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px', marginTop: 0 }}>
+                  {lang === 'es' ? '📊 Listas de Palabras Frecuentes' : '📊 Frequency Word Lists'}
+                </h4>
+                <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: 0, marginBottom: '12px', lineHeight: '1.4' }}>
+                  {lang === 'es' 
+                    ? 'Debido al gran volumen y a la constante actualización comunitaria, puedes descargar estos archivos .zip directamente desde la biblioteca oficial en GitHub e importarlos usando "Instalar desde archivo".'
+                    : 'Due to large file sizes and daily community updates, you can download these .zip files directly from the official GitHub library and import them using "Install from file".'}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {presetFreqs.map(d => (
                     <div key={d.title} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.88rem' }}>{d.title}</div>
                         <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '3px' }}>{d.desc}</div>
                       </div>
                       <button
-                        disabled={isImportingDict}
-                        onClick={() => handleInstallPresetDict(d.title, d.url)}
+                        onClick={() => window.open(d.url)}
                         style={{
-                          background: isDownloading ? 'rgba(255,255,255,0.1)' : 'var(--primary)',
+                          background: 'rgba(255,255,255,0.04)',
+                          border: '1px solid rgba(255,255,255,0.08)',
                           color: '#fff',
-                          border: 'none',
                           borderRadius: '6px',
                           padding: '6px 12px',
                           fontSize: '0.78rem',
                           fontWeight: 600,
-                          cursor: isImportingDict ? 'not-allowed' : 'pointer',
+                          cursor: 'pointer',
                           whiteSpace: 'nowrap',
                           transition: 'all 0.2s'
                         }}
                       >
-                        {isDownloading ? `${downloadProgress}%` : (lang === 'es' ? 'Instalar' : 'Install')}
+                        {lang === 'es' ? 'Ir a Descargas' : 'Go to Downloads'}
                       </button>
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
-            </div>
-
-            {/* Frequencies Section */}
-            <div>
-              <h4 style={{ color: '#ff9966', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px', marginTop: 0 }}>
-                {lang === 'es' ? '📊 Listas de Palabras Frecuentes' : '📊 Frequency Word Lists'}
-              </h4>
-              <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: 0, marginBottom: '12px', lineHeight: '1.4' }}>
-                {lang === 'es' 
-                  ? 'Debido al gran volumen y a la constante actualización comunitaria, puedes descargar estos archivos .zip directamente desde la biblioteca oficial en GitHub e importarlos usando "Instalar desde archivo".'
-                  : 'Due to large file sizes and daily community updates, you can download these .zip files directly from the official GitHub library and import them using "Install from file".'}
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {presetFreqs.map(d => (
-                  <div key={d.title} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.88rem' }}>{d.title}</div>
-                      <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '3px' }}>{d.desc}</div>
-                    </div>
-                    <button
-                      onClick={() => window.open(d.url)}
-                      style={{
-                        background: 'rgba(255,255,255,0.04)',
-                        border: '1px solid rgba(255,255,255,0.08)',
-                        color: '#fff',
-                        borderRadius: '6px',
-                        padding: '6px 12px',
-                        fontSize: '0.78rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      {lang === 'es' ? 'Ir a Descargas' : 'Go to Downloads'}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
+            )}
 
           </div>
         </div>

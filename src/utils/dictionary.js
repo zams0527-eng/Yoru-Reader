@@ -208,23 +208,28 @@ export async function lookupWord(word, reading = '') {
 
   let entry = null;
 
-  // 2. Check local dictionary first
-  if (LOCAL_DICTIONARY[cleanWord]) {
-    entry = { ...LOCAL_DICTIONARY[cleanWord] };
-  } else if (reading && LOCAL_DICTIONARY[reading]) {
-    entry = { ...LOCAL_DICTIONARY[reading] };
-  } else if (JISHO_CACHE.has(cleanWord)) {
-    entry = { ...JISHO_CACHE.get(cleanWord) };
-  } else {
-    // 2.5 Query local Yomitan databases (IndexedDB)
-    try {
-      const yomitanMatch = await searchYomitanDB(cleanWord, reading);
-      if (yomitanMatch) {
-        entry = yomitanMatch;
-      }
-    } catch (err) {
-      console.error('Yomitan DB search error:', err);
+  // 2. Prioritize Yomitan DB (IndexedDB) first, so user's installed dictionaries (Spanish, etc.) take precedence!
+  try {
+    const yomitanMatch = await searchYomitanDB(cleanWord, reading);
+    if (yomitanMatch) {
+      entry = yomitanMatch;
     }
+  } catch (err) {
+    console.error('Yomitan DB search error:', err);
+  }
+
+  // 3. Check local preset offline dictionary next
+  if (!entry) {
+    if (LOCAL_DICTIONARY[cleanWord]) {
+      entry = { ...LOCAL_DICTIONARY[cleanWord] };
+    } else if (reading && LOCAL_DICTIONARY[reading]) {
+      entry = { ...LOCAL_DICTIONARY[reading] };
+    }
+  }
+
+  // 4. Check Jisho cache
+  if (!entry && JISHO_CACHE.has(cleanWord)) {
+    entry = { ...JISHO_CACHE.get(cleanWord) };
   }
 
   // 3. Query Jisho.org via allorigins CORS Proxy if not found
