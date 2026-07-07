@@ -4,6 +4,9 @@ import { tokenizeText } from '../utils/japanese';
 import { lookupWord } from '../utils/dictionary';
 import SettingsModal from './SettingsModal';
 import html2canvas from 'html2canvas';
+import { t } from '../utils/i18n';
+import { synthesizeSpeechAzure } from '../utils/azureTtsService';
+
 
 export function chunkTokensIntoPages(tokenizedParagraphs, fontSize = 24) {
   // 1. Agrupar tokens en oraciones completas coherentes
@@ -107,6 +110,7 @@ export default function Reader({
   settings, 
   onSaveSettings 
 }) {
+  const lang = settings.appLanguage || 'es';
   const [currentChapter, setCurrentChapter] = useState(book.progress.currentChapter || 0);
   const [currentPage, setCurrentPage] = useState(book.progress.currentPage || 0);
   const [tokenizedParagraphs, setTokenizedParagraphs] = useState([]);
@@ -121,12 +125,16 @@ export default function Reader({
   const [popupPos, setPopupPos] = useState({ x: 0, y: 0 });
   const [isJumpModalOpen, setIsJumpModalOpen] = useState(false);
   const [isComprehensionOpen, setIsComprehensionOpen] = useState(false);
-  const [isTtsPlaying, setIsTtsPlaying] = useState(false);
   const [jumpPageInput, setJumpPageInput] = useState(1);
   const [hoveredSentenceIdx, setHoveredSentenceIdx] = useState(null);
+  const [isTtsPlaying, setIsTtsPlaying] = useState(false);
 
   const containerRef = useRef(null);
   const readerContentRef = useRef(null);
+  const ttsAudioRef = useRef(null);
+  const ttsKeepAliveRef = useRef(null);
+
+
 
   const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
 
@@ -138,11 +146,19 @@ export default function Reader({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Silence speech synthesis if the reader component unmounts
+
+
+
+  // Silenciar reproducción si el lector se desmonta
   useEffect(() => {
     return () => {
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
+      }
+      clearInterval(ttsKeepAliveRef.current);
+      if (ttsAudioRef.current) {
+        ttsAudioRef.current.pause();
+        ttsAudioRef.current = null;
       }
     };
   }, []);
@@ -360,15 +376,11 @@ export default function Reader({
 
 
     // Fetch dictionary entry
-    const entry = await lookupWord(token.basicForm, token.reading, settings.wordTranslation || 'en');
+    const entry = await lookupWord(token.basicForm, token.reading);
     setDictEntry(entry);
     setDictLoading(false);
-
-    // Speak word automatically if autoTTS is enabled
-    if (settings.autoTTS) {
-      speakText(token.surface);
-    }
   };
+
 
   const handleMineToAnki = async () => {
     if (!selectedWord) return;
@@ -612,47 +624,145 @@ export default function Reader({
     }
   };
 
-  // 6. Audio Player / Text to Speech (TTS)
-  const speakText = (text) => {
+  // 6. Text-to-Speech (TTS) — con prioridad local y soporte de Azure Neural
+  const reproducirTexto = async (texto, vozSeleccionada) => {
+    if (!texto || !texto.trim()) return;
+
+    // 1. Detener cualquier reproducción en curso
+    if (ttsAudioRef.current) {
+      ttsAudioRef.current.pause();
+      ttsAudioRef.current = null;
+    }
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'ja-JP';
-      utterance.rate = parseFloat(settings.audioSpeed || '1.0');
-      
-      const voices = window.speechSynthesis.getVoices();
-      const jaVoice = voices.find(v => {
+      clearInterval(ttsKeepAliveRef.current);
+    }
+
+    setIsTtsPlaying(true);
+
+    const vozId = vozSeleccionada || settings.audioVoiceOption || 'Nanami';
+    const speed = parseFloat(settings.audioSpeed || '1.0');
+
+    // 2. Método Azure Neural TTS (si hay API Key configurada)
+    if (settings.azureApiKey && settings.azureApiKey.trim()) {
+      try {
+        const azureVoiceName = 
+          vozId === 'Mayu' ? 'ja-JP-MayuNeural' : 
+          vozId === 'Keita' ? 'ja-JP-KeitaNeural' : 
+          'ja-JP-NanamiNeural';
+
+        const audioUrl = await synthesizeSpeechAzure(
+          texto,
+          azureVoiceName,
+          settings.azureApiKey,
+          settings.azureRegion || 'eastus',
+          speed
+        );
+
+        const audio = new Audio(audioUrl);
+        ttsAudioRef.current = audio;
+        audio.onended = () => { setIsTtsPlaying(false); ttsAudioRef.current = null; };
+        audio.onerror = (e) => { console.error('Azure TTS audio error:', e); setIsTtsPlaying(false); ttsAudioRef.current = null; };
+        await audio.play();
+        return;
+      } catch (err) {
+        console.warn('Azure TTS falló. Intentando con síntesis local:', err);
+      }
+    }
+
+    // 3. Método local: Web Speech API (speechSynthesis)
+    if ('speechSynthesis' in window) {
+      const getVoicesAsync = () => new Promise((resolve) => {
+        const voices = window.speechSynthesis.getVoices();
+        if (voices.length > 0) return resolve(voices);
+        window.speechSynthesis.addEventListener('voiceschanged', () => {
+          resolve(window.speechSynthesis.getVoices());
+        }, { once: true });
+        setTimeout(() => resolve(window.speechSynthesis.getVoices()), 1000);
+      });
+
+      const voices = await getVoicesAsync();
+      let matchedVoice = null;
+
+      // Buscar correspondencia por palabra clave (Nanami, Mayu, Keita, Edge o japonés genérico)
+      const keyword = vozId.toLowerCase();
+      matchedVoice = voices.find(v => {
         const name = v.name.toLowerCase();
-        const isJa = v.lang.includes('ja-JP') || v.lang.includes('ja_JP');
-        if (!isJa) return false;
-        
-        if (settings.audioGender === 'female') {
-          return name.includes('female') || name.includes('haruka') || name.includes('nanami') || name.includes('sami');
-        } else {
-          return name.includes('male') || name.includes('masaru') || name.includes('ichiro') || name.includes('keita');
-        }
-      }) || voices.find(v => v.lang.includes('ja-JP') || v.lang.includes('ja_JP'));
-      
-      if (jaVoice) {
-        utterance.voice = jaVoice;
+        return v.lang.startsWith('ja') && (name.includes(keyword) || name.includes('online') || name.includes('natural'));
+      });
+
+      if (!matchedVoice) {
+        // Fallback a cualquier voz japonesa del navegador (ej. Microsoft Haruka Desktop o la de Edge default)
+        matchedVoice = voices.find(v => v.lang.startsWith('ja'));
       }
 
-      utterance.onstart = () => setIsTtsPlaying(true);
-      utterance.onend = () => setIsTtsPlaying(false);
-      utterance.onerror = () => setIsTtsPlaying(false);
+      // Si definitivamente no hay ninguna voz en japonés instalada en el sistema operativo
+      if (!matchedVoice) {
+        console.log('No Japanese voices installed on system. Falling back to Google Translate TTS.');
+        try {
+          const googleTtsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=ja&q=${encodeURIComponent(texto)}`;
+          const audio = new Audio(googleTtsUrl);
+          ttsAudioRef.current = audio;
+          audio.playbackRate = Math.min(4, Math.max(0.25, speed));
+          audio.onended = () => { setIsTtsPlaying(false); ttsAudioRef.current = null; };
+          audio.onerror = (e) => { console.error('Google TTS error:', e); setIsTtsPlaying(false); ttsAudioRef.current = null; };
+          await audio.play();
+          return;
+        } catch (e) {
+          console.error('Google Translate TTS fallback failed:', e);
+        }
+      }
 
-      window.speechSynthesis.speak(utterance);
+      if (matchedVoice) {
+        const utterance = new SpeechSynthesisUtterance(texto);
+        utterance.lang = 'ja-JP';
+        utterance.rate = speed;
+        utterance.voice = matchedVoice;
+
+        // Simular tono masculino para Keita si es la única voz nativa femenina (ej. Haruka)
+        if (vozId === 'Keita' && matchedVoice && !matchedVoice.name.toLowerCase().includes('keita') && !matchedVoice.name.toLowerCase().includes('male')) {
+          utterance.pitch = 0.72; // Grave
+        } else {
+          utterance.pitch = 1.0;
+        }
+
+        utterance.onstart = () => setIsTtsPlaying(true);
+        utterance.onend = () => { setIsTtsPlaying(false); clearInterval(ttsKeepAliveRef.current); };
+        utterance.onerror = () => { setIsTtsPlaying(false); clearInterval(ttsKeepAliveRef.current); };
+
+        // Keep-alive para evitar suspensión en Chromium
+        clearInterval(ttsKeepAliveRef.current);
+        ttsKeepAliveRef.current = setInterval(() => {
+          if (window.speechSynthesis.speaking) {
+            window.speechSynthesis.pause();
+            window.speechSynthesis.resume();
+          } else {
+            clearInterval(ttsKeepAliveRef.current);
+          }
+        }, 10000);
+
+        window.speechSynthesis.speak(utterance);
+      } else {
+        setIsTtsPlaying(false);
+      }
+    } else {
+      setIsTtsPlaying(false);
     }
   };
 
-  // Lectura en voz alta del contenido de la página actual
-  const readPageAloud = () => {
-    if ('speechSynthesis' in window) {
-      if (isTtsPlaying) {
-        window.speechSynthesis.cancel();
-        setIsTtsPlaying(false);
-        return;
+  // Lectura en voz alta de toda la página actual
+  const leerPaginaEnVozAlta = () => {
+    if (isTtsPlaying) {
+      if (ttsAudioRef.current) {
+        ttsAudioRef.current.pause();
+        ttsAudioRef.current = null;
       }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        clearInterval(ttsKeepAliveRef.current);
+      }
+      setIsTtsPlaying(false);
+      return;
     }
 
     if (currentPageTokens.length === 0) return;
@@ -660,8 +770,17 @@ export default function Reader({
       .filter(tok => !tok.isParagraphBreak && !tok.isLineBreak && !tok.isIndentSpace)
       .map(tok => tok.surface)
       .join('');
-    speakText(rawText);
+    
+    reproducirTexto(rawText, settings.audioVoiceOption || 'Nanami');
   };
+
+
+
+
+
+
+
+
 
   // Get learning status style class
   const getWordStatusClass = (token) => {
@@ -677,11 +796,11 @@ export default function Reader({
   };
 
   const getLevelName = (pct) => {
-    if (pct < 20) return '👀 Principiante';
-    if (pct < 50) return '🧭 Curioso';
-    if (pct < 70) return '🚀 Ambicioso';
-    if (pct < 90) return '⚡ Fluido';
-    return '🏆 Nativo';
+    if (pct < 20) return lang === 'es' ? '👀 Principiante' : '👀 Beginner';
+    if (pct < 50) return lang === 'es' ? '🧭 Curioso' : '🧭 Curious';
+    if (pct < 70) return lang === 'es' ? '🚀 Ambicioso' : '🚀 Ambitious';
+    if (pct < 90) return lang === 'es' ? '⚡ Fluido' : '⚡ Fluent';
+    return lang === 'es' ? '🏆 Nativo' : '🏆 Native';
   };
 
   const getPieChartGradient = (known, unknown, ignored) => {
@@ -697,7 +816,7 @@ export default function Reader({
     <div className="reader-container" data-theme={settings.theme} ref={containerRef}>
       {/* 1. Header */}
       <header className="reader-header">
-        <button className="reader-header-btn" onClick={onBack} title="Volver a la Biblioteca">
+        <button className="reader-header-btn" onClick={onBack} title={t('backToLibrary', lang)}>
           <ArrowLeft size={20} />
         </button>
         <h3 className="reader-title">
@@ -706,7 +825,7 @@ export default function Reader({
         <button 
           className="reader-header-btn" 
           onClick={() => { setModalMode('settings'); setIsSettingsOpen(true); }}
-          title="Ajustes de lectura"
+          title={lang === 'es' ? 'Ajustes de lectura' : 'Reading Settings'}
         >
           <Settings size={20} />
         </button>
@@ -716,7 +835,7 @@ export default function Reader({
       {loading ? (
         <div className="loading-screen">
           <div className="spinner"></div>
-          <p style={{ fontFamily: 'var(--font-heading)' }}>Procesando vocabulario japonés...</p>
+          <p style={{ fontFamily: 'var(--font-heading)' }}>{t('processingVocab', lang)}</p>
         </div>
       ) : (
         <div className="reader-content-wrapper" ref={readerContentRef}>
@@ -726,7 +845,7 @@ export default function Reader({
           >
             {currentPageTokens.length === 0 ? (
               <p style={{ color: 'var(--text-dark)', textAlign: 'center', marginTop: '2rem' }}>
-                Este capítulo no contiene texto legible o es un capítulo de ilustración.
+                {lang === 'es' ? 'Este capítulo no contiene texto legible o es un capítulo de ilustración.' : 'This chapter does not contain readable text or is an illustration chapter.'}
               </p>
             ) : (
               <div className="reader-text-page">
@@ -798,17 +917,19 @@ export default function Reader({
                     <button 
                       className="yomitan-action-btn yomitan-add-btn"
                       onClick={handleMineToAnki}
-                      title="Minar a Anki"
+                      title={t('mineToAnki', lang)}
                     >
                       <Plus size={20} />
                     </button>
                     <button 
                       className="yomitan-action-btn yomitan-audio-btn"
-                      onClick={() => speakText(selectedWord.surface)}
-                      title="Escuchar pronunciación"
+                      onClick={() => reproducirTexto(selectedWord.surface)}
+                      title={t('listenPronunciation', lang)}
                     >
                       <Volume2 size={20} />
                     </button>
+
+
                   </div>
                 </div>
 
@@ -857,7 +978,7 @@ export default function Reader({
                       onSetWordStatus(selectedWord.basicForm, 'new');
                     }}
                   >
-                    Nuevo
+                    {t('statusNew', lang)}
                   </button>
                   <button 
                     className={`status-btn status-btn-learning ${(wordStatuses[selectedWord.basicForm] === 'learning') ? 'active' : ''}`}
@@ -865,7 +986,7 @@ export default function Reader({
                       onSetWordStatus(selectedWord.basicForm, 'learning');
                     }}
                   >
-                    Estudiando
+                    {t('statusLearning', lang)}
                   </button>
                   <button 
                     className={`status-btn status-btn-known ${(wordStatuses[selectedWord.basicForm] === 'known') ? 'active' : ''}`}
@@ -873,7 +994,7 @@ export default function Reader({
                       onSetWordStatus(selectedWord.basicForm, 'known');
                     }}
                   >
-                    Conocido
+                    {t('statusKnown', lang)}
                   </button>
                   <button 
                     className={`status-btn status-btn-starred ${(wordStatuses[selectedWord.basicForm] === 'starred') ? 'active' : ''}`}
@@ -881,7 +1002,7 @@ export default function Reader({
                       onSetWordStatus(selectedWord.basicForm, 'starred');
                     }}
                   >
-                    Destacado
+                    {t('statusStarred', lang)}
                   </button>
                   <button 
                     className={`status-btn status-btn-ignored ${(wordStatuses[selectedWord.basicForm] === 'ignored') ? 'active' : ''}`}
@@ -889,7 +1010,7 @@ export default function Reader({
                       onSetWordStatus(selectedWord.basicForm, 'ignored');
                     }}
                   >
-                    Ignorado
+                    {t('statusIgnored', lang)}
                   </button>
                 </div>
 
@@ -900,28 +1021,33 @@ export default function Reader({
                     </div>
                   ) : dictEntry ? (
                     settings.showTranslation ? (
-                      dictEntry.definitions.map((def, idx) => {
-                        let cleanDef = def;
-                        let dictTag = '';
-                        const tagMatch = def.match(/^\[(.*?)\] (.*)/);
-                        if (tagMatch) {
-                          dictTag = tagMatch[1];
-                          cleanDef = tagMatch[2];
-                        }
-                        return (
-                          <div key={idx} className="dict-definition-item" style={{ display: 'flex' }}>
-                            <span style={{ color: 'var(--text-muted)', marginRight: '8px', fontWeight: 'bold' }}>•</span>
-                            <span>{cleanDef}</span>
-                          </div>
-                        );
-                      })
+                      (dictEntry.definitions.length === 0 || (dictEntry.definitions.length === 1 && (dictEntry.definitions[0].includes('No translation found') || dictEntry.definitions[0].includes('No se encontró definición')))) ? (
+                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('noDefFound', lang)}</p>
+                      ) : (
+                        dictEntry.definitions.map((def, idx) => {
+                          let cleanDef = def;
+                          let dictTag = '';
+                          const tagMatch = def.match(/^\[(.*?)\] (.*)/);
+                          if (tagMatch) {
+                            dictTag = tagMatch[1];
+                            cleanDef = tagMatch[2];
+                          }
+                          
+                          return (
+                            <div key={idx} className="yomitan-definition-entry">
+                              {dictTag && <span className="yomitan-dict-name">[{dictTag}]</span>}
+                              <span className="yomitan-definition-text">{cleanDef}</span>
+                            </div>
+                          );
+                        })
+                      )
                     ) : (
                       <p style={{ color: 'var(--text-dark)', fontSize: '0.85rem', fontStyle: 'italic' }}>
-                        Traducción oculta (puedes activarla en Ajustes).
+                        {lang === 'es' ? 'Traducción oculta (puedes activarla en Ajustes).' : 'Definitions hidden (you can enable them in Settings).'}
                       </p>
                     )
                   ) : (
-                    <p style={{ color: 'var(--text-muted)' }}>Cargando definición...</p>
+                    <p style={{ color: 'var(--text-muted)' }}>{t('dictLoading', lang)}</p>
                   )}
                 </div>
 
@@ -963,7 +1089,7 @@ export default function Reader({
               setIsJumpModalOpen(true);
             }}
           >
-            Página {globalCurrentPage} de {globalTotalPages}
+            {lang === 'es' ? `Página ${globalCurrentPage} de ${globalTotalPages}` : `Page ${globalCurrentPage} of ${globalTotalPages}`}
           </span>
         </div>
 
@@ -998,13 +1124,13 @@ export default function Reader({
             {/* Main Stats Row */}
             <div className="comp-pop-main-row">
               <div className="comp-pop-stat-item">
-                <span className="comp-pop-stat-label">Comprensión general</span>
+                <span className="comp-pop-stat-label">{lang === 'es' ? 'Comprensión general' : 'General comprehension'}</span>
                 <span className="comp-pop-stat-val val-coverage">
                   {book.vocabularyCoverage || 0}%
                 </span>
               </div>
               <div className="comp-pop-stat-item">
-                <span className="comp-pop-stat-label">Recomendadas (1T)</span>
+                <span className="comp-pop-stat-label">{lang === 'es' ? 'Recomendadas (1T)' : 'Recommended (1T)'}</span>
                 <span className="comp-pop-stat-val val-sentences">
                   {book.vocabStats?.recommendedSentences || 0}
                 </span>
@@ -1012,7 +1138,7 @@ export default function Reader({
             </div>
 
             {/* Title divider */}
-            <div className="comp-pop-section-title">Recuento de palabras únicas</div>
+            <div className="comp-pop-section-title">{lang === 'es' ? 'Recuento de palabras únicas' : 'Unique words count'}</div>
 
             {/* Donut Chart & Legend Row */}
             <div className="comp-pop-chart-row">
@@ -1031,17 +1157,17 @@ export default function Reader({
               <div className="comp-pop-legend">
                 <div className="legend-item">
                   <span className="legend-color-dot" style={{ backgroundColor: 'var(--status-known)' }} />
-                  <span className="legend-label">Conocida</span>
+                  <span className="legend-label">{t('statusKnown', lang)}</span>
                   <span className="legend-count">{book.vocabStats?.knownWords || 0}</span>
                 </div>
                 <div className="legend-item">
                   <span className="legend-color-dot" style={{ backgroundColor: 'var(--status-new)' }} />
-                  <span className="legend-label">Desconocida</span>
+                  <span className="legend-label">{lang === 'es' ? 'Desconocida' : 'Unknown'}</span>
                   <span className="legend-count">{book.vocabStats?.unknownWords || 0}</span>
                 </div>
                 <div className="legend-item">
                   <span className="legend-color-dot" style={{ backgroundColor: 'var(--status-ignored)' }} />
-                  <span className="legend-label">Ignorada</span>
+                  <span className="legend-label">{t('statusIgnored', lang)}</span>
                   <span className="legend-count">{book.vocabStats?.ignoredWords || 0}</span>
                 </div>
               </div>
@@ -1051,7 +1177,7 @@ export default function Reader({
             <div className="comp-pop-breakdown-list">
               <div className="breakdown-list-item-group">
                 <div className="breakdown-list-item">
-                  <span className="breakdown-item-label">Conocidas al 100% (0T)</span>
+                  <span className="breakdown-item-label">{lang === 'es' ? 'Conocidas al 100% (0T)' : '100% Known (0T)'}</span>
                   <span className="breakdown-item-val">{book.vocabStats?.sentencesKnownPct || 0}%</span>
                 </div>
                 <div className="breakdown-progress-bar">
@@ -1061,7 +1187,7 @@ export default function Reader({
               
               <div className="breakdown-list-item-group">
                 <div className="breakdown-list-item">
-                  <span className="breakdown-item-label font-accent-1t">Recomendadas (1T)</span>
+                  <span className="breakdown-item-label font-accent-1t">{lang === 'es' ? 'Recomendadas (1T)' : 'Recommended (1T)'}</span>
                   <span className="breakdown-item-val font-accent-1t">{book.vocabStats?.sentences1TPct || 0}%</span>
                 </div>
                 <div className="breakdown-progress-bar">
@@ -1071,7 +1197,7 @@ export default function Reader({
 
               <div className="breakdown-list-item-group">
                 <div className="breakdown-list-item">
-                  <span className="breakdown-item-label">Varias Desconocidas (MT)</span>
+                  <span className="breakdown-item-label">{lang === 'es' ? 'Varias Desconocidas (MT)' : 'Multiple Unknown (MT)'}</span>
                   <span className="breakdown-item-val">{book.vocabStats?.sentencesMTPct || 0}%</span>
                 </div>
                 <div className="breakdown-progress-bar">
@@ -1083,11 +1209,13 @@ export default function Reader({
         </>
       )}
 
+
+
       {/* Floating Audio Play/Stop button */}
       <button 
         className={`floating-tts-btn ${isTtsPlaying ? 'playing' : ''}`}
-        onClick={readPageAloud}
-        title={isTtsPlaying ? "Detener lectura" : "Escuchar esta página en voz alta"}
+        onClick={leerPaginaEnVozAlta}
+        title={isTtsPlaying ? (lang === 'es' ? 'Detener lectura' : 'Stop reading') : (lang === 'es' ? 'Escuchar esta página en voz alta' : 'Read this page aloud')}
       >
         {isTtsPlaying ? (
           <Square size={18} fill="#fff" />
@@ -1109,10 +1237,10 @@ export default function Reader({
       {isJumpModalOpen && (
         <div className="jump-modal-overlay" onClick={() => setIsJumpModalOpen(false)}>
           <div className="jump-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="jump-modal-title">Ir a la página</div>
+            <div className="jump-modal-title">{lang === 'es' ? 'Ir a la página' : 'Go to page'}</div>
             
             <div className="jump-modal-row">
-              <span>Página</span>
+              <span>{lang === 'es' ? 'Página' : 'Page'}</span>
               <input 
                 type="number" 
                 min="1" 
@@ -1127,7 +1255,7 @@ export default function Reader({
                 }}
                 className="jump-modal-input"
               />
-              <span>de {globalTotalPages}</span>
+              <span>{lang === 'es' ? `de ${globalTotalPages}` : `of ${globalTotalPages}`}</span>
             </div>
 
             <input 
@@ -1149,14 +1277,14 @@ export default function Reader({
                 setIsJumpModalOpen(false);
               }}
             >
-              Ir a la página
+              {lang === 'es' ? 'Ir a la página' : 'Go to page'}
             </button>
 
             <button 
               className="jump-modal-cancel-btn"
               onClick={() => setIsJumpModalOpen(false)}
             >
-              Cancelar
+              {t('cancel', lang)}
             </button>
           </div>
         </div>

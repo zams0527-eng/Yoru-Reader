@@ -17,15 +17,13 @@ const DEFAULT_SETTINGS = {
   showLearningStatus: true,
   sentenceHover: false,
   pitchAccent: 'none',
-  wordTranslation: 'none',
+  appLanguage: 'en',
   audioSpeed: '1.0',
   audioGender: 'male',
   audioVoiceOption: 'masaru'
 };
 
-const DEFAULT_PROFILES = [
-  { id: 'profile-default', name: 'Zams', avatar: '/megumin_avatar.png' }
-];
+const DEFAULT_PROFILES = [];
 
 // Simple IndexedDB key-value wrapper to support unlimited storage (bypassing localStorage 5MB limit)
 const idb = {
@@ -105,9 +103,11 @@ export const db = {
   getActiveProfileId() {
     try {
       const id = localStorage.getItem(STORAGE_KEYS.ACTIVE_PROFILE);
-      return id || 'profile-default';
+      if (id) return id;
+      const profiles = this.getProfiles();
+      return profiles.length > 0 ? profiles[0].id : null;
     } catch (e) {
-      return 'profile-default';
+      return null;
     }
   },
 
@@ -363,5 +363,88 @@ export const db = {
     }
     this.saveWordStatuses(statuses);
     return statuses;
+  },
+
+  // --- Export/Import Database for Cloud/Google Drive Sync ---
+  async exportFullDatabase() {
+    const profiles = this.getProfiles();
+    const activeProfileId = this.getActiveProfileId();
+    
+    const dbExport = {
+      version: 2,
+      exportDate: new Date().toISOString(),
+      activeProfileId,
+      profiles,
+      profileData: {}
+    };
+
+    // Collect data for each profile
+    for (const p of profiles) {
+      // 1. Books list from IndexedDB
+      const booksKey = `books_list_${p.id}`;
+      const books = await idb.get(booksKey) || [];
+      
+      // 2. Settings from localStorage
+      const settingsKey = `migaku_reader_settings_${p.id}`;
+      const settingsRaw = localStorage.getItem(settingsKey);
+      const settings = settingsRaw ? JSON.parse(settingsRaw) : null;
+      
+      // 3. Word statuses from localStorage
+      const statusKey = `migaku_reader_word_status_${p.id}`;
+      const statusRaw = localStorage.getItem(statusKey);
+      const wordStatuses = statusRaw ? JSON.parse(statusRaw) : null;
+
+      dbExport.profileData[p.id] = {
+        books,
+        settings,
+        wordStatuses
+      };
+    }
+
+    return dbExport;
+  },
+
+  async importFullDatabase(dbExport) {
+    if (!dbExport || !dbExport.profiles || !Array.isArray(dbExport.profiles)) {
+      throw new Error("Invalid backup format");
+    }
+
+    // Save profiles list
+    this.saveProfiles(dbExport.profiles);
+    
+    // Save data for each profile
+    for (const p of dbExport.profiles) {
+      const pData = dbExport.profileData && dbExport.profileData[p.id];
+      if (pData) {
+        // 1. Books
+        if (pData.books) {
+          const booksKey = `books_list_${p.id}`;
+          await idb.set(booksKey, pData.books);
+        }
+        // 2. Settings
+        if (pData.settings) {
+          const settingsKey = `migaku_reader_settings_${p.id}`;
+          localStorage.setItem(settingsKey, JSON.stringify(pData.settings));
+        }
+        // 3. Word statuses
+        if (pData.wordStatuses) {
+          const statusKey = `migaku_reader_word_status_${p.id}`;
+          localStorage.setItem(statusKey, JSON.stringify(pData.wordStatuses));
+        }
+      }
+    }
+
+    // Restore active profile
+    if (dbExport.activeProfileId) {
+      this.setActiveProfileId(dbExport.activeProfileId);
+    }
+  },
+
+  async idbGet(key) {
+    return await idb.get(key);
+  },
+
+  async idbSet(key, value) {
+    return await idb.set(key, value);
   }
 };

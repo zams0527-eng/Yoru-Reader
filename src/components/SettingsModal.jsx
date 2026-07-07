@@ -1,147 +1,113 @@
 import React, { useState } from 'react';
 import { X, ChevronRight, ChevronLeft } from 'lucide-react';
-import AnkiConfigModal from './AnkiConfigModal';
+import { t } from '../utils/i18n';
+const AnkiConfigModal = React.lazy(() => import('./AnkiConfigModal'));
 
-export default function SettingsModal({ isOpen, onClose, settings, onSaveSettings, mode = 'settings', book, onUpdateBookDetails }) {
+export default function SettingsModal({ isOpen, onClose, settings = {}, onSaveSettings, mode = 'settings', book, onUpdateBookDetails }) {
   if (!isOpen) return null;
   const [isAnkiConfigOpen, setIsAnkiConfigOpen] = useState(false);
+  const lang = settings.appLanguage || 'es';
 
   if (mode === 'info') {
     if (!book) return null;
-    
-    const getCharacterCount = (b) => {
-      if (!b || !b.chapters) return 0;
-      return b.chapters.reduce((sum, ch) => {
-        if (typeof ch.content === 'string') {
-          return sum + ch.content.length;
-        }
-        if (Array.isArray(ch.content)) {
-          return sum + ch.content.reduce((pSum, p) => {
-            return pSum + p.reduce((sSum, s) => {
-              return sSum + (typeof s === 'string' ? s.length : (s.text ? s.text.length : 0));
-            }, 0);
-          }, 0);
-        }
-        return sum;
-      }, 0);
-    };
-
+    const charsCount = (book.chapters || []).reduce((acc, c) => acc + (c.content || '').length, 0);
     const formatDate = (dateStr) => {
       if (!dateStr) return '-';
-      const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return '-';
-      const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-      const day = d.getDate();
-      const month = months[d.getMonth()];
-      const year = d.getFullYear();
-      let hours = d.getHours();
-      const minutes = d.getMinutes().toString().padStart(2, '0');
-      const ampm = hours >= 12 ? 'p.m.' : 'a.m.';
-      hours = hours % 12;
-      hours = hours ? hours : 12; // 0 should be 12
-      return `${day} ${month} ${year}, ${hours}:${minutes} ${ampm}`;
+      return new Date(dateStr).toLocaleDateString(lang === 'es' ? 'es-ES' : 'en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
     };
-
-    const charsCount = getCharacterCount(book);
 
     return (
       <div className="modal-overlay" onClick={onClose}>
-        <div 
-          className="settings-modal migaku-style book-info-modal" 
-          onClick={(e) => e.stopPropagation()} 
-          style={{ 
-            maxWidth: '420px', 
-            padding: '24px',
-            background: '#1c1c23',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: '12px',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.6)'
-          }}
-        >
-          <div className="modal-header" style={{ borderBottom: 'none', padding: '0 0 16px 0', display: 'flex', alignItems: 'center', marginBottom: '12px' }}>
-            <button 
-              onClick={onClose} 
-              style={{ 
-                background: 'none', 
-                border: 'none', 
-                color: '#fff', 
-                cursor: 'pointer', 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '8px',
-                fontSize: '1.1rem',
-                fontWeight: 600,
-                padding: '0'
-              }}
-            >
-              <ChevronLeft size={20} /> Acciones del libro
-            </button>
-            <span style={{ flex: 1 }}></span>
-            <button className="close-modal-btn" onClick={onClose} style={{ background: 'transparent', padding: '0' }}>
+        <div className="settings-modal migaku-style" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
+          <div className="modal-header" style={{ paddingBottom: '0.2rem', marginBottom: '0.5rem' }}>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: 'var(--primary)' }}>
+              {t('editInfo', lang).toUpperCase()}
+            </h3>
+            <button className="close-modal-btn" onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer' }}>
               <X size={20} />
             </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', color: 'rgba(255,255,255,0.85)', fontSize: '0.92rem' }}>
+          <div className="migaku-settings-content" style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.85rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
-              <span style={{ color: 'rgba(255,255,255,0.4)' }}>Autor</span>
+              <span style={{ color: 'rgba(255,255,255,0.4)' }}>{t('title', lang)}</span>
               <span 
-                style={{ fontWeight: 500, color: '#fff', cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,0.3)' }} 
+                style={{ fontWeight: 600, color: '#fff', cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,0.3)' }}
                 onClick={() => {
-                  const a = prompt("Autor del libro:", book.author || '');
-                  if (a !== null) onUpdateBookDetails(book.id, { author: a });
+                  const title = prompt(lang === 'es' ? "Título del libro:" : "Book title:", book.title || '');
+                  if (title !== null && title.trim()) onUpdateBookDetails(book.id, { title: title.trim() });
                 }}
-                title="Haz clic para editar"
+                title={lang === 'es' ? "Haz clic para editar" : "Click to edit"}
               >
-                {book.author || 'Desconocido'}
+                {book.title}
               </span>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
-              <span style={{ color: 'rgba(255,255,255,0.4)' }}>Serie</span>
+              <span style={{ color: 'rgba(255,255,255,0.4)' }}>{t('author', lang)}</span>
+              <span 
+                style={{ fontWeight: 500, color: '#fff', cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,0.3)' }}
+                onClick={() => {
+                  const author = prompt(lang === 'es' ? "Autor del libro:" : "Book author:", book.author || '');
+                  if (author !== null) onUpdateBookDetails(book.id, { author: author.trim() });
+                }}
+                title={lang === 'es' ? "Haz clic para editar" : "Click to edit"}
+              >
+                {book.author || '-'}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
+              <span style={{ color: 'rgba(255,255,255,0.4)' }}>{t('series', lang)}</span>
               <span 
                 style={{ fontWeight: 500, color: '#fff', cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,0.3)' }} 
                 onClick={() => {
-                  const s = prompt("Nombre de la serie:", book.series || '');
+                  const s = prompt(lang === 'es' ? "Nombre de la serie:" : "Series name:", book.series || '');
                   if (s !== null) onUpdateBookDetails(book.id, { series: s });
                 }}
-                title="Haz clic para editar"
+                title={lang === 'es' ? "Haz clic para editar" : "Click to edit"}
               >
                 {book.series || '-'}
               </span>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
-              <span style={{ color: 'rgba(255,255,255,0.4)' }}>Número de serie</span>
+              <span style={{ color: 'rgba(255,255,255,0.4)' }}>{t('volumeNumber', lang)}</span>
               <span 
                 style={{ fontWeight: 500, color: '#fff', cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,0.3)' }} 
                 onClick={() => {
-                  const sn = prompt("Número de volumen/serie:", book.seriesNumber || '');
+                  const sn = prompt(lang === 'es' ? "Número de volumen/serie:" : "Volume/Series number:", book.seriesNumber || '');
                   if (sn !== null) onUpdateBookDetails(book.id, { seriesNumber: sn });
                 }}
-                title="Haz clic para editar"
+                title={lang === 'es' ? "Haz clic para editar" : "Click to edit"}
               >
                 {book.seriesNumber || '-'}
               </span>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
-              <span style={{ color: 'rgba(255,255,255,0.4)' }}>Caracteres</span>
+              <span style={{ color: 'rgba(255,255,255,0.4)' }}>{lang === 'es' ? 'Caracteres' : 'Characters'}</span>
               <span style={{ fontWeight: 500, color: '#fff' }}>{charsCount.toLocaleString()}</span>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
-              <span style={{ color: 'rgba(255,255,255,0.4)' }}>Última lectura</span>
+              <span style={{ color: 'rgba(255,255,255,0.4)' }}>{t('lastRead', lang)}</span>
               <span style={{ fontWeight: 500, color: '#fff' }}>{formatDate(book.lastRead)}</span>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '10px' }}>
-              <span style={{ color: 'rgba(255,255,255,0.4)' }}>Añadido</span>
+              <span style={{ color: 'rgba(255,255,255,0.4)' }}>{lang === 'es' ? 'Añadido' : 'Added'}</span>
               <span style={{ fontWeight: 500, color: '#fff' }}>{formatDate(book.createdAt)}</span>
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '4px' }}>
-              <span style={{ color: 'rgba(255,255,255,0.4)' }}>Última actualización</span>
+              <span style={{ color: 'rgba(255,255,255,0.4)' }}>{lang === 'es' ? 'Última actualización' : 'Last update'}</span>
               <span style={{ fontWeight: 500, color: '#fff' }}>{formatDate(book.updatedAt || book.createdAt)}</span>
             </div>
           </div>
@@ -170,17 +136,17 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
       <div className="settings-modal migaku-style" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header" style={{ paddingBottom: '0.2rem', marginBottom: '0.5rem' }}>
           <span style={{ flex: 1 }}></span>
-          <button className="close-modal-btn" onClick={onClose} style={{ background: 'transparent' }}>
+          <button className="close-modal-btn" onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer' }}>
             <X size={20} />
           </button>
         </div>
 
         <div className="migaku-settings-content">
-          <div className="migaku-section-title">AJUSTES DE PANTALLA</div>
+          <div className="migaku-section-title">{t('displaySettings', lang)}</div>
           
           {/* Tamaño del texto */}
           <div className="migaku-slider-row">
-            <span className="slider-label">Tamaño del texto</span>
+            <span className="slider-label">{t('readerFontSize', lang)}</span>
             <div className="migaku-slider-container">
               <span className="slider-icon-small">A</span>
               <div className="slider-wrapper">
@@ -206,7 +172,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
 
           {/* Estado de aprendizaje */}
           <div className="migaku-row">
-            <span className="migaku-label">Estado de aprendizaje</span>
+            <span className="migaku-label">{lang === 'es' ? 'Estado de aprendizaje' : 'Learning Status'}</span>
             <label className="migaku-switch">
               <input 
                 type="checkbox" 
@@ -219,7 +185,7 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
 
           {/* Oración al pasar el cursor */}
           <div className="migaku-row">
-            <span className="migaku-label">Oración al pasar el cursor</span>
+            <span className="migaku-label">{lang === 'es' ? 'Oración al pasar el cursor' : 'Sentence hover info'}</span>
             <label className="migaku-switch">
               <input 
                 type="checkbox" 
@@ -232,14 +198,14 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
 
           {/* Acento por color */}
           <div className="migaku-row">
-            <span className="migaku-label">Acento por color</span>
+            <span className="migaku-label">{lang === 'es' ? 'Acento por color' : 'Pitch accent by color'}</span>
             <select 
               value={settings.pitchAccent || 'none'}
               onChange={(e) => updateSetting('pitchAccent', e.target.value)}
               className="migaku-select"
             >
-              <option value="none">Ninguno</option>
-              <option value="pitch-color">Color de tono</option>
+              <option value="none">{t('pitchNone', lang)}</option>
+              <option value="pitch-color">{t('pitchColor', lang)}</option>
             </select>
           </div>
 
@@ -251,31 +217,30 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
               onChange={(e) => updateSetting('showFurigana', e.target.value)}
               className="migaku-select"
             >
-              <option value="unknown-only">Palabras desconocidas</option>
-              <option value="all">Todo</option>
-              <option value="none">Ninguno</option>
+              <option value="unknown-only">{lang === 'es' ? 'Palabras desconocidas' : 'Unknown words only'}</option>
+              <option value="all">{lang === 'es' ? 'Todo' : 'All'}</option>
+              <option value="none">{t('pitchNone', lang)}</option>
             </select>
           </div>
 
-          {/* Traducciones de palabras */}
+          {/* Idioma de la interfaz */}
           <div className="migaku-row">
-            <span className="migaku-label">Traducciones de palabras <span style={{ opacity: 0.6 }} title="Ayuda">ⓘ</span></span>
+            <span className="migaku-label">{t('interfaceLanguage', lang)}</span>
             <select 
-              value={settings.wordTranslation || 'none'}
-              onChange={(e) => updateSetting('wordTranslation', e.target.value)}
+              value={settings.appLanguage || 'es'}
+              onChange={(e) => updateSetting('appLanguage', e.target.value)}
               className="migaku-select"
             >
-              <option value="none">Ninguna 🌐</option>
-              <option value="en">Inglés 🇺🇸 (English)</option>
-              <option value="es">Español 🇪🇸 (Spanish)</option>
+              <option value="es">Español 🇪🇸</option>
+              <option value="en">English 🇺🇸</option>
             </select>
           </div>
 
-          <div className="migaku-section-title" style={{ marginTop: '24px' }}>OPCIONES DE AUDIO</div>
+          <div className="migaku-section-title" style={{ marginTop: '24px' }}>{t('audioOptions', lang)}</div>
 
           {/* Velocidad de reproducción */}
           <div className="migaku-row">
-            <span className="migaku-label">Velocidad de reproducción</span>
+            <span className="migaku-label">{t('playbackSpeed', lang)}</span>
             <select 
               value={settings.audioSpeed || '1.0'}
               onChange={(e) => updateSetting('audioSpeed', e.target.value)}
@@ -289,42 +254,80 @@ export default function SettingsModal({ isOpen, onClose, settings, onSaveSetting
           </div>
 
           {/* Género de voz */}
+
           <div className="migaku-row">
-            <span className="migaku-label">Género de voz</span>
+            <span className="migaku-label">{t('voiceGender', lang)}</span>
             <select 
-              value={settings.audioGender || 'male'}
+              value={settings.audioGender || 'female'}
               onChange={(e) => updateSetting('audioGender', e.target.value)}
               className="migaku-select"
             >
-              <option value="male">Masculino</option>
-              <option value="female">Femenino</option>
+              <option value="female">{t('genderFemale', lang)}</option>
+              <option value="male">{t('genderMale', lang)}</option>
             </select>
           </div>
 
-          {/* Opción de voz */}
+          {/* Opción de voz neuronal */}
           <div className="migaku-row">
-            <span className="migaku-label">Opción de voz</span>
+            <span className="migaku-label">{lang === 'es' ? 'Voz de reproducción' : 'Playback Voice'}</span>
             <select 
-              value={settings.audioVoiceOption || 'masaru'}
+              value={settings.audioVoiceOption || 'Nanami'}
               onChange={(e) => updateSetting('audioVoiceOption', e.target.value)}
               className="migaku-select"
             >
-              <option value="masaru">Masaru</option>
-              <option value="haruka">Haruka</option>
+              <option value="Nanami">Nanami (Femenina)</option>
+              <option value="Mayu">Mayu (Femenina Joven)</option>
+              <option value="Keita">Keita (Masculina)</option>
             </select>
           </div>
+
+          {/* Azure TTS API Key */}
+          <div className="migaku-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '4px' }}>
+            <span className="migaku-label" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Azure TTS API Key</span>
+            <input 
+              type="password"
+              placeholder="Azure Key (dejar vacío para usar voz gratis local)"
+              value={settings.azureApiKey || ''}
+              onChange={(e) => updateSetting('azureApiKey', e.target.value)}
+              className="migaku-select"
+              style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+            />
+          </div>
+
+          {/* Azure TTS Region */}
+          <div className="migaku-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '4px' }}>
+            <span className="migaku-label" style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Azure TTS Region</span>
+            <input 
+              type="text"
+              placeholder="eastus (ej: japaneast, eastus, etc.)"
+              value={settings.azureRegion || ''}
+              onChange={(e) => updateSetting('azureRegion', e.target.value)}
+              className="migaku-select"
+              style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+            />
+          </div>
+
+
+
+
+          
           <div className="migaku-section-title" style={{ marginTop: '24px' }}>ANKI</div>
           <button
             className="anki-open-settings-btn"
             onClick={() => setIsAnkiConfigOpen(true)}
+            type="button"
           >
-            <span>🃏 Configuración de Anki</span>
+            <span>🃏 {lang === 'es' ? 'Configuración de Anki' : 'Anki Configuration'}</span>
             <ChevronRight size={16} />
           </button>
         </div>
       </div>
 
-      <AnkiConfigModal isOpen={isAnkiConfigOpen} onClose={() => setIsAnkiConfigOpen(false)} />
+      <React.Suspense fallback={null}>
+        {isAnkiConfigOpen && (
+          <AnkiConfigModal isOpen={isAnkiConfigOpen} onClose={() => setIsAnkiConfigOpen(false)} />
+        )}
+      </React.Suspense>
     </div>
   );
 }

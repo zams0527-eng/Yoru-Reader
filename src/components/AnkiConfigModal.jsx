@@ -174,6 +174,7 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
     const saved = localStorage.getItem('anki_settings_v2');
     return saved ? { ...DEFAULT_ANKI_SETTINGS, ...JSON.parse(saved) } : DEFAULT_ANKI_SETTINGS;
   });
+  const lang = db.getSettings().appLanguage || 'es';
 
   const [connectionStatus, setConnectionStatus] = useState(null); // null | 'connected' | 'error' | 'testing'
   const [availableDecks, setAvailableDecks] = useState([]);
@@ -381,10 +382,10 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
-  const statusLabel = connectionStatus === 'connected' ? 'Connected'
-    : connectionStatus === 'error' ? 'Error — no connection'
-    : connectionStatus === 'testing' ? 'Connecting...'
-    : 'Unknown';
+  const statusLabel = connectionStatus === 'connected' ? (lang === 'es' ? 'Conectado' : 'Connected')
+    : connectionStatus === 'error' ? (lang === 'es' ? 'Error — sin conexión' : 'Error — no connection')
+    : connectionStatus === 'testing' ? (lang === 'es' ? 'Conectando...' : 'Connecting...')
+    : (lang === 'es' ? 'Desconectado' : 'Disconnected');
 
   return (
     <>
@@ -394,7 +395,7 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
           <div className="yomitan-anki-header">
             <div className="yomitan-anki-header-left">
               <span className="yomitan-anki-icon">🃏</span>
-              <span className="yomitan-anki-title">Anki</span>
+              <span className="yomitan-anki-title">{lang === 'es' ? 'Configuración de Anki' : 'Anki Configuration'}</span>
             </div>
             <div className="yomitan-anki-header-right">
               <span className="yomitan-anki-info-link">Info...</span>
@@ -409,12 +410,14 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
             <div className="yomitan-anki-section">
               <div className="yomitan-anki-row">
                 <div className="yomitan-anki-row-left">
-                  <div className="yomitan-anki-row-title">Enable Anki integration</div>
+                  <div className="yomitan-anki-row-title">{lang === 'es' ? 'Habilitar integración con Anki' : 'Enable Anki integration'}</div>
                   <div className="yomitan-anki-row-sub">
-                    Connection status: <span style={{ color: connectionStatus === 'connected' ? '#34d399' : connectionStatus === 'error' ? '#f87171' : 'var(--text-muted)' }}>{statusLabel}</span>
+                    {lang === 'es' ? 'Estado de conexión:' : 'Connection status:'} <span style={{ color: connectionStatus === 'connected' ? '#34d399' : connectionStatus === 'error' ? '#f87171' : 'var(--text-muted)' }}>{statusLabel}</span>
                   </div>
                   <div className="yomitan-anki-row-desc">
-                    This option may send limited information about the current webpage, information contained in dictionary entries, and/or relevant user settings outside of the reader to Anki.
+                    {lang === 'es' 
+                      ? 'Esta opción envía información sobre el vocabulario y las oraciones del lector a Anki a través del servidor local AnkiConnect.'
+                      : 'This option sends vocabulary and sentence information from the reader to Anki via the local AnkiConnect server.'}
                   </div>
                 </div>
                 <label className="migaku-switch" style={{ flexShrink: 0 }}>
@@ -435,8 +438,8 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
             <div className="yomitan-anki-section">
               <div className="yomitan-anki-field-group">
                 <div className="yomitan-anki-field-label-row">
-                  <span className="yomitan-anki-field-title">AnkiConnect server address</span>
-                  <span className="yomitan-anki-field-desc">Change the URL of the AnkiConnect server. <a href="https://foosoft.net/projects/anki-connect/" target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }}>More...</a></span>
+                  <span className="yomitan-anki-field-title">{lang === 'es' ? 'Dirección del servidor AnkiConnect' : 'AnkiConnect server address'}</span>
+                  <span className="yomitan-anki-field-desc">{lang === 'es' ? 'Cambia la dirección URL del servidor local de AnkiConnect.' : 'Change the URL of the AnkiConnect server.'} <a href="https://foosoft.net/projects/anki-connect/" target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }}>{lang === 'es' ? 'Más...' : 'More...'}</a></span>
                 </div>
                 <input
                   className="yomitan-anki-input"
@@ -452,8 +455,8 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
             <div className="yomitan-anki-section">
               <div className="yomitan-anki-field-group">
                 <div className="yomitan-anki-field-label-row">
-                  <span className="yomitan-anki-field-title">Card tags</span>
-                  <span className="yomitan-anki-field-desc">List of space or comma separated tags to add to the card.</span>
+                  <span className="yomitan-anki-field-title">{lang === 'es' ? 'Etiquetas de tarjeta' : 'Card tags'}</span>
+                  <span className="yomitan-anki-field-desc">{lang === 'es' ? 'Lista de etiquetas separadas por espacios o comas para añadir a la tarjeta.' : 'List of space or comma separated tags to add to the card.'}</span>
                 </div>
                 <input
                   className="yomitan-anki-input"
@@ -505,14 +508,14 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
             {/* Sincronización de Vocabulario */}
             <div className="yomitan-anki-section" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '16px', marginTop: '16px' }}>
               <div className="yomitan-anki-row-title" style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--primary)', marginBottom: '12px' }}>
-                Vocabulario & Sincronización
+                {lang === 'es' ? 'Vocabulario & Sincronización' : 'Vocabulary & Sync'}
               </div>
 
               {/* Deck Selection Field */}
               <div className="yomitan-anki-field-group" style={{ marginBottom: '16px' }}>
                 <div className="yomitan-anki-field-label-row" style={{ marginBottom: '6px' }}>
-                  <span className="yomitan-anki-field-title" style={{ fontSize: '0.82rem', fontWeight: 600, color: '#fff' }}>Mazo de Anki para Vocabulario</span>
-                  <span className="yomitan-anki-field-desc" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Mazo desde el cual importar y en el cual madurar tarjetas.</span>
+                  <span className="yomitan-anki-field-title" style={{ fontSize: '0.82rem', fontWeight: 600, color: '#fff' }}>{lang === 'es' ? 'Mazo de Anki para Vocabulario' : 'Anki Deck for Vocabulary'}</span>
+                  <span className="yomitan-anki-field-desc" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{lang === 'es' ? 'Mazo desde el cual importar y en el cual madurar tarjetas.' : 'Deck to import from and set cards to mature in.'}</span>
                 </div>
                 <select
                   className="yomitan-anki-input"
@@ -553,9 +556,11 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
               {/* Checkbox Auto-Mature */}
               <div className="yomitan-anki-row" style={{ padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                 <div className="yomitan-anki-row-left" style={{ paddingRight: '12px' }}>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#fff' }}>Marcar como madura en Anki</div>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#fff' }}>{lang === 'es' ? 'Marcar como madura en Anki' : 'Mark as mature in Anki'}</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px', lineHeight: '1.4' }}>
-                    Al marcar una palabra como "Conocido" en Yoru Reader, se buscará su tarjeta en Anki y se configurará como madura automáticamente (intervalo de 30 días).
+                    {lang === 'es'
+                      ? 'Al marcar una palabra como "Conocido" en Yoru Reader, se buscará su tarjeta en Anki y se configurará como madura automáticamente (intervalo de 30 días).'
+                      : 'When marking a word as "Known" in Yoru Reader, it will search for its card in Anki and automatically set it to mature (30-day interval).'}
                   </div>
                 </div>
                 <label className="migaku-switch" style={{ flexShrink: 0 }}>
@@ -593,10 +598,12 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
                     transition: 'all 0.2s'
                   }}
                 >
-                  📥 Importar palabras conocidas de Anki
+                  {lang === 'es' ? '📥 Importar palabras conocidas de Anki' : '📥 Import Known Words from Anki'}
                 </button>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', textAlign: 'center' }}>
-                  Busca tarjetas en el mazo de expresiones con intervalo ≥ 21 días e impórtalas a tu vocabulario.
+                  {lang === 'es'
+                    ? 'Busca tarjetas en el mazo de expresiones con intervalo ≥ 21 días e impórtalas a tu vocabulario.'
+                    : 'Finds cards in the expression deck with interval ≥ 21 days and imports them into your vocabulary.'}
                 </div>
               </div>
             </div>
@@ -609,7 +616,7 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
                 if (connectionStatus !== 'connected') testConnection();
               }}
             >
-              <span className="yomitan-anki-configure-label">Configure Anki flashcards...</span>
+              <span className="yomitan-anki-configure-label">{lang === 'es' ? 'Configurar campos de tarjetas...' : 'Configure Anki flashcards...'}</span>
               <ChevronRight size={16} style={{ color: 'var(--text-muted)' }} />
             </button>
 

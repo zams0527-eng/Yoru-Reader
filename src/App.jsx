@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Library from './components/Library';
-import Reader from './components/Reader';
-import SettingsModal from './components/SettingsModal';
+import WelcomeScreen from './components/WelcomeScreen';
+const Reader = React.lazy(() => import('./components/Reader'));
+const SettingsModal = React.lazy(() => import('./components/SettingsModal'));
 import { db } from './utils/db';
 import { tokenizeText } from './utils/japanese';
 
@@ -404,15 +405,18 @@ export default function App() {
     
     // Update active book reference
     if (activeBook && activeBook.id === bookId) {
-      setActiveBook(prev => ({
-        ...prev,
-        progress: { 
-          ...(prev.progress || {}),
-          currentChapter, 
-          currentPage, 
-          percent 
-        }
-      }));
+      setActiveBook(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          progress: { 
+            ...(prev.progress || {}),
+            currentChapter, 
+            currentPage, 
+            percent 
+          }
+        };
+      });
     }
   }, [activeBook]);
 
@@ -422,17 +426,19 @@ export default function App() {
     
     // Update active book reference to reflect new stats
     if (activeBook && activeBook.id === bookId) {
-      setActiveBook(prev => ({
-        ...prev,
-        progress: {
-          ...(prev.progress || {}),
-          charactersRead: ((prev.progress || {}).charactersRead || 0) + chars,
-          secondsRead: ((prev.progress || {}).secondsRead || 0) + seconds
-        }
-      }));
+      setActiveBook(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          progress: {
+            ...(prev.progress || {}),
+            charactersRead: ((prev.progress || {}).charactersRead || 0) + chars,
+            secondsRead: ((prev.progress || {}).secondsRead || 0) + seconds
+          }
+        };
+      });
     }
   }, [activeBook]);
-
   // 4. Handle adding custom books
   const handleAddBooks = async (booksData) => {
     const updatedBooks = await db.addBooks(booksData);
@@ -533,11 +539,13 @@ export default function App() {
   };
 
   const handleAddProfile = (newProfile) => {
+    const currentSettings = db.getSettings();
     const updatedProfiles = [...profiles, newProfile];
     db.saveProfiles(updatedProfiles);
     setProfiles(updatedProfiles);
     
     db.setActiveProfileId(newProfile.id);
+    db.saveSettings(currentSettings);
     setActiveProfileId(newProfile.id);
   };
 
@@ -575,17 +583,21 @@ export default function App() {
 
   return (
     <div className="app-container" data-theme={settings.theme}>
-      {activeBook ? (
-        <Reader 
-          book={activeBook}
-          onBack={() => setActiveBook(null)}
-          onUpdateProgress={handleUpdateProgress}
-          onIncrementReadingStats={handleIncrementReadingStats}
-          wordStatuses={wordStatuses}
-          onSetWordStatus={handleSetWordStatus}
-          settings={settings}
-          onSaveSettings={handleSaveSettings}
-        />
+      {profiles.length === 0 ? (
+        <WelcomeScreen onCreateProfile={handleAddProfile} settings={settings} onSaveSettings={handleSaveSettings} />
+      ) : activeBook ? (
+        <React.Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#fff', fontSize: '1.2rem', fontFamily: 'var(--font-heading)' }}>Cargando lector...</div>}>
+          <Reader 
+            book={activeBook}
+            onBack={() => setActiveBook(null)}
+            onUpdateProgress={handleUpdateProgress}
+            onIncrementReadingStats={handleIncrementReadingStats}
+            wordStatuses={wordStatuses}
+            onSetWordStatus={handleSetWordStatus}
+            settings={settings}
+            onSaveSettings={handleSaveSettings}
+          />
+        </React.Suspense>
       ) : (
         <Library 
           books={books}
@@ -611,18 +623,22 @@ export default function App() {
       )}
 
       {/* Manual Guide Modal */}
-      <SettingsModal 
-        isOpen={isInfoOpen} 
-        onClose={() => {
-          setIsInfoOpen(false);
-          setInfoBook(null);
-        }}
-        settings={settings}
-        onSaveSettings={handleSaveSettings}
-        mode="info"
-        book={infoBook}
-        onUpdateBookDetails={handleUpdateBookDetails}
-      />
+      <React.Suspense fallback={null}>
+        {isInfoOpen && (
+          <SettingsModal 
+            isOpen={isInfoOpen} 
+            onClose={() => {
+              setIsInfoOpen(false);
+              setInfoBook(null);
+            }}
+            settings={settings}
+            onSaveSettings={handleSaveSettings}
+            mode="info"
+            book={infoBook}
+            onUpdateBookDetails={handleUpdateBookDetails}
+          />
+        )}
+      </React.Suspense>
     </div>
   );
 }

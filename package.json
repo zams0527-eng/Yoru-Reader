@@ -3,25 +3,31 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "electron/electron-main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "deploy": "gh-pages -d dist",
+    "electron:start": "electron .",
+    "electron:package": "vite build && electron-packager . Yoru-Reader --platform=win32 --arch=x64 --out=dist-electron --overwrite"
   },
   "dependencies": {
     "html2canvas": "^1.4.1",
     "jszip": "^3.10.1",
     "lucide-react": "^1.23.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
+    "electron": "^43.0.0",
+    "electron-packager": "^17.1.2",
     "gh-pages": "^6.3.0",
     "oxlint": "^1.71.0",
     "vite": "^8.1.1"

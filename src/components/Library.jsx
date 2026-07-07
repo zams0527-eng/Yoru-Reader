@@ -3,11 +3,11 @@ import { Plus, Info, Trash2, ListChecks, Check, BarChart3, HelpCircle, Pencil, X
 import JSZip from 'jszip';
 import { importBookFile } from '../utils/fileImport';
 import { db } from '../utils/db';
-import { importYomitanZip, getInstalledDictionaries, deleteDictionary, getAllDictionaryData, importAllDictionaryData, closeDB } from '../utils/yomitanDB';
-import AnkiConfigModal from './AnkiConfigModal';
+import { importYomitanZip, getInstalledDictionaries, deleteDictionary, exportDictionaryDataToZip, importAllDictionaryData, closeDB } from '../utils/yomitanDB';
+const AnkiConfigModal = React.lazy(() => import('./AnkiConfigModal'));
 import { tokenizeText } from '../utils/japanese';
-
-
+import { t } from '../utils/i18n';
+import { googleDriveService } from '../utils/googleDriveService';
 
 const resizeImage = (file, maxDimension = 128) => {
   return new Promise((resolve, reject) => {
@@ -63,6 +63,7 @@ export default function Library({
   onSaveSettings,
   wordStatuses = {}
 }) {
+  const lang = settings.appLanguage || 'es';
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
   const backupInputRef = useRef(null);
@@ -125,6 +126,8 @@ export default function Library({
   const [activeTab, setActiveTab] = useState('library'); // 'library' | 'statistics' | 'settings' | 'notes'
   const [notesSearch, setNotesSearch] = useState('');
   const [notesFilterStatus, setNotesFilterStatus] = useState('all');
+  const [visibleVocabCount, setVisibleVocabCount] = useState(60);
+  const vocabSentinelRef = useRef(null);
   const [notesSort, setNotesSort] = useState('alphabetical');
   const [isNotesSortOpen, setIsNotesSortOpen] = useState(false);
   const [isNotesFilterOpen, setIsNotesFilterOpen] = useState(false);
@@ -215,6 +218,21 @@ export default function Library({
       loadInstalledDicts();
     }
   }, [activeTab]);
+
+  useEffect(() => {
+    setVisibleVocabCount(60);
+  }, [notesSearch, notesFilterStatus, notesSort]);
+
+  useEffect(() => {
+    if (!vocabSentinelRef.current) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        setVisibleVocabCount(prev => prev + 60);
+      }
+    }, { rootMargin: '200px' });
+    observer.observe(vocabSentinelRef.current);
+    return () => observer.disconnect();
+  }, [activeTab, vocabSentinelRef.current]);
 
   const loadInstalledDicts = async () => {
     try {
@@ -332,6 +350,341 @@ export default function Library({
   const [editProfileName, setEditProfileName] = useState('');
   const [editProfileAvatar, setEditProfileAvatar] = useState('');
 
+  // Google Drive / Cloud Sync States
+  const [isGDriveSyncOpen, setIsGDriveSyncOpen] = useState(false);
+  const [gDriveClientId, setGDriveClientId] = useState(localStorage.getItem('gdrive_client_id') || '658624509601-2ef33pve1i9mifecbe4n2nk0lmop9ggu.apps.googleusercontent.com');
+  const [gDriveClientSecret, setGDriveClientSecret] = useState(localStorage.getItem('gdrive_client_secret') || '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');
+  const [gDriveTokens, setGDriveTokens] = useState(localStorage.getItem('gdrive_tokens') ? JSON.parse(localStorage.getItem('gdrive_tokens')) : null);
+  const [gDriveUserEmail, setGDriveUserEmail] = useState(localStorage.getItem('gdrive_user_email') || '');
+  const [isAutoSyncEnabled, setIsAutoSyncEnabled] = useState(localStorage.getItem('gdrive_autosync_enabled') === 'true');
+  const [lastSyncTime, setLastSyncTime] = useState(localStorage.getItem('gdrive_last_sync_time') || '');
+  const [gDriveSyncStatus, setGDriveSyncStatus] = useState(localStorage.getItem('gdrive_tokens') ? 'authorized' : 'disconnected'); // 'disconnected', 'authorized', 'syncing'
+
+  // Load and check token on startup, run sync if auto-sync is enabled
+  useEffect(() => {
+    const initGDriveSync = async () => {
+      const tokens = localStorage.getItem('gdrive_tokens') ? JSON.parse(localStorage.getItem('gdrive_tokens')) : null;
+      if (tokens && tokens.refreshToken) {
+        setGDriveSyncStatus('authorized');
+        try {
+          // Fetch connected user info
+          const info = await googleDriveService.getUserInfo(tokens, gDriveClientId, gDriveClientSecret);
+          setGDriveUserEmail(info.email);
+          localStorage.setItem('gdrive_user_email', info.email);
+          
+          if (localStorage.getItem('gdrive_autosync_enabled') === 'true') {
+            // Perform automatic background restore if cloud file is newer
+            await performCloudSync(tokens, 'download-only');
+          }
+        } catch (err) {
+          console.warn('Failed to validate startup Google Drive tokens:', err);
+          // Don't auto-disconnect if it's just offline (no network)
+          if (navigator.onLine) {
+            setGDriveSyncStatus('disconnected');
+            setGDriveUserEmail('');
+            localStorage.removeItem('gdrive_tokens');
+            localStorage.removeItem('gdrive_user_email');
+          }
+        }
+      }
+    };
+    initGDriveSync();
+  }, []);
+
+  // Connect Google Drive Folder via loopback OAuth Flow
+  const handleConnectGDrive = async () => {
+    try {
+      if (!gDriveClientId.trim()) {
+        alert(lang === 'es' ? 'Introduce tu Client ID para continuar.' : 'Please enter your Client ID to continue.');
+        return;
+      }
+      setGDriveSyncStatus('syncing');
+
+      if (!window.electronAPI || !window.electronAPI.startGoogleOauth) {
+        alert(lang === 'es' ? 'El puente nativo de Electron no está disponible.' : 'The Electron native bridge is not available.');
+        setGDriveSyncStatus(gDriveTokens ? 'authorized' : 'disconnected');
+        return;
+      }
+
+      // 1. Run local loopback callback server and open browser
+      const oauthResult = await window.electronAPI.startGoogleOauth(gDriveClientId.trim());
+      if (!oauthResult || !oauthResult.code) {
+        throw new Error('No authorization code returned from loopback server');
+      }
+
+      // 2. Exchange authorization code + PKCE verifier for access + refresh token
+      const tokenData = await googleDriveService.exchangeCodeForTokens(
+        oauthResult.code,
+        oauthResult.redirectUri,
+        gDriveClientId.trim(),
+        gDriveClientSecret.trim(), // Desktop app clients require client_secret in token exchange
+        oauthResult.codeVerifier
+      );
+
+      // 3. Fetch connected user information
+      const info = await googleDriveService.getUserInfo(tokenData, gDriveClientId.trim(), gDriveClientSecret.trim());
+      setGDriveUserEmail(info.email);
+
+      // Save credentials & tokens
+      localStorage.setItem('gdrive_client_id', gDriveClientId.trim());
+      localStorage.setItem('gdrive_client_secret', gDriveClientSecret.trim());
+      localStorage.setItem('gdrive_tokens', JSON.stringify(tokenData));
+      localStorage.setItem('gdrive_user_email', info.email);
+
+      setGDriveTokens(tokenData);
+      setGDriveSyncStatus('authorized');
+      alert(lang === 'es' ? `¡Cuenta conectada con éxito! (${info.email})` : `Account successfully connected! (${info.email})`);
+    } catch (err) {
+      setGDriveSyncStatus(gDriveTokens ? 'authorized' : 'disconnected');
+      console.error('Google OAuth connection failed:', err);
+      alert((lang === 'es' ? 'Conexión fallida: ' : 'Connection failed: ') + err.message);
+    }
+  };
+
+
+  // Perform Cloud Upload — Full backup ZIP (mirrors "Get complete local backup" but to Google Drive)
+  const handleUploadGDrive = async () => {
+    const tokens = localStorage.getItem('gdrive_tokens') ? JSON.parse(localStorage.getItem('gdrive_tokens')) : null;
+    if (!tokens) return;
+    try {
+      setGDriveSyncStatus('syncing');
+      document.body.style.cursor = 'wait';
+
+      // 1. Build the same full ZIP as "Get complete local backup"
+      const zip = new JSZip();
+
+      const dictionaries = await exportDictionaryDataToZip(zip, (msg, pct) => {
+        console.log(`[GDrive Backup] ${msg} (${pct}%)`);
+      });
+
+      const metadata = {
+        version: 2,
+        exportDate: new Date().toISOString(),
+        profiles,
+        activeProfileId: localStorage.getItem('migaku_reader_active_profile_id') || 'profile-default',
+        books,
+        wordStatuses,
+        settings,
+        ankiSettings: localStorage.getItem('anki_settings') ? JSON.parse(localStorage.getItem('anki_settings')) : null,
+        ankiSettingsV2: localStorage.getItem('anki_settings_v2') ? JSON.parse(localStorage.getItem('anki_settings_v2')) : null,
+        dictionaries: dictionaries || [],
+      };
+
+      zip.file('metadata.json', JSON.stringify(metadata, null, 2));
+
+      const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+      const fileName = `yoru-reader-backup-${new Date().toISOString().slice(0, 10)}.zip`;
+
+      // 2. Upload the ZIP blob to Google Drive
+      await googleDriveService.uploadBlobFile(
+        tokens,
+        gDriveClientId.trim(),
+        zipBlob,
+        'yoru_reader_full_backup.zip', // fixed name so it overwrites the previous one
+        'application/zip',
+        gDriveClientSecret.trim()
+      );
+
+      const timeStr = new Date().toLocaleString();
+      setLastSyncTime(timeStr);
+      localStorage.setItem('gdrive_last_sync_time', timeStr);
+      setGDriveSyncStatus('authorized');
+      alert(lang === 'es'
+        ? `✅ Copia de seguridad completa subida a Google Drive con éxito.\nArchivo: yoru_reader_full_backup.zip`
+        : `✅ Full backup successfully uploaded to Google Drive.\nFile: yoru_reader_full_backup.zip`);
+    } catch (err) {
+      setGDriveSyncStatus('authorized');
+      console.error('GDrive full backup upload failed:', err);
+      alert((lang === 'es' ? 'Error al subir la copia de seguridad: ' : 'Backup upload failed: ') + err.message);
+    } finally {
+      document.body.style.cursor = 'default';
+    }
+  };
+
+
+  // Perform Cloud Download — restores the full backup ZIP from Google Drive
+  const handleDownloadGDrive = async () => {
+    const tokens = localStorage.getItem('gdrive_tokens') ? JSON.parse(localStorage.getItem('gdrive_tokens')) : null;
+    if (!tokens) return;
+    try {
+      setGDriveSyncStatus('syncing');
+      document.body.style.cursor = 'wait';
+
+      // 1. Download the full backup ZIP from Google Drive
+      const zipBlob = await googleDriveService.downloadBlobFile(
+        tokens,
+        gDriveClientId.trim(),
+        'yoru_reader_full_backup.zip',
+        gDriveClientSecret.trim()
+      );
+
+      if (!zipBlob) {
+        setGDriveSyncStatus('authorized');
+        alert(lang === 'es'
+          ? 'No se encontró ningún archivo de copia de seguridad en Google Drive. Sube una copia primero con el botón "Subir copia completa".'
+          : 'No backup file found in Google Drive. Upload one first using "Upload full backup".');
+        return;
+      }
+
+      if (!confirm(lang === 'es'
+        ? '¿Quieres restaurar la copia de seguridad completa de Google Drive? Se fusionarán libros, vocabulario y configuraciones con los datos actuales.'
+        : 'Do you want to restore the full backup from Google Drive? Books, vocabulary and settings will be merged with current data.')) {
+        setGDriveSyncStatus('authorized');
+        return;
+      }
+
+      // 2. Parse the ZIP using JSZip (same logic as handleImportLibrary)
+      const zip = await JSZip.loadAsync(zipBlob);
+      const metaFile = zip.file('metadata.json');
+      if (!metaFile) throw new Error('El ZIP de Google Drive no contiene metadatos válidos de Yoru Reader.');
+
+      const metaStr = await metaFile.async('text');
+      const importData = JSON.parse(metaStr);
+
+      if (!importData.books && !importData.profiles) {
+        throw new Error('El archivo de Google Drive no tiene un formato de respaldo válido.');
+      }
+
+      // 3. Restore active profile ID
+      if (importData.activeProfileId) {
+        localStorage.setItem('migaku_reader_active_profile_id', importData.activeProfileId);
+      } else if (importData.profiles && importData.profiles.length > 0) {
+        localStorage.setItem('migaku_reader_active_profile_id', importData.profiles[0].id);
+      }
+
+      // 4. Merge profiles
+      const mergedProfiles = [...profiles];
+      if (importData.profiles) {
+        importData.profiles.forEach(ip => {
+          if (!mergedProfiles.find(p => p.id === ip.id)) mergedProfiles.push(ip);
+        });
+      }
+      db.saveProfiles(mergedProfiles);
+
+      // 5. Merge books
+      if (importData.books) {
+        const currentBooks = await db.getBooks();
+        const mergedBooks = [...currentBooks];
+        for (const importBook of importData.books) {
+          const index = mergedBooks.findIndex(b => b.id === importBook.id || b.title === importBook.title);
+          if (index !== -1) mergedBooks[index] = importBook;
+          else mergedBooks.push(importBook);
+        }
+        await db.saveBooks(mergedBooks);
+      }
+
+      // 6. Restore word statuses
+      if (importData.wordStatuses) {
+        const mergedStatuses = { ...db.getWordStatuses(), ...importData.wordStatuses };
+        db.saveWordStatuses(mergedStatuses);
+      }
+
+      // 7. Restore settings
+      if (importData.settings) db.saveSettings(importData.settings);
+      if (importData.ankiSettings) localStorage.setItem('anki_settings', JSON.stringify(importData.ankiSettings));
+      if (importData.ankiSettingsV2) localStorage.setItem('anki_settings_v2', JSON.stringify(importData.ankiSettingsV2));
+
+      // 8. Restore dictionary metadata
+      if (importData.dictionaries && importData.dictionaries.length > 0) {
+        await importAllDictionaryData({ dictionaries: importData.dictionaries, terms: [], frequencies: [] });
+      }
+
+      // 9. Restore dictionary term/frequency chunks from ZIP
+      const termsInfoFile = zip.file('terms_info.json');
+      if (termsInfoFile) {
+        const termsInfo = JSON.parse(await termsInfoFile.async('text'));
+        for (let c = 0; c < termsInfo.chunkCount; c++) {
+          const chunkFile = zip.file(`terms_chunk_${c}.json`);
+          if (chunkFile) {
+            const chunkData = JSON.parse(await chunkFile.async('text'));
+            await importAllDictionaryData({ dictionaries: [], terms: chunkData, frequencies: [] });
+          }
+        }
+      }
+
+      const freqsInfoFile = zip.file('freqs_info.json');
+      if (freqsInfoFile) {
+        const freqsInfo = JSON.parse(await freqsInfoFile.async('text'));
+        for (let c = 0; c < freqsInfo.chunkCount; c++) {
+          const chunkFile = zip.file(`freqs_chunk_${c}.json`);
+          if (chunkFile) {
+            const chunkData = JSON.parse(await chunkFile.async('text'));
+            await importAllDictionaryData({ dictionaries: [], terms: [], frequencies: chunkData });
+          }
+        }
+      }
+
+      const timeStr = new Date().toLocaleString();
+      localStorage.setItem('gdrive_last_sync_time', timeStr);
+      setLastSyncTime(timeStr);
+
+      alert(lang === 'es'
+        ? '✅ Copia de seguridad restaurada con éxito. Reiniciando para aplicar los cambios...'
+        : '✅ Backup restored successfully. Restarting to apply changes...');
+      window.location.reload();
+    } catch (err) {
+      setGDriveSyncStatus('authorized');
+      console.error('GDrive download restore failed:', err);
+      alert((lang === 'es' ? 'Error al restaurar desde Google Drive: ' : 'Restore from Google Drive failed: ') + err.message);
+    } finally {
+      document.body.style.cursor = 'default';
+    }
+  };
+
+
+  // Generic background sync helper using API
+  const performCloudSync = async (tokens, mode = 'full') => {
+    try {
+      const importedData = await googleDriveService.downloadSyncFile(
+        tokens,
+        gDriveClientId.trim(),
+        gDriveClientSecret.trim()
+      );
+
+      if (!importedData) {
+        // If file doesn't exist and not download-only, upload current db
+        if (mode !== 'download-only') {
+          const fullExport = await db.exportFullDatabase();
+          await googleDriveService.uploadSyncFile(
+            tokens,
+            gDriveClientId.trim(),
+            fullExport,
+            gDriveClientSecret.trim()
+          );
+        }
+        return;
+      }
+
+      // Check modification timestamps if available in backup object
+      const cloudTime = importedData.exportDate ? new Date(importedData.exportDate).getTime() : 0;
+      const localLastTimeStr = localStorage.getItem('gdrive_last_sync_time');
+      const localLastTime = localLastTimeStr ? new Date(localLastTimeStr).getTime() : 0;
+
+      if (cloudTime > localLastTime) {
+        // Cloud has newer data, auto-restore
+        await db.importFullDatabase(importedData);
+        const timeStr = new Date().toLocaleString();
+        localStorage.setItem('gdrive_last_sync_time', timeStr);
+        console.log("Auto-sincronizada base de datos desde Google Drive.");
+        window.location.reload();
+      } else if (mode !== 'download-only') {
+        // Local is newer, upload current state
+        const fullExport = await db.exportFullDatabase();
+        await googleDriveService.uploadSyncFile(
+          tokens,
+          gDriveClientId.trim(),
+          fullExport,
+          gDriveClientSecret.trim()
+        );
+        const timeStr = new Date().toLocaleString();
+        localStorage.setItem('gdrive_last_sync_time', timeStr);
+        setLastSyncTime(timeStr);
+      }
+    } catch (err) {
+      console.error('Background cloud sync failed:', err);
+    }
+  };
+
   // Close profile dropdown when clicking outside
   useEffect(() => {
     const handleOutsideClick = (e) => {
@@ -429,16 +782,15 @@ export default function Library({
       setAnkiConnectionStatus('error');
     }
   };
-
   const handleExportLibrary = async () => {
     try {
       document.body.style.cursor = 'wait';
       const zip = new JSZip();
       
-      // 1. Gather Yomitan dictionary data
-      const dictData = await getAllDictionaryData();
+      const dictionaries = await exportDictionaryDataToZip(zip, (msg, pct) => {
+        console.log(`[Export Library] ${msg} (${pct}%)`);
+      });
       
-      // 2. Build metadata object
       const metadata = {
         version: 2,
         exportDate: new Date().toISOString(),
@@ -449,34 +801,11 @@ export default function Library({
         settings: settings,
         ankiSettings: localStorage.getItem('anki_settings') ? JSON.parse(localStorage.getItem('anki_settings')) : null,
         ankiSettingsV2: localStorage.getItem('anki_settings_v2') ? JSON.parse(localStorage.getItem('anki_settings_v2')) : null,
-        dictionaries: dictData.dictionaries || []
+        dictionaries: dictionaries || []
       };
       
       zip.file('metadata.json', JSON.stringify(metadata, null, 2));
       
-      // 3. Chunk terms
-      const terms = dictData.terms || [];
-      const termChunkSize = 25000;
-      let termChunkCount = 0;
-      for (let i = 0; i < terms.length; i += termChunkSize) {
-        const chunk = terms.slice(i, i + termChunkSize);
-        zip.file(`terms_chunk_${termChunkCount}.json`, JSON.stringify(chunk));
-        termChunkCount++;
-      }
-      zip.file('terms_info.json', JSON.stringify({ chunkCount: termChunkCount, totalCount: terms.length }));
-      
-      // 4. Chunk frequencies
-      const frequencies = dictData.frequencies || [];
-      const freqChunkSize = 25000;
-      let freqChunkCount = 0;
-      for (let i = 0; i < frequencies.length; i += freqChunkSize) {
-        const chunk = frequencies.slice(i, i + freqChunkSize);
-        zip.file(`freqs_chunk_${freqChunkCount}.json`, JSON.stringify(chunk));
-        freqChunkCount++;
-      }
-      zip.file('freqs_info.json', JSON.stringify({ chunkCount: freqChunkCount, totalCount: frequencies.length }));
-      
-      // 5. Generate zip blob
       const content = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
       
       // 6. Download the zip
@@ -744,7 +1073,7 @@ export default function Library({
   // Bulk deletion
   const handleBulkDelete = () => {
     if (selectedBookIds.length === 0) return;
-    if (confirm(`¿Estás seguro de que quieres eliminar los ${selectedBookIds.length} libros seleccionados?`)) {
+    if (confirm(lang === 'es' ? `¿Estás seguro de que quieres eliminar los ${selectedBookIds.length} libros seleccionados?` : `Are you sure you want to delete the ${selectedBookIds.length} selected books?`)) {
       onBulkDeleteBooks(selectedBookIds);
       setSelectedBookIds([]);
       setSelectMode(false);
@@ -767,27 +1096,27 @@ export default function Library({
 
   const handleSetSeries = async () => {
     if (selectedBookIds.length === 0) return;
-    const series = prompt("Introduce el nombre de la serie para los libros seleccionados:");
+    const series = prompt(lang === 'es' ? "Introduce el nombre de la serie para los libros seleccionados:" : "Enter the series name for the selected books:");
     if (series === null) return;
     for (const bookId of selectedBookIds) {
       await onUpdateBookDetails(bookId, { series: series.trim() });
     }
-    alert("Serie actualizada con éxito.");
+    alert(lang === 'es' ? "Serie actualizada con éxito." : "Series successfully updated.");
   };
 
   const handleSetAuthor = async () => {
     if (selectedBookIds.length === 0) return;
-    const author = prompt("Introduce el nombre del autor para los libros seleccionados:");
+    const author = prompt(lang === 'es' ? "Introduce el nombre del autor para los libros seleccionados:" : "Enter the author name for the selected books:");
     if (author === null) return;
     for (const bookId of selectedBookIds) {
       await onUpdateBookDetails(bookId, { author: author.trim() });
     }
-    alert("Autor actualizado con éxito.");
+    alert(lang === 'es' ? "Autor actualizado con éxito." : "Author successfully updated.");
   };
 
   const handleAddTags = async () => {
     if (selectedBookIds.length === 0) return;
-    const tag = prompt("Introduce la etiqueta que deseas añadir:");
+    const tag = prompt(lang === 'es' ? "Introduce la etiqueta que deseas añadir:" : "Enter the tag you want to add:");
     if (!tag) return;
     const tagTrim = tag.trim();
     for (const bookId of selectedBookIds) {
@@ -800,12 +1129,12 @@ export default function Library({
         }
       }
     }
-    alert("Etiquetas añadidas.");
+    alert(lang === 'es' ? "Etiquetas añadidas." : "Tags added.");
   };
 
   const handleRemoveTags = async () => {
     if (selectedBookIds.length === 0) return;
-    const tag = prompt("Introduce la etiqueta que deseas eliminar:");
+    const tag = prompt(lang === 'es' ? "Introduce la etiqueta que deseas eliminar:" : "Enter the tag you want to remove:");
     if (!tag) return;
     const tagTrim = tag.trim();
     for (const bookId of selectedBookIds) {
@@ -815,7 +1144,7 @@ export default function Library({
         await onUpdateBookDetails(bookId, { tags });
       }
     }
-    alert("Etiquetas eliminadas.");
+    alert(lang === 'es' ? "Etiquetas eliminadas." : "Tags removed.");
   };
 
   const handleBlurCovers = async () => {
@@ -826,19 +1155,19 @@ export default function Library({
         await onUpdateBookDetails(bookId, { hideCover: !book.hideCover });
       }
     }
-    alert('Visibilidad de portadas actualizada.');
+    alert(lang === 'es' ? 'Visibilidad de portadas actualizada.' : 'Covers visibility updated.');
   };
 
   const handleMarkAsUnread = async () => {
     if (selectedBookIds.length === 0) return;
-    if (confirm("¿Quieres marcar como no leídos los libros seleccionados y reiniciar su progreso?")) {
+    if (confirm(lang === 'es' ? "¿Quieres marcar como no leídos los libros seleccionados y reiniciar su progreso?" : "Do you want to mark selected books as unread and reset their progress?")) {
       for (const bookId of selectedBookIds) {
         await onUpdateBookDetails(bookId, {
           progress: { currentChapter: 0, currentPage: 0, percent: 0 },
           status: 'unread'
         });
       }
-      alert("Progreso reiniciado para los libros seleccionados.");
+      alert(lang === 'es' ? "Progreso reiniciado para los libros seleccionados." : "Progress reset for selected books.");
     }
   };
 
@@ -846,7 +1175,6 @@ export default function Library({
     if (selectedBookIds.length === 0) return;
     try {
       const selectedBooks = books.filter(b => selectedBookIds.includes(b.id));
-      const dictData = await getAllDictionaryData();
       const exportData = {
         version: 2,
         exportDate: new Date().toISOString(),
@@ -866,7 +1194,7 @@ export default function Library({
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      alert('Error al exportar selección: ' + e.message);
+      alert((lang === 'es' ? 'Error al exportar selección: ' : 'Error exporting selection: ') + e.message);
     }
   };
 
@@ -879,14 +1207,14 @@ export default function Library({
 
   const handleDeleteStatistics = async () => {
     if (selectedBookIds.length === 0) return;
-    if (confirm(`¿Seguro que quieres borrar los registros de lectura de ${selectedBookIds.length} libro(s) seleccionado(s)?`)) {
+    if (confirm(lang === 'es' ? `¿Seguro que quieres borrar los registros de lectura de ${selectedBookIds.length} libro(s) seleccionado(s)?` : `Are you sure you want to clear the reading records of the ${selectedBookIds.length} selected book(s)?`)) {
       for (const bookId of selectedBookIds) {
         await onUpdateBookDetails(bookId, {
           progress: { ...((books.find(b => b.id === bookId) || {}).progress || {}), charactersRead: 0, secondsRead: 0 },
           lastRead: null
         });
       }
-      alert('Estadísticas de lectura borradas.');
+      alert(lang === 'es' ? 'Estadísticas de lectura borradas.' : 'Reading statistics cleared.');
     }
   };
 
@@ -1002,19 +1330,19 @@ export default function Library({
   const allSortedBooks = filteredBooksList;
 
   const getSectionTitle = () => {
-    let base = "Todos los libros";
-    if (activeFilter.type === 'unread') base = "Sin iniciar";
-    else if (activeFilter.type === 'reading') base = "Leyendo actualmente";
-    else if (activeFilter.type === 'completed') base = "Leídos";
-    else if (activeFilter.type === 'paused') base = "Pausados";
-    else if (activeFilter.type === 'dropped') base = "Dropeados";
-    else if (activeFilter.type === 'planning') base = "Planeados";
-    else if (activeFilter.type === 'author') base = `Libros de ${activeFilter.value}`;
-    else if (activeFilter.type === 'tag') base = "Libros sin etiquetas";
+    let base = lang === 'es' ? "Todos los libros" : "All books";
+    if (activeFilter.type === 'unread') base = lang === 'es' ? "Sin iniciar" : "Not started";
+    else if (activeFilter.type === 'reading') base = lang === 'es' ? "Leyendo actualmente" : "Currently reading";
+    else if (activeFilter.type === 'completed') base = lang === 'es' ? "Leídos" : "Read";
+    else if (activeFilter.type === 'paused') base = lang === 'es' ? "Pausados" : "Paused";
+    else if (activeFilter.type === 'dropped') base = lang === 'es' ? "Dropeados" : "Dropped";
+    else if (activeFilter.type === 'planning') base = lang === 'es' ? "Planeados" : "Planned";
+    else if (activeFilter.type === 'author') base = lang === 'es' ? `Libros de ${activeFilter.value}` : `Books by ${activeFilter.value}`;
+    else if (activeFilter.type === 'tag') base = lang === 'es' ? "Libros sin etiquetas" : "Untagged books";
     
     if (sortBy === 'title') return `${base} (A-Z)`;
-    if (sortBy === 'added') return `${base} (Añadido)`;
-    if (sortBy === 'lastRead') return `${base} (Leído recientemente)`;
+    if (sortBy === 'added') return `${base} (${lang === 'es' ? 'Añadido' : 'Added'})`;
+    if (sortBy === 'lastRead') return `${base} (${lang === 'es' ? 'Leído recientemente' : 'Recently read'})`;
     return `${base} (${sortBy})`;
   };
 
@@ -1805,28 +2133,28 @@ export default function Library({
         {/* Multi-Tab Statistics Sub-navigation */}
         <div className="stats-sub-tabs-container">
           <button 
-            type="button"
+            type="button" 
             className={`stats-sub-tab-btn ${statsSubTab === 'overview' ? 'active' : ''}`}
             onClick={() => setStatsSubTab('overview')}
           >
-            <span className="sub-tab-title">Overview</span>
-            <span className="sub-tab-desc">Heatmap and totals</span>
+            <span className="sub-tab-title">{lang === 'es' ? 'Resumen' : 'Overview'}</span>
+            <span className="sub-tab-desc">{lang === 'es' ? 'Mapa de calor y totales' : 'Heatmap and totals'}</span>
           </button>
           <button 
-            type="button"
+            type="button" 
             className={`stats-sub-tab-btn ${statsSubTab === 'breakdown' ? 'active' : ''}`}
             onClick={() => setStatsSubTab('breakdown')}
           >
-            <span className="sub-tab-title">Breakdown</span>
-            <span className="sub-tab-desc">Table and edits</span>
+            <span className="sub-tab-title">{lang === 'es' ? 'Desglose' : 'Breakdown'}</span>
+            <span className="sub-tab-desc">{lang === 'es' ? 'Tabla y detalles' : 'Table and edits'}</span>
           </button>
           <button 
-            type="button"
+            type="button" 
             className={`stats-sub-tab-btn ${statsSubTab === 'filters' ? 'active' : ''}`}
             onClick={() => setStatsSubTab('filters')}
           >
-            <span className="sub-tab-title">Filters</span>
-            <span className="sub-tab-desc">Range and titles</span>
+            <span className="sub-tab-title">{lang === 'es' ? 'Filtros' : 'Filters'}</span>
+            <span className="sub-tab-desc">{lang === 'es' ? 'Rango y títulos' : 'Range and titles'}</span>
           </button>
         </div>
 
@@ -1835,12 +2163,12 @@ export default function Library({
           <div className="stats-panel-content">
             <div className="statistics-top-header">
               <div className="tab-header-left">
-                <h2 className="tab-view-title" style={{ marginBottom: 4 }}>Overview</h2>
-                <span className="tab-view-subtitle">Filtered stats. Current filters include all recorded data.</span>
+                <h2 className="tab-view-title" style={{ marginBottom: 4 }}>{lang === 'es' ? 'Resumen' : 'Overview'}</h2>
+                <span className="tab-view-subtitle">{lang === 'es' ? 'Estadísticas filtradas. Los filtros actuales incluyen todos los datos registrados.' : 'Filtered stats. Current filters include all recorded data.'}</span>
               </div>
               <div className="stats-toggle-group">
-                <button type="button" className="stats-toggle-btn active">Filtered</button>
-                <button type="button" className="stats-toggle-btn">All</button>
+                <button type="button" className="stats-toggle-btn active">{lang === 'es' ? 'Filtrado' : 'Filtered'}</button>
+                <button type="button" className="stats-toggle-btn">{lang === 'es' ? 'Todo' : 'All'}</button>
               </div>
             </div>
 
@@ -1848,54 +2176,54 @@ export default function Library({
               <div className="stats-overview-item">
                 <div className="stats-icon-circle"><Calendar size={18} /></div>
                 <div className="stats-item-details">
-                  <span className="item-label">Range</span>
+                  <span className="item-label">{lang === 'es' ? 'Rango' : 'Range'}</span>
                   <span className="item-val">{statsDateFrom}</span>
-                  <span className="item-sub">Change date window</span>
+                  <span className="item-sub">{lang === 'es' ? 'Cambiar ventana de fechas' : 'Change date window'}</span>
                 </div>
               </div>
 
               <div className="stats-overview-item">
                 <div className="stats-icon-circle"><BookOpen size={18} /></div>
                 <div className="stats-item-details">
-                  <span className="item-label">Titles</span>
-                  <span className="item-val">{totalBooks} {totalBooks === 1 ? 'title' : 'titles'}</span>
-                  <span className="item-sub">{activeStatsBooks.filter(b => b.progress.percent >= 100).length} selected overall</span>
+                  <span className="item-label">{lang === 'es' ? 'Títulos' : 'Titles'}</span>
+                  <span className="item-val">{totalBooks} {totalBooks === 1 ? (lang === 'es' ? 'título' : 'title') : (lang === 'es' ? 'títulos' : 'titles')}</span>
+                  <span className="item-sub">{lang === 'es' ? `${activeStatsBooks.filter(b => b.progress.percent >= 100).length} leídos en total` : `${activeStatsBooks.filter(b => b.progress.percent >= 100).length} selected overall`}</span>
                 </div>
               </div>
 
               <div className="stats-overview-item">
                 <div className="stats-icon-circle"><Clock size={18} /></div>
                 <div className="stats-item-details">
-                  <span className="item-label">Reading Time</span>
+                  <span className="item-label">{lang === 'es' ? 'Tiempo de lectura' : 'Reading Time'}</span>
                   <span className="item-val">{readingTimeMin} min</span>
-                  <span className="item-sub">{activeDaysCount} active {activeDaysCount === 1 ? 'day' : 'days'}</span>
+                  <span className="item-sub">{activeDaysCount} {activeDaysCount === 1 ? (lang === 'es' ? 'día activo' : 'day') : (lang === 'es' ? 'días activos' : 'days')}</span>
                 </div>
               </div>
 
               <div className="stats-overview-item">
                 <div className="stats-icon-circle"><span style={{ fontSize: '0.85rem', fontWeight: 800 }}>A</span></div>
                 <div className="stats-item-details">
-                  <span className="item-label">Characters</span>
+                  <span className="item-label">{lang === 'es' ? 'Caracteres' : 'Characters'}</span>
                   <span className="item-val">{totalChars.toLocaleString()}</span>
-                  <span className="item-sub">Filtered data</span>
+                  <span className="item-sub">{lang === 'es' ? 'Datos filtrados' : 'Filtered data'}</span>
                 </div>
               </div>
 
               <div className="stats-overview-item">
                 <div className="stats-icon-circle"><Flame size={18} /></div>
                 <div className="stats-item-details">
-                  <span className="item-label">Current Streak</span>
-                  <span className="item-val">{currentStreak} {currentStreak === 1 ? 'day' : 'days'}</span>
-                  <span className="item-sub">Through today</span>
+                  <span className="item-label">{lang === 'es' ? 'Racha actual' : 'Current Streak'}</span>
+                  <span className="item-val">{currentStreak} {currentStreak === 1 ? (lang === 'es' ? 'día' : 'day') : (lang === 'es' ? 'días' : 'days')}</span>
+                  <span className="item-sub">{lang === 'es' ? 'Hasta hoy' : 'Through today'}</span>
                 </div>
               </div>
 
               <div className="stats-overview-item">
                 <div className="stats-icon-circle"><Flame size={18} /></div>
                 <div className="stats-item-details">
-                  <span className="item-label">Longest Streak</span>
-                  <span className="item-val">{longestStreak} {longestStreak === 1 ? 'day' : 'days'}</span>
-                  <span className="item-sub">In filtered data</span>
+                  <span className="item-label">{lang === 'es' ? 'Mayor racha' : 'Longest Streak'}</span>
+                  <span className="item-val">{longestStreak} {longestStreak === 1 ? (lang === 'es' ? 'día' : 'day') : (lang === 'es' ? 'días' : 'days')}</span>
+                  <span className="item-sub">{lang === 'es' ? 'En datos filtrados' : 'In filtered data'}</span>
                 </div>
               </div>
             </div>
@@ -1903,17 +2231,17 @@ export default function Library({
             <div className="stats-heatmap-panel">
               <div className="heatmap-header">
                 <div className="heatmap-header-left">
-                  <h3 className="heatmap-title">Heatmap for {currentYear}</h3>
-                  <span className="heatmap-subtitle">The board stays focused on the selected year while the color scale reflects all recorded data.</span>
+                  <h3 className="heatmap-title">{lang === 'es' ? `Mapa de calor para ${currentYear}` : `Heatmap for ${currentYear}`}</h3>
+                  <span className="heatmap-subtitle">{lang === 'es' ? 'El tablero se enfoca en el año seleccionado mientras que la escala de colores refleja todos los datos registrados.' : 'The board stays focused on the selected year while the color scale reflects all recorded data.'}</span>
                 </div>
                 <select className="heatmap-scale-select" disabled>
-                  <option>All-time scale</option>
+                  <option>{lang === 'es' ? 'Escala global' : 'All-time scale'}</option>
                 </select>
               </div>
 
               <div className="heatmap-legend-row">
                 <div className="heatmap-legend">
-                  <span className="legend-label">LESS</span>
+                  <span className="legend-label">{lang === 'es' ? 'MENOS' : 'LESS'}</span>
                   <div className="legend-dots">
                     <div className="legend-dot level-0"></div>
                     <div className="legend-dot level-1"></div>
@@ -1921,14 +2249,14 @@ export default function Library({
                     <div className="legend-dot level-3"></div>
                     <div className="legend-dot level-4"></div>
                   </div>
-                  <span className="legend-label">MORE</span>
+                  <span className="legend-label">{lang === 'es' ? 'MÁS' : 'MORE'}</span>
                 </div>
                 <div className="heatmap-checkboxes">
                   <label className="heatmap-checkbox">
-                    <span className="checkbox-dot today"></span> TODAY
+                    <span className="checkbox-dot today"></span> {lang === 'es' ? 'HOY' : 'TODAY'}
                   </label>
                   <label className="heatmap-checkbox">
-                    <span className="checkbox-dot range"></span> RANGE
+                    <span className="checkbox-dot range"></span> {lang === 'es' ? 'RANGO' : 'RANGE'}
                   </label>
                 </div>
               </div>
@@ -1946,7 +2274,13 @@ export default function Library({
 
                   <div className="heatmap-main-content-row">
                     <div className="heatmap-row-labels">
-                      <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                      <span>{lang === 'es' ? 'Lun' : 'Mon'}</span>
+                      <span>{lang === 'es' ? 'Mar' : 'Tue'}</span>
+                      <span>{lang === 'es' ? 'Mié' : 'Wed'}</span>
+                      <span>{lang === 'es' ? 'Jue' : 'Thu'}</span>
+                      <span>{lang === 'es' ? 'Vie' : 'Fri'}</span>
+                      <span>{lang === 'es' ? 'Sáb' : 'Sat'}</span>
+                      <span>{lang === 'es' ? 'Dom' : 'Sun'}</span>
                     </div>
                     <div className="heatmap-grid-weeks">
                       {weeks.map((week, wIdx) => (
@@ -1959,7 +2293,7 @@ export default function Library({
                                 key={dIdx} 
                                 className={`heatmap-cell ${isToday ? 'today' : ''} ${hasActivity ? 'active' : ''}`}
                                 style={hasActivity ? { background: day.color } : {}}
-                                title={day ? `${day.dateString}: ${day.value} caracteres` : ''}
+                                title={day ? `${day.dateString}: ${day.value} ${lang === 'es' ? 'caracteres' : 'characters'}` : ''}
                               />
                             );
                           })}
@@ -1983,36 +2317,36 @@ export default function Library({
           <div className="stats-panel-content">
             <div className="statistics-top-header">
               <div className="tab-header-left">
-                <h2 className="tab-view-title" style={{ marginBottom: 4 }}>Breakdown</h2>
+                <h2 className="tab-view-title" style={{ marginBottom: 4 }}>{lang === 'es' ? 'Desglose' : 'Breakdown'}</h2>
               </div>
             </div>
 
             {/* Breakdown Filter Badges */}
             <div className="breakdown-badges-row">
               <div className="breakdown-badge">
-                <span className="badge-tag">RANGE</span>
+                <span className="badge-tag">{lang === 'es' ? 'RANGO' : 'RANGE'}</span>
                 <span className="badge-value">{statsDateFrom}</span>
               </div>
               <div className="breakdown-badge">
-                <span className="badge-tag">GROUPING</span>
-                <span className="badge-value">Individual sessions</span>
+                <span className="badge-tag">{lang === 'es' ? 'AGRUPACIÓN' : 'GROUPING'}</span>
+                <span className="badge-value">{lang === 'es' ? 'Sesiones individuales' : 'Individual sessions'}</span>
               </div>
               <div className="breakdown-badge">
-                <span className="badge-tag">ENTRIES</span>
-                <span className="badge-value">{sessions.length} entries</span>
+                <span className="badge-tag">{lang === 'es' ? 'ENTRADAS' : 'ENTRIES'}</span>
+                <span className="badge-value">{lang === 'es' ? `${sessions.length} entradas` : `${sessions.length} entries`}</span>
               </div>
             </div>
 
             {sessions.length === 0 ? (
               <div className="stats-no-data-card">
-                <span className="no-data-title">No data found</span>
+                <span className="no-data-title">{lang === 'es' ? 'Sin datos registrados' : 'No data found'}</span>
                 <span className="no-data-desc">
-                  No reading activity matched {statsDateFrom}. Adjust the date range or filters to populate this view.
+                  {lang === 'es' ? `No se encontró actividad de lectura para ${statsDateFrom}. Ajusta el rango de fechas o los filtros para poblar esta vista.` : `No reading activity matched ${statsDateFrom}. Adjust the date range or filters to populate this view.`}
                 </span>
               </div>
             ) : (
               <div className="stats-progress-card">
-                <h3 className="chart-card-title">Sesiones de lectura</h3>
+                <h3 className="chart-card-title">{lang === 'es' ? 'Sesiones de lectura' : 'Reading sessions'}</h3>
                 <div className="stats-books-table">
                   {sessions.map((s, idx) => (
                     <div key={idx} className="stats-book-row">
@@ -2032,8 +2366,8 @@ export default function Library({
                         <span className="stats-book-name truncate" style={{ maxWidth: '240px' }}>{s.bookTitle}</span>
                       </div>
                       <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{s.chars} caracteres</span>
-                        <span style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 700 }}>{s.time} min leídos</span>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{s.chars} {lang === 'es' ? 'caracteres' : 'characters'}</span>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--primary)', fontWeight: 700 }}>{s.time} {lang === 'es' ? 'min leídos' : 'min read'}</span>
                       </div>
                     </div>
                   ))}
@@ -2048,11 +2382,11 @@ export default function Library({
           <div className="stats-panel-content">
             {/* Range Configuration Card */}
             <div className="settings-section-card">
-              <h3 className="settings-card-title">Rango</h3>
+              <h3 className="settings-card-title">{lang === 'es' ? 'Rango' : 'Range'}</h3>
               
               <div className="range-controls-grid">
                 <div className="settings-field-group">
-                  <label className="field-label">Template</label>
+                  <label className="field-label">{lang === 'es' ? 'Plantilla' : 'Template'}</label>
                   <select 
                     value="Today" 
                     onChange={() => {
@@ -2061,14 +2395,14 @@ export default function Library({
                     }}
                     className="migaku-select"
                   >
-                    <option value="Today">Today</option>
-                    <option value="Yesterday">Yesterday</option>
-                    <option value="AllTime">All time</option>
+                    <option value="Today">{lang === 'es' ? 'Hoy' : 'Today'}</option>
+                    <option value="Yesterday">{lang === 'es' ? 'Ayer' : 'Yesterday'}</option>
+                    <option value="AllTime">{lang === 'es' ? 'Todo el tiempo' : 'All time'}</option>
                   </select>
                 </div>
 
                 <div className="settings-field-group">
-                  <label className="field-label">From</label>
+                  <label className="field-label">{lang === 'es' ? 'Desde' : 'From'}</label>
                   <input 
                     type="date" 
                     value={statsDateFrom} 
@@ -2078,7 +2412,7 @@ export default function Library({
                 </div>
 
                 <div className="settings-field-group">
-                  <label className="field-label">To</label>
+                  <label className="field-label">{lang === 'es' ? 'Hasta' : 'To'}</label>
                   <input 
                     type="date" 
                     value={statsDateTo} 
@@ -2088,10 +2422,10 @@ export default function Library({
                 </div>
 
                 <div className="settings-field-group">
-                  <label className="field-label">Start of week</label>
+                  <label className="field-label">{lang === 'es' ? 'Inicio de la semana' : 'Start of week'}</label>
                   <select value="Monday" className="migaku-select" disabled>
-                    <option value="Monday">Monday</option>
-                    <option value="Sunday">Sunday</option>
+                    <option value="Monday">{lang === 'es' ? 'Lunes' : 'Monday'}</option>
+                    <option value="Sunday">{lang === 'es' ? 'Domingo' : 'Sunday'}</option>
                   </select>
                 </div>
               </div>
@@ -2105,18 +2439,18 @@ export default function Library({
                   setStatsDateTo('2026-07-06');
                 }}
               >
-                Set to all time for selected book titles
+                {lang === 'es' ? 'Aplicar a todo el tiempo para los libros seleccionados' : 'Set to all time for selected book titles'}
               </button>
             </div>
 
             {/* Titles Filtering Card */}
             <div className="settings-section-card">
-              <h3 className="settings-card-title">Titles</h3>
+              <h3 className="settings-card-title">{lang === 'es' ? 'Títulos' : 'Titles'}</h3>
               
               <div className="stats-titles-search-row">
                 <input 
                   type="text" 
-                  placeholder="Filter titles" 
+                  placeholder={lang === 'es' ? 'Filtrar títulos' : 'Filter titles'} 
                   value={statsTitleFilter}
                   onChange={(e) => setStatsTitleFilter(e.target.value)}
                   className="create-profile-input"
@@ -2130,19 +2464,19 @@ export default function Library({
                   className="reset-filter-btn"
                   onClick={() => setStatsExcludedBookIds([])}
                 >
-                  All
+                  {lang === 'es' ? 'Todos' : 'All'}
                 </button>
                 <button 
                   type="button" 
                   className="reset-filter-btn"
                   onClick={() => setStatsExcludedBookIds(books.map(b => b.id))}
                 >
-                  None
+                  {lang === 'es' ? 'Ninguno' : 'None'}
                 </button>
               </div>
 
               {filteredBooksListForStats.length === 0 ? (
-                <p className="no-stats-text" style={{ textAlign: 'center', padding: '24px 0' }}>No titles to filter.</p>
+                <p className="no-stats-text" style={{ textAlign: 'center', padding: '24px 0' }}>{lang === 'es' ? 'No hay títulos para filtrar.' : 'No titles to filter.'}</p>
               ) : (
                 <div className="stats-titles-filter-list" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {filteredBooksListForStats.map(b => {
@@ -2166,7 +2500,7 @@ export default function Library({
                           style={{ width: '16px', height: '16px', cursor: 'pointer' }}
                         />
                         <span style={{ fontSize: '0.9rem', color: '#ffffff', fontWeight: 600 }}>{b.title}</span>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>({b.author || 'Autor desconocido'})</span>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>({b.author || (lang === 'es' ? 'Autor desconocido' : 'Unknown author')})</span>
                       </label>
                     );
                   })}
@@ -2180,8 +2514,8 @@ export default function Library({
   };
 
   const handleDeleteAllData = async () => {
-    if (!confirm('⚠️ ¿Seguro que quieres eliminar TODOS los datos de la aplicación? Esta acción es irreversible.')) return;
-    if (!confirm('⚠️ Se borrarán todos los libros, historiales, perfiles y diccionarios instalados. ¿Estás COMPLETAMENTE seguro?')) return;
+    if (!confirm(lang === 'es' ? '⚠️ ¿Seguro que quieres eliminar TODOS los datos de la aplicación? Esta acción es irreversible.' : '⚠️ Are you sure you want to delete ALL application data? This action is irreversible.')) return;
+    if (!confirm(lang === 'es' ? '⚠️ Se borrarán todos los libros, historiales, perfiles y diccionarios instalados. ¿Estás COMPLETAMENTE seguro?' : '⚠️ All books, histories, profiles, and installed dictionaries will be deleted. Are you COMPLETELY sure?')) return;
     
     localStorage.clear();
     try {
@@ -2203,7 +2537,7 @@ export default function Library({
       console.error('Error deleting databases:', e);
     }
     
-    alert('Todos los datos han sido eliminados. La aplicación se reiniciará.');
+    alert(lang === 'es' ? 'Todos los datos han sido eliminados. La aplicación se reiniciará.' : 'All data has been deleted. The application will restart.');
     window.location.reload();
   };
 
@@ -2229,12 +2563,12 @@ export default function Library({
       <div className="tab-view-container settings-view-panel yomitan-settings-layout" style={{ display: 'flex', gap: '24px', alignItems: 'stretch', height: '100%', width: '100%', margin: '0' }}>
         {/* Left Sidebar */}
         <div className="yomitan-settings-sidebar" style={{ width: '250px', borderRight: '1px solid rgba(255,255,255,0.08)', paddingRight: '20px', display: 'flex', flexDirection: 'column', gap: '20px', flexShrink: 0, overflowY: 'auto', height: '100%' }}>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#fff', margin: '10px 0 0 0' }}>Configuración</h2>
+          <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#fff', margin: '10px 0 0 0' }}>{lang === 'es' ? 'Configuración' : 'Settings'}</h2>
           
           <div className="yomitan-search-wrapper" style={{ position: 'relative', width: '100%' }}>
             <input 
               type="text" 
-              placeholder="Buscar..." 
+              placeholder={lang === 'es' ? 'Buscar...' : 'Search...'} 
               value={settingsSearchQuery}
               onChange={(e) => setSettingsSearchQuery(e.target.value)}
               style={{ width: '100%', background: '#1c1c20', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', padding: '8px 12px 8px 32px', fontSize: '0.85rem', color: '#fff', outline: 'none' }}
@@ -2247,14 +2581,14 @@ export default function Library({
             {/* General Section */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
-                <span>🔧</span> General
+                <span>🔧</span> {lang === 'es' ? 'General' : 'General'}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
                 {matchesSearch('tema theme active dark light sepia') && (
-                  <button onClick={() => scrollToSection('sec-theme')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>🎨 Tema</button>
+                  <button onClick={() => scrollToSection('sec-theme')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{lang === 'es' ? '🎨 Tema' : '🎨 Theme'}</button>
                 )}
                 {matchesSearch('furigana traduccion translation learning status display pitch accent acento tono') && (
-                  <button onClick={() => scrollToSection('sec-display')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>🕒 Pantalla</button>
+                  <button onClick={() => scrollToSection('sec-display')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{lang === 'es' ? '🕒 Pantalla' : '🕒 Screen'}</button>
                 )}
               </div>
             </div>
@@ -2262,14 +2596,14 @@ export default function Library({
             {/* Reader Section */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
-                <span>📖</span> Lector
+                <span>📖</span> {lang === 'es' ? 'Lector' : 'Reader'}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
                 {matchesSearch('size texto text style font voz audio speed velocidad genero') && (
-                  <button onClick={() => scrollToSection('sec-text-style')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>🎨 Estilo de texto</button>
+                  <button onClick={() => scrollToSection('sec-text-style')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{lang === 'es' ? '🎨 Estilo de texto' : '🎨 Text Style'}</button>
                 )}
                 {matchesSearch('highlight oracion cursor hover highlights') && (
-                  <button onClick={() => scrollToSection('sec-highlights')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>🎯 Resaltado</button>
+                  <button onClick={() => scrollToSection('sec-highlights')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{lang === 'es' ? '🎯 Resaltado' : '🎯 Highlights'}</button>
                 )}
               </div>
             </div>
@@ -2277,11 +2611,11 @@ export default function Library({
             {/* Integration Section */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
-                <span>🔌</span> Integración
+                <span>🔌</span> {lang === 'es' ? 'Integración' : 'Integration'}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
                 {matchesSearch('anki integration connect card mapping local') && (
-                  <button onClick={() => scrollToSection('sec-anki')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>🃏 Integración con Anki</button>
+                  <button onClick={() => scrollToSection('sec-anki')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{lang === 'es' ? '🃏 Integración con Anki' : '🃏 Anki Integration'}</button>
                 )}
               </div>
             </div>
@@ -2289,17 +2623,17 @@ export default function Library({
             {/* Data Section */}
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
-                <span>🗄️</span> Datos
+                <span>🗄️</span> {lang === 'es' ? 'Datos' : 'Data'}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
                 {matchesSearch('backup import export catalogo perfil copia seguridad') && (
-                  <button onClick={() => scrollToSection('sec-backup')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>💾 Copias de seguridad</button>
+                  <button onClick={() => scrollToSection('sec-backup')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{lang === 'es' ? '💾 Copias de seguridad' : '💾 Backups'}</button>
                 )}
                 {matchesSearch('diccionario dictionary offline jmdict frecuencia meta meta_bank zip') && (
-                  <button onClick={() => scrollToSection('sec-dicts')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>🗄️ Diccionarios</button>
+                  <button onClick={() => scrollToSection('sec-dicts')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{lang === 'es' ? '🗄️ Diccionarios' : '🗄️ Dictionaries'}</button>
                 )}
                 {matchesSearch('danger zone eliminar borrar todos datos irreversible reset clear storage') && (
-                  <button onClick={() => scrollToSection('sec-danger')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: '#f87171', width: '100%', textAlign: 'left', cursor: 'pointer', fontWeight: 600 }}>🔧 Zona de peligro</button>
+                  <button onClick={() => scrollToSection('sec-danger')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: '#f87171', width: '100%', textAlign: 'left', cursor: 'pointer', fontWeight: 600 }}>{lang === 'es' ? '🔧 Zona de peligro' : '🔧 Danger Zone'}</button>
                 )}
               </div>
             </div>
@@ -2312,18 +2646,18 @@ export default function Library({
           {/* Card: Theme */}
           {matchesSearch('tema theme active dark light sepia') && (
             <div id="sec-theme" className="settings-section-card">
-              <h3 className="settings-card-title">🎨 Tema</h3>
-              <p className="settings-card-desc">Elige la apariencia visual del lector para reducir la fatiga ocular.</p>
+              <h3 className="settings-card-title">{lang === 'es' ? '🎨 Tema' : '🎨 Theme'}</h3>
+              <p className="settings-card-desc">{lang === 'es' ? 'Elige la apariencia visual del lector para reducir la fatiga ocular.' : 'Choose the reader appearance to reduce eye strain.'}</p>
               
               <div className="settings-row-control">
-                <span className="settings-label-text">Tema activo</span>
+                <span className="settings-label-text">{lang === 'es' ? 'Tema activo' : 'Active Theme'}</span>
                 <select 
                   value={settings.theme || 'dark'}
                   onChange={(e) => onSaveSettings({ ...settings, theme: e.target.value })}
                   className="migaku-select"
                 >
-                  <option value="dark">Oscuro (Dark)</option>
-                  <option value="light">Claro (Light)</option>
+                  <option value="dark">{lang === 'es' ? 'Oscuro (Dark)' : 'Dark'}</option>
+                  <option value="light">{lang === 'es' ? 'Claro (Light)' : 'Light'}</option>
                   <option value="sepia">Sepia</option>
                 </select>
               </div>
@@ -2333,8 +2667,8 @@ export default function Library({
           {/* Card: Display */}
           {matchesSearch('furigana traduccion translation learning status display pitch accent acento tono') && (
             <div id="sec-display" className="settings-section-card">
-              <h3 className="settings-card-title">🕒 Pantalla</h3>
-              <p className="settings-card-desc">Configura la visibilidad del furigana, traducciones y estados de aprendizaje.</p>
+              <h3 className="settings-card-title">{lang === 'es' ? '🕒 Pantalla' : '🕒 Screen'}</h3>
+              <p className="settings-card-desc">{lang === 'es' ? 'Configura la visibilidad del furigana, traducciones y estados de aprendizaje.' : 'Configure furigana visibility, translations, and learning statuses.'}</p>
               
               <div className="settings-row-control">
                 <span className="settings-label-text">Furigana</span>
@@ -2343,14 +2677,14 @@ export default function Library({
                   onChange={(e) => onSaveSettings({ ...settings, showFurigana: e.target.value })}
                   className="migaku-select"
                 >
-                  <option value="unknown-only">Palabras desconocidas</option>
-                  <option value="all">Todo</option>
-                  <option value="none">Ninguno</option>
+                  <option value="unknown-only">{lang === 'es' ? 'Palabras desconocidas' : 'Unknown words only'}</option>
+                  <option value="all">{lang === 'es' ? 'Todo' : 'All'}</option>
+                  <option value="none">{lang === 'es' ? 'Ninguno' : 'None'}</option>
                 </select>
               </div>
 
               <div className="settings-row-control">
-                <span className="settings-label-text">Mostrar traducción</span>
+                <span className="settings-label-text">{lang === 'es' ? 'Mostrar traducción' : 'Show translation'}</span>
                 <label className="migaku-switch">
                   <input 
                     type="checkbox" 
@@ -2362,7 +2696,7 @@ export default function Library({
               </div>
 
               <div className="settings-row-control">
-                <span className="settings-label-text">Mostrar estado de aprendizaje</span>
+                <span className="settings-label-text">{lang === 'es' ? 'Mostrar estado de aprendizaje' : 'Show learning status'}</span>
                 <label className="migaku-switch">
                   <input 
                     type="checkbox" 
@@ -2374,27 +2708,26 @@ export default function Library({
               </div>
 
               <div className="settings-row-control">
-                <span className="settings-label-text">Traducciones de palabras</span>
+                <span className="settings-label-text">{t('interfaceLanguage', lang)}</span>
                 <select 
-                  value={settings.wordTranslation || 'none'}
-                  onChange={(e) => onSaveSettings({ ...settings, wordTranslation: e.target.value })}
+                  value={settings.appLanguage || 'es'}
+                  onChange={(e) => onSaveSettings({ ...settings, appLanguage: e.target.value })}
                   className="migaku-select"
                 >
-                  <option value="none">Ninguna 🌐</option>
-                  <option value="en">Inglés 🇺🇸 (English)</option>
-                  <option value="es">Español 🇪🇸 (Spanish)</option>
+                  <option value="es">Español 🇪🇸</option>
+                  <option value="en">English 🇺🇸</option>
                 </select>
               </div>
 
               <div className="settings-row-control">
-                <span className="settings-label-text">Acento de tono (Pitch Accent)</span>
+                <span className="settings-label-text">{t('pitchAccent', lang)}</span>
                 <select 
                   value={settings.pitchAccent || 'none'}
                   onChange={(e) => onSaveSettings({ ...settings, pitchAccent: e.target.value })}
                   className="migaku-select"
                 >
-                  <option value="none">Ninguno</option>
-                  <option value="pitch-color">Color de tono</option>
+                  <option value="none">{t('pitchNone', lang)}</option>
+                  <option value="pitch-color">{t('pitchColor', lang)}</option>
                 </select>
               </div>
             </div>
@@ -2403,11 +2736,11 @@ export default function Library({
           {/* Card: Text Style */}
           {matchesSearch('size texto text style font voz audio speed velocidad genero') && (
             <div id="sec-text-style" className="settings-section-card">
-              <h3 className="settings-card-title">🎨 Estilos & Audio</h3>
-              <p className="settings-card-desc">Modifica el tamaño de la tipografía y los parámetros del reproductor de voz.</p>
+              <h3 className="settings-card-title">{lang === 'es' ? '🎨 Estilos & Audio' : '🎨 Style & Audio'}</h3>
+              <p className="settings-card-desc">{lang === 'es' ? 'Modifica el tamaño de la tipografía y los parámetros del reproductor de voz.' : 'Modify typography size and text-to-speech voice settings.'}</p>
               
               <div className="settings-row-control">
-                <span className="settings-label-text">Tamaño del texto</span>
+                <span className="settings-label-text">{t('readerFontSize', lang)}</span>
                 <div className="migaku-slider-container" style={{ flex: 1, maxWidth: '300px' }}>
                   <span className="slider-icon-small">A</span>
                   <input 
@@ -2424,53 +2757,79 @@ export default function Library({
               </div>
 
               <div className="settings-row-control">
-                <span className="settings-label-text">Voz de audio</span>
-                <select 
-                  value={settings.audioVoiceOption || 'masaru'}
-                  onChange={(e) => onSaveSettings({ ...settings, audioVoiceOption: e.target.value })}
-                  className="migaku-select"
-                >
-                  <option value="masaru">Masaru (Masculino)</option>
-                  <option value="haruka">Haruka (Femenino)</option>
-                </select>
-              </div>
-
-              <div className="settings-row-control">
-                <span className="settings-label-text">Género de voz</span>
-                <select 
-                  value={settings.audioGender || 'male'}
-                  onChange={(e) => onSaveSettings({ ...settings, audioGender: e.target.value })}
-                  className="migaku-select"
-                >
-                  <option value="male">Masculino</option>
-                  <option value="female">Femenino</option>
-                </select>
-              </div>
-
-              <div className="settings-row-control">
-                <span className="settings-label-text">Velocidad de reproducción</span>
+                <span className="settings-label-text">{t('playbackSpeed', lang)}</span>
                 <select 
                   value={settings.audioSpeed || '1.0'}
                   onChange={(e) => onSaveSettings({ ...settings, audioSpeed: e.target.value })}
                   className="migaku-select"
                 >
                   <option value="1.0">Normal (1.0x)</option>
-                  <option value="0.75">Lento (0.75x)</option>
-                  <option value="1.25">Rápido (1.25x)</option>
-                  <option value="1.5">Rápido (1.5x)</option>
+                  <option value="0.75">{lang === 'es' ? 'Lento (0.75x)' : 'Slow (0.75x)'}</option>
+                  <option value="1.25">{lang === 'es' ? 'Rápido (1.25x)' : 'Fast (1.25x)'}</option>
+                  <option value="1.5">{lang === 'es' ? 'Rápido (1.5x)' : 'Fast (1.5x)'}</option>
                 </select>
               </div>
+
+              <div className="settings-row-control">
+                <span className="settings-label-text">{t('voiceGender', lang)}</span>
+                <select 
+                  value={settings.audioGender || 'female'}
+                  onChange={(e) => onSaveSettings({ ...settings, audioGender: e.target.value })}
+                  className="migaku-select"
+                >
+                  <option value="female">{t('genderFemale', lang)}</option>
+                  <option value="male">{t('genderMale', lang)}</option>
+                </select>
+              </div>
+
+              <div className="settings-row-control">
+                <span className="settings-label-text">{lang === 'es' ? 'Voz de reproducción' : 'Playback Voice'}</span>
+                <select 
+                  value={settings.audioVoiceOption || 'Nanami'}
+                  onChange={(e) => onSaveSettings({ ...settings, audioVoiceOption: e.target.value })}
+                  className="migaku-select"
+                >
+                  <option value="Nanami">Nanami (Femenina)</option>
+                  <option value="Mayu">Mayu (Femenina Joven)</option>
+                  <option value="Keita">Keita (Masculina)</option>
+                </select>
+              </div>
+
+              <div className="settings-row-control" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '4px' }}>
+                <span className="settings-label-text" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Azure TTS API Key</span>
+                <input 
+                  type="password"
+                  placeholder="Azure Key (dejar vacío para usar voz gratis local)"
+                  value={settings.azureApiKey || ''}
+                  onChange={(e) => onSaveSettings({ ...settings, azureApiKey: e.target.value })}
+                  className="migaku-select"
+                  style={{ width: '100%', padding: '6px 12px', boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div className="settings-row-control" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '4px' }}>
+                <span className="settings-label-text" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Azure TTS Region</span>
+                <input 
+                  type="text"
+                  placeholder="eastus"
+                  value={settings.azureRegion || ''}
+                  onChange={(e) => onSaveSettings({ ...settings, azureRegion: e.target.value })}
+                  className="migaku-select"
+                  style={{ width: '100%', padding: '6px 12px', boxSizing: 'border-box' }}
+                />
+              </div>
+
             </div>
           )}
 
           {/* Card: Highlights */}
           {matchesSearch('highlight oracion cursor hover highlights') && (
             <div id="sec-highlights" className="settings-section-card">
-              <h3 className="settings-card-title">🎯 Resaltados</h3>
-              <p className="settings-card-desc">Controla la interacción visual al pasar el cursor sobre las oraciones.</p>
+              <h3 className="settings-card-title">{lang === 'es' ? '🎯 Resaltados' : '🎯 Highlights'}</h3>
+              <p className="settings-card-desc">{lang === 'es' ? 'Controla la interacción visual al pasar el cursor sobre las oraciones.' : 'Controls visual interaction when hovering over sentences.'}</p>
               
               <div className="settings-row-control">
-                <span className="settings-label-text">Oración al pasar el cursor (Highlight)</span>
+                <span className="settings-label-text">{lang === 'es' ? 'Oración al pasar el cursor (Highlight)' : 'Sentence hover highlight'}</span>
                 <label className="migaku-switch">
                   <input 
                     type="checkbox" 
@@ -2486,8 +2845,8 @@ export default function Library({
           {/* Card: Anki Integration */}
           {matchesSearch('anki integration connect card mapping local') && (
             <div id="sec-anki" className="settings-section-card">
-              <h3 className="settings-card-title">🃏 Integración con Anki</h3>
-              <p className="settings-card-desc">Conéctate a tu Anki local para añadir tarjetas directamente desde las oraciones y palabras buscadas.</p>
+              <h3 className="settings-card-title">{lang === 'es' ? '🃏 Integración con Anki' : '🃏 Anki Integration'}</h3>
+              <p className="settings-card-desc">{lang === 'es' ? 'Conéctate a tu Anki local para añadir tarjetas directamente desde las oraciones y palabras buscadas.' : 'Connect to your local Anki instance to mine flashcards directly from sentences and dictionary words.'}</p>
               
               <button 
                 type="button"
@@ -2495,7 +2854,7 @@ export default function Library({
                 style={{ marginTop: '12px' }}
                 onClick={() => setIsAnkiConfigOpen(true)}
               >
-                ⚙️ Abrir Configuración de Anki
+                ⚙️ {lang === 'es' ? 'Abrir Configuración de Anki' : 'Open Anki Settings'}
               </button>
             </div>
           )}
@@ -2503,8 +2862,8 @@ export default function Library({
           {/* Card: Backup */}
           {matchesSearch('backup import export catalogo perfil copia seguridad') && (
             <div id="sec-backup" className="settings-section-card">
-              <h3 className="settings-card-title">💾 Copias de seguridad</h3>
-              <p className="settings-card-desc">Guarda todo tu catálogo, historial de lectura, perfiles y configuraciones de Anki en un archivo local (se excluyen los diccionarios para mantener el archivo ligero y evitar bloqueos).</p>
+              <h3 className="settings-card-title">{lang === 'es' ? '💾 Copias de seguridad' : '💾 Backups'}</h3>
+              <p className="settings-card-desc">{lang === 'es' ? 'Guarda todo tu catálogo, historial de lectura, perfiles y configuraciones de Anki en un archivo local (se excluyen los diccionarios para mantener el archivo ligero).' : 'Export all your library books, reading statistics, profiles, and configurations to a local backup file.'}</p>
               
               <div style={{ display: 'flex', gap: '16px', marginTop: '12px' }}>
                 <button 
@@ -2513,11 +2872,11 @@ export default function Library({
                   onClick={handleExportLibrary}
                   style={{ background: 'rgba(255, 224, 0, 0.06)', borderColor: 'var(--primary)', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
                 >
-                  <Download size={16} /> Exportar Biblioteca
+                  <Download size={16} /> {lang === 'es' ? 'Exportar Biblioteca' : 'Export Library'}
                 </button>
                 
                 <label className="reset-filter-btn" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
-                  <Upload size={16} /> Importar Respaldo
+                  <Upload size={16} /> {lang === 'es' ? 'Importar Respaldo' : 'Import Backup'}
                   <input 
                     type="file" 
                     accept=".json,.zip"
@@ -2532,12 +2891,12 @@ export default function Library({
           {/* Card: Dictionaries */}
           {matchesSearch('diccionario dictionary offline jmdict frecuencia meta meta_bank zip') && (
             <div id="sec-dicts" className="settings-section-card">
-              <h3 className="settings-card-title">🗄️ Diccionarios</h3>
-              <p className="settings-card-desc">Sube archivos <code>.zip</code> de diccionarios de Yomitan para buscar vocabulario offline.</p>
+              <h3 className="settings-card-title">{t('dictionaryTitle', lang)}</h3>
+              <p className="settings-card-desc">{t('dictDesc', lang)}</p>
               
               <div style={{ marginTop: '16px' }}>
                 <label className="reset-filter-btn" style={{ display: 'inline-flex', alignItems: 'center', cursor: isImportingDict ? 'not-allowed' : 'pointer', opacity: isImportingDict ? 0.6 : 1, background: 'rgba(52, 211, 153, 0.1)', borderColor: '#34d399', color: '#34d399' }}>
-                  📦 Instalar Diccionario (.zip)
+                  📦 {lang === 'es' ? 'Instalar Diccionario (.zip)' : 'Install Dictionary (.zip)'}
                   <input 
                     type="file" 
                     accept=".zip"
@@ -2562,19 +2921,19 @@ export default function Library({
 
               {installedDicts.length > 0 && (
                 <div style={{ marginTop: '24px' }}>
-                  <h4 style={{ color: 'var(--text-dark)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>Diccionarios Instalados</h4>
+                  <h4 style={{ color: 'var(--text-dark)', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '12px' }}>{lang === 'es' ? 'Diccionarios Instalados' : 'Installed Dictionaries'}</h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {installedDicts.map(dict => (
                       <div key={dict.title} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px' }}>
                         <div>
                           <div style={{ fontWeight: 600, color: 'var(--text-light)', fontSize: '0.9rem' }}>{dict.title}</div>
-                          <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '4px' }}>Instalado: {new Date(dict.importedAt).toLocaleDateString()}</div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '4px' }}>{lang === 'es' ? `Instalado: ${new Date(dict.importedAt).toLocaleDateString()}` : `Installed: ${new Date(dict.importedAt).toLocaleDateString()}`}</div>
                         </div>
                         <button 
                           onClick={() => handleDeleteDict(dict.title)}
                           className="reader-header-btn" 
                           style={{ color: '#ef4444' }}
-                          title="Eliminar diccionario"
+                          title={lang === 'es' ? 'Eliminar diccionario' : 'Delete dictionary'}
                         >
                           <Trash2 size={16} />
                         </button>
@@ -2589,8 +2948,8 @@ export default function Library({
           {/* Card: Danger Zone */}
           {matchesSearch('danger zone eliminar borrar todos datos irreversible reset clear storage') && (
             <div id="sec-danger" className="settings-section-card" style={{ borderColor: 'rgba(239, 68, 68, 0.3)', background: 'rgba(239, 68, 68, 0.02)' }}>
-              <h3 className="settings-card-title" style={{ color: '#f87171' }}>🔧 Zona de peligro</h3>
-              <p className="settings-card-desc">Acciones destructivas e irreversibles sobre los datos almacenados en la aplicación.</p>
+              <h3 className="settings-card-title" style={{ color: '#f87171' }}>🔧 {lang === 'es' ? 'Zona de peligro' : 'Danger Zone'}</h3>
+              <p className="settings-card-desc">{lang === 'es' ? 'Acciones destructivas e irreversibles sobre los datos almacenados en la aplicación.' : 'Irreversible destructive actions on stored application data.'}</p>
               
               <div style={{ marginTop: '16px' }}>
                 <button 
@@ -2599,7 +2958,7 @@ export default function Library({
                   onClick={handleDeleteAllData}
                   style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: '#ef4444', color: '#f87171', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
                 >
-                  ⚠️ Eliminar todos los datos
+                  ⚠️ {lang === 'es' ? 'Eliminar todos los datos' : 'Delete all data'}
                 </button>
               </div>
             </div>
@@ -2620,19 +2979,19 @@ export default function Library({
 
     // 2. Build list of words
     const wordsList = Object.entries(allWordStatuses).map(([word, status]) => {
-      let statusText = 'Nuevo';
+      let statusText = lang === 'es' ? 'Nuevo' : 'New';
       let statusClass = 'new';
       if (status === 'learning') {
-        statusText = 'Aprendiendo';
+        statusText = lang === 'es' ? 'Aprendiendo' : 'Learning';
         statusClass = 'learning';
       } else if (status === 'known') {
-        statusText = 'Conocido';
+        statusText = lang === 'es' ? 'Conocido' : 'Known';
         statusClass = 'known';
       } else if (status === 'starred') {
-        statusText = 'Destacado';
+        statusText = lang === 'es' ? 'Destacado' : 'Starred';
         statusClass = 'starred';
       } else if (status === 'ignored') {
-        statusText = 'Ignorado';
+        statusText = lang === 'es' ? 'Ignorado' : 'Ignored';
         statusClass = 'ignored';
       }
       return { word, status, statusText, statusClass };
@@ -2657,18 +3016,18 @@ export default function Library({
 
     // Option details mapping for display
     const activeFilterLabel = {
-      all: 'TODOS',
-      new: 'NUEVO',
-      learning: 'APRENDIENDO',
-      known: 'CONOCIDO',
-      starred: 'DESTACADO',
-      ignored: 'IGNORADO'
-    }[notesFilterStatus] || 'FILTRAR';
+      all: lang === 'es' ? 'TODOS' : 'ALL',
+      new: lang === 'es' ? 'NUEVO' : 'NEW',
+      learning: lang === 'es' ? 'APRENDIENDO' : 'LEARNING',
+      known: lang === 'es' ? 'CONOCIDO' : 'KNOWN',
+      starred: lang === 'es' ? 'DESTACADO' : 'STARRED',
+      ignored: lang === 'es' ? 'IGNORADO' : 'IGNORED'
+    }[notesFilterStatus] || (lang === 'es' ? 'FILTRAR' : 'FILTER');
 
     const activeSortLabel = {
-      alphabetical: 'ALFABÉTICO (A-Z)',
-      'alphabetical-desc': 'ALFABÉTICO (Z-A)'
-    }[notesSort] || 'ORDENAR';
+      alphabetical: lang === 'es' ? 'ALFABÉTICO (A-Z)' : 'ALPHABETICAL (A-Z)',
+      'alphabetical-desc': lang === 'es' ? 'ALFABÉTICO (Z-A)' : 'ALPHABETICAL (Z-A)'
+    }[notesSort] || (lang === 'es' ? 'ORDENAR' : 'SORT');
 
     return (
       <div className="tab-view-container notes-view-panel" style={{ maxWidth: '800px', margin: '0 auto', padding: '2rem 1rem 6rem 1rem' }}>
@@ -2694,24 +3053,24 @@ export default function Library({
           {/* Main Counter */}
           <h2 style={{ margin: '0 0 10px 0', fontSize: '1.75rem', fontWeight: 800, color: '#fff', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
             <span style={{ color: 'var(--status-known)' }}>{totalKnown.toLocaleString()}</span>
-            <span>Palabras conocidas</span>
+            <span>{lang === 'es' ? 'Palabras conocidas' : 'Known words'}</span>
           </h2>
 
           {/* Subtitle counters */}
           <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '16px', fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>
             <span>
               <span style={{ color: 'var(--status-learning)', marginRight: '4px' }}>{totalLearning}</span>
-              aprendiendo
+              {lang === 'es' ? 'aprendiendo' : 'learning'}
             </span>
             <span style={{ color: 'rgba(255,255,255,0.3)' }}>•</span>
             <span>
               <span style={{ color: '#ab47bc', marginRight: '4px' }}>{totalStarred}</span>
-              destacada(s)
+              {lang === 'es' ? 'destacada(s)' : 'starred'}
             </span>
             <span style={{ color: 'rgba(255,255,255,0.3)' }}>•</span>
             <span>
               <span style={{ color: 'var(--text-muted)', marginRight: '4px' }}>{totalIgnored}</span>
-              ignorada(s)
+              {lang === 'es' ? 'ignorada(s)' : 'ignored'}
             </span>
           </div>
         </div>
@@ -2728,13 +3087,13 @@ export default function Library({
               }}
               className="vocab-action-btn"
             >
-              ORDENAR POR: {activeSortLabel} <ChevronDown size={14} />
+              {lang === 'es' ? 'ORDENAR POR' : 'SORT BY'}: {activeSortLabel} <ChevronDown size={14} />
             </button>
             {isNotesSortOpen && (
               <div className="vocab-dropdown-menu">
                 {[
-                  { value: 'alphabetical', label: 'Alfabético (A-Z)' },
-                  { value: 'alphabetical-desc', label: 'Alfabético (Z-A)' }
+                  { value: 'alphabetical', label: lang === 'es' ? 'Alfabético (A-Z)' : 'Alphabetical (A-Z)' },
+                  { value: 'alphabetical-desc', label: lang === 'es' ? 'Alfabético (Z-A)' : 'Alphabetical (Z-A)' }
                 ].map(opt => (
                   <button
                     key={opt.value}
@@ -2773,17 +3132,17 @@ export default function Library({
               }}
               className="vocab-action-btn"
             >
-              FILTRAR POR: {activeFilterLabel} <ChevronDown size={14} />
+              {lang === 'es' ? 'FILTRAR POR' : 'FILTER BY'}: {activeFilterLabel} <ChevronDown size={14} />
             </button>
             {isNotesFilterOpen && (
               <div className="vocab-dropdown-menu">
                 {[
-                  { value: 'all', label: 'Todos los estados' },
-                  { value: 'new', label: 'Nuevo' },
-                  { value: 'learning', label: 'Aprendiendo' },
-                  { value: 'known', label: 'Conocido' },
-                  { value: 'starred', label: 'Destacado' },
-                  { value: 'ignored', label: 'Ignorado' }
+                  { value: 'all', label: lang === 'es' ? 'Todos los estados' : 'All statuses' },
+                  { value: 'new', label: lang === 'es' ? 'Nuevo' : 'New' },
+                  { value: 'learning', label: lang === 'es' ? 'Aprendiendo' : 'Learning' },
+                  { value: 'known', label: lang === 'es' ? 'Conocido' : 'Known' },
+                  { value: 'starred', label: lang === 'es' ? 'Destacado' : 'Starred' },
+                  { value: 'ignored', label: lang === 'es' ? 'Ignorado' : 'Ignored' }
                 ].map(opt => (
                   <button
                     key={opt.value}
@@ -2817,44 +3176,51 @@ export default function Library({
         <div style={{ marginBottom: '20px' }}>
           <input 
             type="text"
-            placeholder="Buscar palabra..."
+            placeholder={lang === 'es' ? "Buscar palabra..." : "Search word..."}
             value={notesSearch}
             onChange={(e) => setNotesSearch(e.target.value)}
             className="create-profile-input"
             style={{ width: '100%', maxWidth: 'none', borderRadius: '12px', padding: '12px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)' }}
           />
         </div>
-
+        
         {/* Word Grid Output */}
         {sortedWords.length === 0 ? (
-          <p className="no-stats-text" style={{ padding: '40px 0', textAlign: 'center' }}>No se encontraron palabras guardadas.</p>
+          <p className="no-stats-text" style={{ padding: '40px 0', textAlign: 'center' }}>{lang === 'es' ? 'No se encontraron palabras guardadas.' : 'No saved words found.'}</p>
         ) : (
-          <div className="notes-words-grid">
-            {sortedWords.map((item, idx) => (
-              <div key={idx} className="note-word-card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <span className="note-word-text">{item.word}</span>
-                  <span className={`note-word-status-badge ${item.statusClass}`}>{item.statusText}</span>
+          <>
+            <div className="notes-words-grid">
+              {sortedWords.slice(0, visibleVocabCount).map((item, idx) => (
+                <div key={idx} className="note-word-card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span className="note-word-text">{item.word}</span>
+                    <span className={`note-word-status-badge ${item.statusClass}`}>{item.statusText}</span>
+                  </div>
+                  <div className="note-word-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                    <button 
+                      type="button"
+                      className="profile-delete-btn"
+                      onClick={() => {
+                        if (confirm(lang === 'es' ? `¿Quieres eliminar "${item.word}" de tu vocabulario?` : `Do you want to delete "${item.word}" from your vocabulary?`)) {
+                          db.setWordStatus(item.word, 'unknown');
+                          alert(lang === 'es' ? 'Palabra eliminada. Recargando para actualizar...' : 'Word deleted. Reloading to update...');
+                          window.location.reload();
+                        }
+                      }}
+                      title={lang === 'es' ? 'Eliminar de mi lista' : 'Delete from my list'}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 </div>
-                <div className="note-word-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
-                  <button 
-                    type="button"
-                    className="profile-delete-btn"
-                    onClick={() => {
-                      if (confirm(`¿Quieres eliminar "${item.word}" de tu vocabulario?`)) {
-                        db.setWordStatus(item.word, 'unknown');
-                        alert('Palabra eliminada. Recargando para actualizar...');
-                        window.location.reload();
-                      }
-                    }}
-                    title="Eliminar de mi lista"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
+              ))}
+            </div>
+            {sortedWords.length > visibleVocabCount && (
+              <div ref={vocabSentinelRef} style={{ height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', margin: '20px 0' }}>
+                {lang === 'es' ? 'Cargando más vocabulario...' : 'Loading more vocabulary...'}
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
       </div>
     );
@@ -2874,28 +3240,28 @@ export default function Library({
             onClick={() => setActiveTab('library')}
             type="button"
           >
-            📚 Biblioteca
+            📚 {t('library', lang)}
           </button>
           <button 
             className={`nav-tab-btn ${activeTab === 'statistics' ? 'active' : ''}`}
             onClick={() => setActiveTab('statistics')}
             type="button"
           >
-            📈 Estadísticas
+            📈 {t('statistics', lang)}
           </button>
           <button 
             className={`nav-tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
             onClick={() => setActiveTab('settings')}
             type="button"
           >
-            ⚙️ Ajustes
+            ⚙️ {t('settings', lang)}
           </button>
           <button 
             className={`nav-tab-btn ${activeTab === 'notes' ? 'active' : ''}`}
             onClick={() => setActiveTab('notes')}
             type="button"
           >
-            📝 Vocabulario
+            📝 {t('vocabulary', lang)}
           </button>
         </nav>
 
@@ -2945,7 +3311,7 @@ export default function Library({
               type="button"
             >
               <Upload size={16} />
-              <span>Import</span>
+              <span>{lang === 'es' ? 'Importar' : 'Import'}</span>
               <ChevronDown size={14} />
             </button>
             {activeHeaderDropdown === 'import' && (
@@ -2960,10 +3326,10 @@ export default function Library({
                 >
                   <div className="header-action-dropdown-item-header">
                     <Plus size={14} style={{ color: 'var(--primary)' }} />
-                    <span>Import File(s)</span>
+                    <span>{lang === 'es' ? 'Importar archivo(s)' : 'Import File(s)'}</span>
                   </div>
                   <div className="header-action-dropdown-item-desc">
-                    EPUB, HTMLZ, and text files
+                    {lang === 'es' ? 'Archivos EPUB, HTMLZ y texto' : 'EPUB, HTMLZ, and text files'}
                   </div>
                 </button>
                 <button 
@@ -2976,10 +3342,10 @@ export default function Library({
                 >
                   <div className="header-action-dropdown-item-header">
                     <FolderOpen size={14} style={{ color: 'var(--primary)' }} />
-                    <span>Import Folder(s)</span>
+                    <span>{lang === 'es' ? 'Importar carpeta(s)' : 'Import Folder(s)'}</span>
                   </div>
                   <div className="header-action-dropdown-item-desc">
-                    All supported books in a folder
+                    {lang === 'es' ? 'Todos los libros de una carpeta' : 'All supported books in a folder'}
                   </div>
                 </button>
                 <button 
@@ -2992,10 +3358,10 @@ export default function Library({
                 >
                   <div className="header-action-dropdown-item-header">
                     <Upload size={14} style={{ color: 'var(--primary)' }} />
-                    <span>Import Backup</span>
+                    <span>{lang === 'es' ? 'Importar copia de seguridad' : 'Import Backup'}</span>
                   </div>
                   <div className="header-action-dropdown-item-desc">
-                    Restore from a zipped backup
+                    {lang === 'es' ? 'Restaurar desde un archivo ZIP' : 'Restore from a zipped backup'}
                   </div>
                 </button>
               </div>
@@ -3003,56 +3369,23 @@ export default function Library({
           </div>
 
           {/* 2. Database Dropdown */}
-          <div className="header-action-dropdown-container">
-            <button 
-              className={`header-display-settings-btn ${activeHeaderDropdown === 'database' ? 'active' : ''}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setActiveHeaderDropdown(activeHeaderDropdown === 'database' ? null : 'database');
-              }}
-              title="Database Settings"
-              type="button"
-            >
-              <Database size={18} />
-            </button>
-            {activeHeaderDropdown === 'database' && (
-              <div className="header-action-dropdown-menu">
-                <button 
-                  className="header-action-dropdown-item"
-                  onClick={() => {
-                    setActiveHeaderDropdown(null);
-                    alert("Conectado a la base de datos local (IndexedDB) de tu navegador.");
-                  }}
-                  type="button"
-                >
-                  <div className="header-action-dropdown-item-header">
-                    <Database size={14} style={{ color: 'var(--primary)' }} />
-                    <span>Browser</span>
-                  </div>
-                </button>
-                <button 
-                  className="header-action-dropdown-item"
-                  onClick={() => {
-                    setActiveHeaderDropdown(null);
-                    alert("Próximamente: Integración con Google Drive para sincronizar tu biblioteca.");
-                  }}
-                  type="button"
-                >
-                  <div className="header-action-dropdown-item-header">
-                    <Cloud size={14} style={{ color: 'rgba(255,255,255,0.6)' }} />
-                    <span>Google Drive</span>
-                  </div>
-                </button>
-              </div>
-            )}
-          </div>
+          {/* 3. Sincronización Google Drive */}
+          <button 
+            className="header-display-settings-btn"
+            onClick={() => setIsGDriveSyncOpen(true)}
+            title={lang === 'es' ? 'Sincronizar con Google Drive' : 'Google Drive Sync'}
+            type="button"
+          >
+            <Database size={18} />
+          </button>
+
 
 
           {/* 4. Display Settings Cog */}
           <button 
             className={`header-display-settings-btn ${isDisplaySettingsOpen ? 'active' : ''}`}
             onClick={() => setIsDisplaySettingsOpen(!isDisplaySettingsOpen)}
-            title="Ajustes de visualización (Q)"
+            title={lang === 'es' ? 'Ajustes de visualización (Q)' : 'Display Settings (Q)'}
             type="button"
           >
             <SlidersHorizontal size={18} />
@@ -3066,7 +3399,7 @@ export default function Library({
                 e.stopPropagation();
                 setActiveHeaderDropdown(activeHeaderDropdown === 'more' ? null : 'more');
               }}
-              title="Más opciones"
+              title={lang === 'es' ? 'Más opciones' : 'More Options'}
               type="button"
             >
               <MoreVertical size={18} />
@@ -3082,7 +3415,7 @@ export default function Library({
                   type="button"
                 >
                   <div className="header-action-dropdown-item-header">
-                    <span>💾 Get complete local backup</span>
+                    <span>{lang === 'es' ? '💾 Obtener copia de seguridad' : '💾 Get complete local backup'}</span>
                   </div>
                 </button>
                 <button 
@@ -3100,7 +3433,7 @@ export default function Library({
                   type="button"
                 >
                   <div className="header-action-dropdown-item-header">
-                    <span>📺 Toggle fullscreen</span>
+                    <span>{lang === 'es' ? '📺 Alternar pantalla completa' : '📺 Toggle fullscreen'}</span>
                     <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '4px' }}>F</span>
                   </div>
                 </button>
@@ -3108,12 +3441,12 @@ export default function Library({
                   className="header-action-dropdown-item"
                   onClick={() => {
                     setActiveHeaderDropdown(null);
-                    alert("Shortcuts:\n- Q: Abrir ajustes de visualización\n- Esc: Cerrar modales/popups\n- Flechas: Navegar páginas");
+                    alert(lang === 'es' ? "Atajos:\n- Q: Abrir ajustes de visualización\n- Esc: Cerrar modales/popups\n- Flechas: Navegar páginas" : "Shortcuts:\n- Q: Open display settings\n- Esc: Close modals/popups\n- Arrows: Navigate pages");
                   }}
                   type="button"
                 >
                   <div className="header-action-dropdown-item-header">
-                    <span>⌨️ Keyboard shortcuts</span>
+                    <span>{lang === 'es' ? '⌨️ Atajos de teclado' : '⌨️ Keyboard shortcuts'}</span>
                   </div>
                 </button>
                 <button 
@@ -3125,55 +3458,55 @@ export default function Library({
                   type="button"
                 >
                   <div className="header-action-dropdown-item-header">
-                    <span>🐛 Report a bug</span>
+                    <span>{lang === 'es' ? '🐛 Reportar un error' : '🐛 Report a bug'}</span>
                   </div>
                 </button>
                 <button 
                   className="header-action-dropdown-item"
                   onClick={() => {
                     setActiveHeaderDropdown(null);
-                    alert("Documentación de Yoru Reader disponible en yoru.cafe");
+                    alert(lang === 'es' ? "Documentación de Yoru Reader disponible en yoru.cafe" : "Yoru Reader documentation available at yoru.cafe");
                   }}
                   type="button"
                 >
                   <div className="header-action-dropdown-item-header">
-                    <span>📖 Docs</span>
+                    <span>{lang === 'es' ? '📖 Documentación' : '📖 Docs'}</span>
                   </div>
                 </button>
                 <button 
                   className="header-action-dropdown-item"
                   onClick={() => {
                     setActiveHeaderDropdown(null);
-                    alert("Explora más temas de la comunidad próximamente.");
+                    alert(lang === 'es' ? "Explora más temas de la comunidad próximamente." : "Explore community themes coming soon.");
                   }}
                   type="button"
                 >
                   <div className="header-action-dropdown-item-header">
-                    <span>🎨 Theme repository</span>
+                    <span>{lang === 'es' ? '🎨 Repositorio de temas' : '🎨 Theme repository'}</span>
                   </div>
                 </button>
                 <button 
                   className="header-action-dropdown-item"
                   onClick={() => {
                     setActiveHeaderDropdown(null);
-                    alert("Última actualización: Añadido menú de importación y barra de herramientas premium.");
+                    alert(lang === 'es' ? "Última actualización: Añadido menú de importación y barra de herramientas premium." : "Last update: Added import dropdown menu and premium toolbar.");
                   }}
                   type="button"
                 >
                   <div className="header-action-dropdown-item-header">
-                    <span>📢 Show read news</span>
+                    <span>{lang === 'es' ? '📢 Ver novedades' : '📢 Show read news'}</span>
                   </div>
                 </button>
                 <button 
                   className="header-action-dropdown-item"
                   onClick={() => {
                     setActiveHeaderDropdown(null);
-                    alert("Yoru Reader v1.2.0\nCreado para aprender japonés leyendo novelas.");
+                    alert(lang === 'es' ? "Yoru Reader v1.2.0\nCreado para aprender japonés leyendo novelas." : "Yoru Reader v1.2.0\nCreated for learning Japanese by reading novels.");
                   }}
                   type="button"
                 >
                   <div className="header-action-dropdown-item-header">
-                    <span>ℹ️ About</span>
+                    <span>{lang === 'es' ? 'ℹ️ Acerca de' : 'ℹ️ About'}</span>
                   </div>
                 </button>
               </div>
@@ -3201,7 +3534,7 @@ export default function Library({
             {/* Profiles Dropdown */}
             {isProfileDropdownOpen && (
               <div className="profiles-dropdown-menu">
-                <div className="dropdown-title">Perfiles</div>
+                <div className="dropdown-title">{lang === 'es' ? 'Perfiles' : 'Profiles'}</div>
                 <div className="profiles-list">
                   {profiles.map(p => {
                     const isActive = p.id === activeProfileId;
@@ -3233,7 +3566,7 @@ export default function Library({
                               e.stopPropagation();
                               onDeleteProfile(p.id);
                             }}
-                            title="Eliminar Perfil"
+                            title={lang === 'es' ? 'Eliminar Perfil' : 'Delete Profile'}
                           >
                             <Trash2 size={12} />
                           </button>
@@ -3247,7 +3580,7 @@ export default function Library({
                   <form onSubmit={handleCreateProfileSubmit} className="create-profile-form">
                     <input 
                       type="text" 
-                      placeholder="Nombre del perfil..." 
+                      placeholder={lang === 'es' ? 'Nombre del perfil...' : 'Profile name...'} 
                       value={newProfileName}
                       onChange={(e) => setNewProfileName(e.target.value)}
                       className="create-profile-input"
@@ -3264,13 +3597,13 @@ export default function Library({
                       style={{ display: 'none' }}
                     />
 
-                    <div className="avatar-selection-label">Foto de perfil:</div>
+                    <div className="avatar-selection-label">{lang === 'es' ? 'Foto de perfil:' : 'Profile picture:'}</div>
                     <div className="custom-avatar-uploader-container">
                       {customAvatarUrl ? (
                         <div 
                           className="custom-avatar-preview-circle"
                           onClick={() => customAvatarInputRef.current.click()}
-                          title="Cambiar foto de perfil"
+                          title={lang === 'es' ? 'Cambiar foto de perfil' : 'Change profile picture'}
                         >
                           <img src={customAvatarUrl} alt="Preview" className="avatar-preview-image" />
                           <div className="avatar-preview-overlay">📷</div>
@@ -3279,10 +3612,10 @@ export default function Library({
                         <div 
                           className="custom-avatar-placeholder-circle"
                           onClick={() => customAvatarInputRef.current.click()}
-                          title="Subir foto de perfil"
+                          title={lang === 'es' ? 'Subir foto de perfil' : 'Upload profile picture'}
                         >
                           <span className="placeholder-icon">📷</span>
-                          <span className="placeholder-text">Subir foto</span>
+                          <span className="placeholder-text">{lang === 'es' ? 'Subir foto' : 'Upload image'}</span>
                         </div>
                       )}
                     </div>
@@ -3293,7 +3626,7 @@ export default function Library({
                         className="change-custom-avatar-btn"
                         onClick={() => customAvatarInputRef.current.click()}
                       >
-                        Subir otra foto
+                        {lang === 'es' ? 'Subir otra foto' : 'Upload another image'}
                       </button>
                     )}
 
@@ -3306,10 +3639,10 @@ export default function Library({
                           setCustomAvatarUrl(null);
                         }}
                       >
-                        Cancelar
+                        {lang === 'es' ? 'Cancelar' : 'Cancel'}
                       </button>
                       <button type="submit" className="create-profile-save">
-                        Crear
+                        {lang === 'es' ? 'Crear' : 'Create'}
                       </button>
                     </div>
                   </form>
@@ -3324,12 +3657,12 @@ export default function Library({
                       }}
                     >
                       <Plus size={14} style={{ marginRight: '6px' }} />
-                      Crear nuevo perfil
+                      {lang === 'es' ? 'Crear nuevo perfil' : 'Create new profile'}
                     </button>
                     <button
                       className="profile-dropdown-settings-btn"
                       onClick={openProfileSettings}
-                      title="Configuración del Perfil"
+                      title={lang === 'es' ? 'Configuración del Perfil' : 'Profile Settings'}
                       type="button"
                     >
                       <Settings size={14} />
@@ -3402,9 +3735,9 @@ export default function Library({
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-              <span style={{ fontSize: '0.92rem', fontWeight: 700, color: '#fff' }}>Modo Selección</span>
+              <span style={{ fontSize: '0.92rem', fontWeight: 700, color: '#fff' }}>{lang === 'es' ? 'Modo Selección' : 'Select Mode'}</span>
               <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)' }}>
-                {selectedBookIds.length} {selectedBookIds.length === 1 ? 'libro seleccionado' : 'libros seleccionados'}
+                {selectedBookIds.length} {lang === 'es' ? (selectedBookIds.length === 1 ? 'libro seleccionado' : 'libros seleccionados') : (selectedBookIds.length === 1 ? 'book selected' : 'books selected')}
               </span>
             </div>
             <button 
@@ -3437,7 +3770,7 @@ export default function Library({
               className="select-panel-action-btn"
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', color: '#fff', fontSize: '0.75rem', cursor: 'pointer', textAlign: 'left' }}
             >
-              <Check size={14} style={{ color: 'var(--primary)' }} /> Seleccionar visibles
+              <Check size={14} style={{ color: 'var(--primary)' }} /> {lang === 'es' ? 'Seleccionar visibles' : 'Select visible'}
             </button>
 
             <button 
@@ -3445,7 +3778,7 @@ export default function Library({
               className="select-panel-action-btn"
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', color: '#fff', fontSize: '0.75rem', cursor: 'pointer', textAlign: 'left' }}
             >
-              <CircleSlash size={14} style={{ color: 'rgba(255,255,255,0.5)' }} /> Limpiar
+              <CircleSlash size={14} style={{ color: 'rgba(255,255,255,0.5)' }} /> {lang === 'es' ? 'Limpiar' : 'Clear'}
             </button>
 
             <button 
@@ -3454,7 +3787,7 @@ export default function Library({
               className="select-panel-action-btn"
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', color: '#fff', fontSize: '0.75rem', cursor: 'pointer', textAlign: 'left', opacity: selectedBookIds.length === 0 ? 0.4 : 1, pointerEvents: selectedBookIds.length === 0 ? 'none' : 'auto' }}
             >
-              <BookOpen size={14} style={{ color: '#60a5fa' }} /> Establecer serie
+              <BookOpen size={14} style={{ color: '#60a5fa' }} /> {lang === 'es' ? 'Establecer serie' : 'Set series'}
             </button>
 
             <button 
@@ -3463,7 +3796,7 @@ export default function Library({
               className="select-panel-action-btn"
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', color: '#fff', fontSize: '0.75rem', cursor: 'pointer', textAlign: 'left', opacity: selectedBookIds.length === 0 ? 0.4 : 1, pointerEvents: selectedBookIds.length === 0 ? 'none' : 'auto' }}
             >
-              <User size={14} style={{ color: '#a78bfa' }} /> Establecer autor
+              <User size={14} style={{ color: '#a78bfa' }} /> {lang === 'es' ? 'Establecer autor' : 'Set author'}
             </button>
 
             <button 
@@ -3472,7 +3805,7 @@ export default function Library({
               className="select-panel-action-btn"
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', color: '#fff', fontSize: '0.75rem', cursor: 'pointer', textAlign: 'left', opacity: selectedBookIds.length === 0 ? 0.4 : 1, pointerEvents: selectedBookIds.length === 0 ? 'none' : 'auto' }}
             >
-              <Tag size={14} style={{ color: '#34d399' }} /> Añadir etiquetas
+              <Tag size={14} style={{ color: '#34d399' }} /> {lang === 'es' ? 'Añadir etiquetas' : 'Add tags'}
             </button>
 
             <button 
@@ -3481,7 +3814,7 @@ export default function Library({
               className="select-panel-action-btn"
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', color: '#fff', fontSize: '0.75rem', cursor: 'pointer', textAlign: 'left', opacity: selectedBookIds.length === 0 ? 0.4 : 1, pointerEvents: selectedBookIds.length === 0 ? 'none' : 'auto' }}
             >
-              <Tag size={14} style={{ color: '#f87171' }} /> Quitar etiquetas
+              <Tag size={14} style={{ color: '#f87171' }} /> {lang === 'es' ? 'Quitar etiquetas' : 'Remove tags'}
             </button>
 
             <button 
@@ -3490,7 +3823,7 @@ export default function Library({
               className="select-panel-action-btn"
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', color: '#fff', fontSize: '0.75rem', cursor: 'pointer', textAlign: 'left', opacity: selectedBookIds.length === 0 ? 0.4 : 1, pointerEvents: selectedBookIds.length === 0 ? 'none' : 'auto' }}
             >
-              <EyeOff size={14} style={{ color: '#fbbf24' }} /> Desenfocar portadas
+              <EyeOff size={14} style={{ color: '#fbbf24' }} /> {lang === 'es' ? 'Desenfocar portadas' : 'Blur covers'}
             </button>
 
             <button 
@@ -3499,7 +3832,7 @@ export default function Library({
               className="select-panel-action-btn"
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', color: '#fff', fontSize: '0.75rem', cursor: 'pointer', textAlign: 'left', opacity: selectedBookIds.length === 0 ? 0.4 : 1, pointerEvents: selectedBookIds.length === 0 ? 'none' : 'auto' }}
             >
-              <RotateCcw size={14} style={{ color: '#38bdf8' }} /> Marcar como no leído
+              <RotateCcw size={14} style={{ color: '#38bdf8' }} /> {lang === 'es' ? 'Marcar como no leído' : 'Mark as unread'}
             </button>
 
             <button 
@@ -3508,7 +3841,7 @@ export default function Library({
               className="select-panel-action-btn"
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', color: '#fff', fontSize: '0.75rem', cursor: 'pointer', textAlign: 'left', opacity: selectedBookIds.length === 0 ? 0.4 : 1, pointerEvents: selectedBookIds.length === 0 ? 'none' : 'auto' }}
             >
-              <Download size={14} style={{ color: '#fb7185' }} /> Exportar selección
+              <Download size={14} style={{ color: '#fb7185' }} /> {lang === 'es' ? 'Exportar selección' : 'Export selection'}
             </button>
 
             <button 
@@ -3517,7 +3850,7 @@ export default function Library({
               className="select-panel-action-btn"
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', color: '#fff', fontSize: '0.75rem', cursor: 'pointer', textAlign: 'left', opacity: selectedBookIds.length === 0 ? 0.4 : 1, pointerEvents: selectedBookIds.length === 0 ? 'none' : 'auto' }}
             >
-              <BarChart3 size={14} style={{ color: '#fb923c' }} /> Ver estadísticas
+              <BarChart3 size={14} style={{ color: '#fb923c' }} /> {lang === 'es' ? 'Ver estadísticas' : 'View statistics'}
             </button>
 
             <button 
@@ -3526,7 +3859,7 @@ export default function Library({
               className="select-panel-action-btn"
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', color: '#fff', fontSize: '0.75rem', cursor: 'pointer', textAlign: 'left', opacity: selectedBookIds.length === 0 ? 0.4 : 1, pointerEvents: selectedBookIds.length === 0 ? 'none' : 'auto' }}
             >
-              <Calendar size={14} style={{ color: '#f43f5e' }} /> Borrar estadísticas
+              <Calendar size={14} style={{ color: '#f43f5e' }} /> {lang === 'es' ? 'Borrar estadísticas' : 'Clear statistics'}
             </button>
 
             <button 
@@ -3535,7 +3868,7 @@ export default function Library({
               className="select-panel-action-btn"
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 10px', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '6px', color: '#f87171', fontSize: '0.75rem', cursor: 'pointer', textAlign: 'left', opacity: selectedBookIds.length === 0 ? 0.4 : 1, pointerEvents: selectedBookIds.length === 0 ? 'none' : 'auto' }}
             >
-              <Trash2 size={14} /> Eliminar seleccionados
+              <Trash2 size={14} /> {lang === 'es' ? 'Eliminar seleccionados' : 'Delete selected'}
             </button>
           </div>
         </div>
@@ -3549,7 +3882,7 @@ export default function Library({
               <div className="sidebar-search-container">
                 <input
                   type="text"
-                  placeholder="Buscar por título o autor..."
+                  placeholder={lang === 'es' ? "Buscar por título o autor..." : "Search by title or author..."}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="sidebar-search-input"
@@ -3558,19 +3891,19 @@ export default function Library({
 
               {/* Library Section */}
               <div className="sidebar-group">
-                <div className="sidebar-group-title">Biblioteca</div>
+                <div className="sidebar-group-title">{lang === 'es' ? 'Biblioteca' : 'Library'}</div>
                 <div 
                   className={`sidebar-item ${activeFilter.type === 'all' ? 'active' : ''}`}
                   onClick={() => setActiveFilter({ type: 'all', value: null })}
                 >
-                  <span>Todos los libros</span>
+                  <span>{lang === 'es' ? 'Todos los libros' : 'All books'}</span>
                   <span className="sidebar-item-count">{books.length}</span>
                 </div>
                  <div 
                   className={`sidebar-item ${activeFilter.type === 'unread' ? 'active' : ''}`}
                   onClick={() => setActiveFilter({ type: 'unread', value: null })}
                 >
-                  <span>Sin iniciar</span>
+                  <span>{lang === 'es' ? 'Sin iniciar' : 'Not started'}</span>
                   <span className="sidebar-item-count">
                     {books.filter(b => b.status === 'unread' || (!b.status && b.progress.percent === 0)).length}
                   </span>
@@ -3579,7 +3912,7 @@ export default function Library({
                   className={`sidebar-item ${activeFilter.type === 'reading' ? 'active' : ''}`}
                   onClick={() => setActiveFilter({ type: 'reading', value: null })}
                 >
-                  <span>Leyendo</span>
+                  <span>{lang === 'es' ? 'Leyendo' : 'Reading'}</span>
                   <span className="sidebar-item-count">
                     {books.filter(b => b.status === 'reading' || (!b.status && b.progress.percent > 0 && b.progress.percent < 100)).length}
                   </span>
@@ -3588,7 +3921,7 @@ export default function Library({
                   className={`sidebar-item ${activeFilter.type === 'completed' ? 'active' : ''}`}
                   onClick={() => setActiveFilter({ type: 'completed', value: null })}
                 >
-                  <span>Leídos</span>
+                  <span>{lang === 'es' ? 'Leídos' : 'Read'}</span>
                   <span className="sidebar-item-count">
                     {books.filter(b => b.status === 'completed' || (!b.status && b.progress.percent >= 100)).length}
                   </span>
@@ -3597,7 +3930,7 @@ export default function Library({
                   className={`sidebar-item ${activeFilter.type === 'paused' ? 'active' : ''}`}
                   onClick={() => setActiveFilter({ type: 'paused', value: null })}
                 >
-                  <span>Pausados</span>
+                  <span>{lang === 'es' ? 'Pausados' : 'Paused'}</span>
                   <span className="sidebar-item-count">
                     {books.filter(b => b.status === 'paused').length}
                   </span>
@@ -3606,7 +3939,7 @@ export default function Library({
                   className={`sidebar-item ${activeFilter.type === 'dropped' ? 'active' : ''}`}
                   onClick={() => setActiveFilter({ type: 'dropped', value: null })}
                 >
-                  <span>Dropeados</span>
+                  <span>{lang === 'es' ? 'Dropeados' : 'Dropped'}</span>
                   <span className="sidebar-item-count">
                     {books.filter(b => b.status === 'dropped').length}
                   </span>
@@ -3615,7 +3948,7 @@ export default function Library({
                   className={`sidebar-item ${activeFilter.type === 'planning' ? 'active' : ''}`}
                   onClick={() => setActiveFilter({ type: 'planning', value: null })}
                 >
-                  <span>Planeados</span>
+                  <span>{lang === 'es' ? 'Planeados' : 'Planned'}</span>
                   <span className="sidebar-item-count">
                     {books.filter(b => b.status === 'planning').length}
                   </span>
@@ -3625,7 +3958,7 @@ export default function Library({
               {/* Authors Section */}
               {uniqueAuthors.length > 0 && (
                 <div className="sidebar-group">
-                  <div className="sidebar-group-title">Autores</div>
+                  <div className="sidebar-group-title">{lang === 'es' ? 'Autores' : 'Authors'}</div>
                   {uniqueAuthors.map(author => (
                     <div 
                       key={author}
@@ -3642,11 +3975,11 @@ export default function Library({
               {/* Tags Section */}
               <div className="sidebar-group">
                 <div className="sidebar-group-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>Etiquetas</span>
+                  <span>{lang === 'es' ? 'Etiquetas' : 'Tags'}</span>
                   <button
-                    title="Añadir etiqueta"
+                    title={lang === 'es' ? "Añadir etiqueta" : "Add tag"}
                     onClick={async () => {
-                      const tag = prompt('Nueva etiqueta:');
+                      const tag = prompt(lang === 'es' ? 'Nueva etiqueta:' : 'New tag:');
                       if (!tag || !tag.trim()) return;
                       const tagTrim = tag.trim();
                       if (selectedBookIds.length > 0) {
@@ -3664,10 +3997,10 @@ export default function Library({
                         const allBookIds = filteredBooksList.map(b => b.id);
                         const targetIds = allBookIds.length > 0 ? [allBookIds[0]] : [];
                         if (targetIds.length === 0) {
-                          alert('Selecciona primero algunos libros con el Modo Selección para asignarles la etiqueta.');
+                          alert(lang === 'es' ? 'Selecciona primero algunos libros con el Modo Selección para asignarles la etiqueta.' : 'First select some books using Select Mode to assign them this tag.');
                           return;
                         }
-                        alert('Usa el Modo Selección para asignar etiquetas a libros específicos.');
+                        alert(lang === 'es' ? 'Usa el Modo Selección para asignar etiquetas a libros específicos.' : 'Use Select Mode to assign tags to specific books.');
                       }
                     }}
                     style={{
@@ -3694,7 +4027,7 @@ export default function Library({
                   className={`sidebar-item ${activeFilter.type === 'tag' && activeFilter.value === 'untagged' ? 'active' : ''}`}
                   onClick={() => setActiveFilter({ type: 'tag', value: 'untagged' })}
                 >
-                  <span>Sin etiquetas</span>
+                  <span>{lang === 'es' ? 'Sin etiquetas' : 'No tags'}</span>
                   <span className="sidebar-item-count">{books.filter(b => !b.tags || b.tags.length === 0).length}</span>
                 </div>
                 {(() => {
@@ -3735,14 +4068,14 @@ export default function Library({
                 {/* Right: info + actions */}
                 <div className="empty-hero-right">
                   <div className="empty-info-panel">
-                    <p><strong>Formatos compatibles:</strong><br />epub, html, txt, rtf, subtítulos</p>
-                    <p><strong>Formatos de subtítulos:</strong><br />srt, vtt, ass, ssa</p>
+                    <p><strong>{lang === 'es' ? 'Formatos compatibles:' : 'Supported formats:'}</strong><br />epub, html, txt, rtf, {lang === 'es' ? 'subtítulos' : 'subtitles'}</p>
+                    <p><strong>{lang === 'es' ? 'Formatos de subtítulos:' : 'Subtitle formats:'}</strong><br />srt, vtt, ass, ssa</p>
                   </div>
 
                   <div className="empty-hero-actions">
                     <button className="empty-add-btn" onClick={triggerFileInput}>
                       <span style={{ marginRight: '8px' }}>📄</span>
-                      Añadir desde archivo
+                      {lang === 'es' ? 'Añadir desde archivo' : 'Add from file'}
                     </button>
                   </div>
                 </div>
@@ -3751,7 +4084,7 @@ export default function Library({
               <>
                 {filteredBooksList.length === 0 ? (
                   <div className="library-no-results">
-                    <p>No se encontraron libros para esta categoría o búsqueda.</p>
+                    <p>{lang === 'es' ? 'No se encontraron libros para esta categoría o búsqueda.' : 'No books found for this category or search.'}</p>
                     <button 
                       className="reset-filter-btn"
                       onClick={() => {
@@ -3759,7 +4092,7 @@ export default function Library({
                         setSearchQuery('');
                       }}
                     >
-                      Restablecer filtros
+                      {lang === 'es' ? 'Restablecer filtros' : 'Reset filters'}
                     </button>
                   </div>
                 ) : (
@@ -3774,7 +4107,7 @@ export default function Library({
                         {currentlyReading.length > 0 && (
                           <div className="library-section">
                             <div className="section-header">
-                              <h2 className="section-title">Leyendo actualmente</h2>
+                              <h2 className="section-title">{lang === 'es' ? 'Leyendo actualmente' : 'Currently reading'}</h2>
                               <span className="section-count">{currentlyReading.length}</span>
                             </div>
                             {renderBookGrid(currentlyReading)}
@@ -3785,7 +4118,7 @@ export default function Library({
                         {notStarted.length > 0 && (
                           <div className="library-section">
                             <div className="section-header">
-                              <h2 className="section-title">Sin iniciar</h2>
+                              <h2 className="section-title">{lang === 'es' ? 'Sin iniciar' : 'Not started'}</h2>
                               <span className="section-count">{notStarted.length}</span>
                             </div>
                             {renderBookGrid(notStarted)}
@@ -3796,7 +4129,7 @@ export default function Library({
                         {completed.length > 0 && (
                           <div className="library-section">
                             <div className="section-header">
-                              <h2 className="section-title">Leídos</h2>
+                              <h2 className="section-title">{lang === 'es' ? 'Leídos' : 'Read'}</h2>
                               <span className="section-count">{completed.length}</span>
                             </div>
                             {renderBookGrid(completed)}
@@ -3827,14 +4160,14 @@ export default function Library({
       {/* Display Settings Drawer (Yatsu style) */}
       <aside className={`display-settings-drawer ${isDisplaySettingsOpen ? 'open' : ''}`} style={{ width: '310px' }}>
         <div className="drawer-header">
-          <span className="drawer-title" style={{ color: '#fff', fontSize: '0.9rem', textTransform: 'none', fontWeight: 650, letterSpacing: 'normal', textShadow: 'none' }}>Library display settings</span>
+          <span className="drawer-title" style={{ color: '#fff', fontSize: '0.9rem', textTransform: 'none', fontWeight: 650, letterSpacing: 'normal', textShadow: 'none' }}>{lang === 'es' ? 'Ajustes de visualización' : 'Library display settings'}</span>
           <button 
             className="drawer-close-btn" 
             onClick={() => {
               setIsDisplaySettingsOpen(false);
               setIsDetailsDropdownOpen(false);
             }}
-            title="Cerrar (Q)"
+            title={lang === 'es' ? 'Cerrar (Q)' : 'Close (Q)'}
             type="button"
           >
             <X size={18} />
@@ -3844,13 +4177,13 @@ export default function Library({
         <div className="drawer-content" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* DISPLAY GROUP */}
           <div>
-            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '14px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '6px' }}>Display</div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '14px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '6px' }}>{lang === 'es' ? 'Visualización' : 'Display'}</div>
             
             {/* Details */}
             <div className="drawer-section" style={{ marginBottom: '14px' }}>
               <div className="drawer-label-row">
-                <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600, marginBottom: 0 }}>Details</span>
-                <span className="drawer-info-icon" title="Choose which info blocks are shown under book card covers.">?</span>
+                <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600, marginBottom: 0 }}>{lang === 'es' ? 'Detalles' : 'Details'}</span>
+                <span className="drawer-info-icon" title={lang === 'es' ? 'Elige qué bloques de información se muestran debajo de la portada.' : 'Choose which info blocks are shown under book card covers.'}>?</span>
               </div>
               
               {(() => {
@@ -3865,13 +4198,13 @@ export default function Library({
                     >
                       <span className="truncate" style={{ maxWidth: '190px' }}>
                         {[
-                          showCardTitle && "Title",
-                          showCardSeries && "Series",
-                          showCardAuthor && "Author",
-                          showCardTags && "Tags",
-                          showCardProgress && "Progress",
-                          showCardStatus && "Status"
-                        ].filter(Boolean).join(', ') || "None"}
+                          showCardTitle && (lang === 'es' ? "Título" : "Title"),
+                          showCardSeries && (lang === 'es' ? "Serie" : "Series"),
+                          showCardAuthor && (lang === 'es' ? "Autor" : "Author"),
+                          showCardTags && (lang === 'es' ? "Etiquetas" : "Tags"),
+                          showCardProgress && (lang === 'es' ? "Progreso" : "Progress"),
+                          showCardStatus && (lang === 'es' ? "Estado" : "Status")
+                        ].filter(Boolean).join(', ') || (lang === 'es' ? "Ninguno" : "None")}
                       </span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                         <span style={{ fontSize: '0.7rem', background: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '10px', color: 'rgba(255,255,255,0.6)' }}>
@@ -3900,12 +4233,12 @@ export default function Library({
                         }}
                       >
                         {[
-                          { key: 'title', label: 'Title', value: showCardTitle, setter: setShowCardTitle },
-                          { key: 'series', label: 'Series', value: showCardSeries, setter: setShowCardSeries },
-                          { key: 'author', label: 'Author', value: showCardAuthor, setter: setShowCardAuthor },
-                          { key: 'tags', label: 'Tags', value: showCardTags, setter: setShowCardTags },
-                          { key: 'progress', label: 'Progress', value: showCardProgress, setter: setShowCardProgress },
-                          { key: 'status', label: 'Status', value: showCardStatus, setter: setShowCardStatus }
+                          { key: 'title', label: lang === 'es' ? 'Título' : 'Title', value: showCardTitle, setter: setShowCardTitle },
+                          { key: 'series', label: lang === 'es' ? 'Serie' : 'Series', value: showCardSeries, setter: setShowCardSeries },
+                          { key: 'author', label: lang === 'es' ? 'Autor' : 'Author', value: showCardAuthor, setter: setShowCardAuthor },
+                          { key: 'tags', label: lang === 'es' ? 'Etiquetas' : 'Tags', value: showCardTags, setter: setShowCardTags },
+                          { key: 'progress', label: lang === 'es' ? 'Progreso' : 'Progress', value: showCardProgress, setter: setShowCardProgress },
+                          { key: 'status', label: lang === 'es' ? 'Estado' : 'Status', value: showCardStatus, setter: setShowCardStatus }
                         ].map(opt => (
                           <label 
                             key={opt.key} 
@@ -3930,8 +4263,8 @@ export default function Library({
             {/* Cover Image */}
             <div className="drawer-section" style={{ marginBottom: '14px' }}>
               <div className="drawer-label-row">
-                <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600, marginBottom: 0 }}>Cover Image</span>
-                <span className="drawer-info-icon" title="Scale and fit book cover images inside their cards.">?</span>
+                <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600, marginBottom: 0 }}>{lang === 'es' ? 'Imagen de portada' : 'Cover Image'}</span>
+                <span className="drawer-info-icon" title={lang === 'es' ? 'Escalar y ajustar las imágenes de portada dentro de las tarjetas.' : 'Scale and fit book cover images inside their cards.'}>?</span>
               </div>
               <div className="drawer-segmented-control">
                 <button
@@ -3939,14 +4272,14 @@ export default function Library({
                   className={`drawer-segmented-btn ${coverFit === 'cover' ? 'active' : ''}`}
                   onClick={() => setCoverFit('cover')}
                 >
-                  Fill
+                  {lang === 'es' ? 'Rellenar' : 'Fill'}
                 </button>
                 <button
                   type="button"
                   className={`drawer-segmented-btn ${coverFit === 'contain' ? 'active' : ''}`}
                   onClick={() => setCoverFit('contain')}
                 >
-                  Fit
+                  {lang === 'es' ? 'Ajustar' : 'Fit'}
                 </button>
               </div>
             </div>
@@ -3954,11 +4287,11 @@ export default function Library({
             {/* Card Size */}
             <div className="drawer-section" style={{ marginBottom: '14px' }}>
               <div className="drawer-label-row">
-                <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600, marginBottom: 0 }}>Card Size</span>
-                <span className="drawer-info-icon" title="Resize the book cards scale in the library view.">?</span>
+                <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600, marginBottom: 0 }}>{lang === 'es' ? 'Tamaño de tarjeta' : 'Card Size'}</span>
+                <span className="drawer-info-icon" title={lang === 'es' ? 'Redimensionar la escala de las tarjetas de libros.' : 'Resize the book cards scale in the library view.'}>?</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', fontWeight: 700 }}>SMALL</span>
+                <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', fontWeight: 700 }}>{lang === 'es' ? 'PEQUEÑO' : 'SMALL'}</span>
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
                   <input 
                     type="range" 
@@ -3970,7 +4303,7 @@ export default function Library({
                     style={{ width: '100%', accentColor: 'var(--primary)', cursor: 'pointer', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px' }}
                   />
                 </div>
-                <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', fontWeight: 700 }}>LARGE</span>
+                <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', fontWeight: 700 }}>{lang === 'es' ? 'GRANDE' : 'LARGE'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
                 <span style={{ fontSize: '0.72rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '3px 10px', color: '#fff', fontWeight: 600 }}>
@@ -3981,7 +4314,7 @@ export default function Library({
                   onClick={() => setCardWidth(160)}
                   style={{ background: 'none', border: 'none', color: 'var(--primary)', fontSize: '0.75rem', fontWeight: 700, textDecoration: 'underline', cursor: 'pointer' }}
                 >
-                  Reset
+                  {lang === 'es' ? 'Restablecer' : 'Reset'}
                 </button>
               </div>
             </div>
@@ -3989,14 +4322,14 @@ export default function Library({
             {/* Group By */}
             <div className="drawer-section" style={{ marginBottom: '14px' }}>
               <div className="drawer-label-row">
-                <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600, marginBottom: 0 }}>Group By</span>
-                <span className="drawer-info-icon" title="Group book cards into horizontal lanes by series or author.">?</span>
+                <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600, marginBottom: 0 }}>{lang === 'es' ? 'Agrupar por' : 'Group By'}</span>
+                <span className="drawer-info-icon" title={lang === 'es' ? 'Agrupar tarjetas en filas horizontales por serie o autor.' : 'Group book cards into horizontal lanes by series or author.'}>?</span>
               </div>
               <div className="drawer-segmented-control">
                 {[
-                  { value: 'none', label: 'None' },
-                  { value: 'series', label: 'Series' },
-                  { value: 'author', label: 'Author' }
+                  { value: 'none', label: lang === 'es' ? 'Ninguno' : 'None' },
+                  { value: 'series', label: lang === 'es' ? 'Serie' : 'Series' },
+                  { value: 'author', label: lang === 'es' ? 'Autor' : 'Author' }
                 ].map(opt => (
                   <button
                     key={opt.value}
@@ -4013,36 +4346,36 @@ export default function Library({
 
           {/* SORTING GROUP */}
           <div>
-            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '14px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '6px' }}>Sorting</div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '14px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '6px' }}>{lang === 'es' ? 'Ordenamiento' : 'Sorting'}</div>
             
             {/* Sort By */}
             <div className="drawer-section" style={{ marginBottom: '14px' }}>
               <div className="drawer-label-row">
-                <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600, marginBottom: 0 }}>Sort By</span>
-                <span className="drawer-info-icon" title="Choose the sorting criteria for books inside each grid or section.">?</span>
+                <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600, marginBottom: 0 }}>{lang === 'es' ? 'Ordenar por' : 'Sort By'}</span>
+                <span className="drawer-info-icon" title={lang === 'es' ? 'Elige el criterio de ordenación para los libros.' : 'Choose the sorting criteria for books inside each grid or section.'}>?</span>
               </div>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
                 className="drawer-select"
               >
-                <option value="added">Added</option>
-                <option value="title">Title</option>
-                <option value="author">Author</option>
-                <option value="series">Series</option>
-                <option value="characters">Characters</option>
-                <option value="lastUpdate">Last update</option>
-                <option value="lastRead">Last read</option>
-                <option value="progress">Progress</option>
-                <option value="currentPosition">Current position</option>
+                <option value="added">{lang === 'es' ? 'Añadido' : 'Added'}</option>
+                <option value="title">{lang === 'es' ? 'Título' : 'Title'}</option>
+                <option value="author">{lang === 'es' ? 'Autor' : 'Author'}</option>
+                <option value="series">{lang === 'es' ? 'Serie' : 'Series'}</option>
+                <option value="characters">{lang === 'es' ? 'Caracteres' : 'Characters'}</option>
+                <option value="lastUpdate">{lang === 'es' ? 'Última actualización' : 'Last update'}</option>
+                <option value="lastRead">{lang === 'es' ? 'Último leído' : 'Last read'}</option>
+                <option value="progress">{lang === 'es' ? 'Progreso' : 'Progress'}</option>
+                <option value="currentPosition">{lang === 'es' ? 'Posición actual' : 'Current position'}</option>
               </select>
             </div>
 
             {/* Direction */}
             <div className="drawer-section" style={{ marginBottom: '14px' }}>
               <div className="drawer-label-row">
-                <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600, marginBottom: 0 }}>Direction</span>
-                <span className="drawer-info-icon" title="Sort elements in ascending or descending order.">?</span>
+                <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600, marginBottom: 0 }}>{lang === 'es' ? 'Dirección' : 'Direction'}</span>
+                <span className="drawer-info-icon" title={lang === 'es' ? 'Ordenar elementos en orden ascendente o descendente.' : 'Sort elements in ascending or descending order.'}>?</span>
               </div>
               <div className="drawer-segmented-control">
                 <button
@@ -4050,14 +4383,14 @@ export default function Library({
                   className={`drawer-segmented-btn ${sortDirection === 'asc' ? 'active' : ''}`}
                   onClick={() => setSortDirection('asc')}
                 >
-                  Ascending
+                  {lang === 'es' ? 'Ascendente' : 'Ascending'}
                 </button>
                 <button
                   type="button"
                   className={`drawer-segmented-btn ${sortDirection === 'desc' ? 'active' : ''}`}
                   onClick={() => setSortDirection('desc')}
                 >
-                  Descending
+                  {lang === 'es' ? 'Descendente' : 'Descending'}
                 </button>
               </div>
             </div>
@@ -4068,24 +4401,24 @@ export default function Library({
                 {/* Group Sort */}
                 <div className="drawer-section" style={{ marginBottom: '14px' }}>
                   <div className="drawer-label-row">
-                    <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600, marginBottom: 0 }}>Group Sort</span>
-                    <span className="drawer-info-icon" title="How the grouping lanes themselves are ordered.">?</span>
+                    <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600, marginBottom: 0 }}>{lang === 'es' ? 'Orden del grupo' : 'Group Sort'}</span>
+                    <span className="drawer-info-icon" title={lang === 'es' ? 'Cómo se ordenan las filas de agrupación.' : 'How the grouping lanes themselves are ordered.'}>?</span>
                   </div>
                   <select
                     value={groupSort}
                     onChange={(e) => setGroupSort(e.target.value)}
                     className="drawer-select"
                   >
-                    <option value="alphabetical">Alphabetical</option>
-                    <option value="date">Date</option>
+                    <option value="alphabetical">{lang === 'es' ? 'Alfabético' : 'Alphabetical'}</option>
+                    <option value="date">{lang === 'es' ? 'Fecha' : 'Date'}</option>
                   </select>
                 </div>
 
                 {/* Group Direction */}
                 <div className="drawer-section" style={{ marginBottom: '14px' }}>
                   <div className="drawer-label-row">
-                    <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600, marginBottom: 0 }}>Group Direction</span>
-                    <span className="drawer-info-icon" title="Ascending or descending order for grouping lanes.">?</span>
+                    <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600, marginBottom: 0 }}>{lang === 'es' ? 'Dirección del grupo' : 'Group Direction'}</span>
+                    <span className="drawer-info-icon" title={lang === 'es' ? 'Orden ascendente o descendente para las filas de agrupación.' : 'Ascending or descending order for grouping lanes.'}>?</span>
                   </div>
                   <div className="drawer-segmented-control">
                     <button
@@ -4093,14 +4426,14 @@ export default function Library({
                       className={`drawer-segmented-btn ${groupDirection === 'asc' ? 'active' : ''}`}
                       onClick={() => setGroupDirection('asc')}
                     >
-                      Ascending
+                      {lang === 'es' ? 'Ascendente' : 'Ascending'}
                     </button>
                     <button
                       type="button"
                       className={`drawer-segmented-btn ${groupDirection === 'desc' ? 'active' : ''}`}
                       onClick={() => setGroupDirection('desc')}
                     >
-                      Descending
+                      {lang === 'es' ? 'Descendente' : 'Descending'}
                     </button>
                   </div>
                 </div>
@@ -4362,7 +4695,7 @@ export default function Library({
         <div className="modal-overlay" onClick={() => setIsProfileSettingsOpen(false)} style={{ zIndex: 1200 }}>
           <div className="settings-modal" onClick={(e) => e.stopPropagation()} style={{ width: '90%', maxWidth: '400px' }}>
             <div className="modal-header">
-              <h3 className="modal-title">Configuración del Perfil</h3>
+              <h3 className="modal-title">{lang === 'es' ? 'Configuración del Perfil' : 'Profile Settings'}</h3>
               <button className="close-modal-btn" onClick={() => setIsProfileSettingsOpen(false)} style={{ background: 'transparent' }}>
                 <X size={20} />
               </button>
@@ -4378,12 +4711,12 @@ export default function Library({
                 style={{ display: 'none' }}
               />
 
-              <div className="avatar-selection-label" style={{ textAlign: 'center', marginBottom: '8px' }}>Foto de perfil:</div>
+              <div className="avatar-selection-label" style={{ textAlign: 'center', marginBottom: '8px' }}>{lang === 'es' ? 'Foto de perfil:' : 'Profile picture:'}</div>
               <div className="custom-avatar-uploader-container" style={{ marginBottom: '16px' }}>
                 <div 
                   className="custom-avatar-preview-circle"
                   onClick={() => customProfileSettingsAvatarInputRef.current.click()}
-                  title="Cambiar foto de perfil"
+                  title={lang === 'es' ? 'Cambiar foto de perfil' : 'Change profile picture'}
                   style={{ width: '90px', height: '90px' }}
                 >
                   {editProfileAvatar && (editProfileAvatar.startsWith('/') || editProfileAvatar.startsWith('data:')) ? (
@@ -4398,13 +4731,13 @@ export default function Library({
               </div>
 
               <div className="edit-form-row">
-                <label className="edit-form-label">Nombre del perfil</label>
+                <label className="edit-form-label">{lang === 'es' ? 'Nombre del perfil' : 'Profile name'}</label>
                 <input 
                   type="text" 
                   className="edit-form-input"
                   value={editProfileName}
                   onChange={(e) => setEditProfileName(e.target.value)}
-                  placeholder="Nombre..."
+                  placeholder={lang === 'es' ? 'Nombre...' : 'Name...'}
                   required
                 />
               </div>
@@ -4415,10 +4748,10 @@ export default function Library({
                   className="create-profile-cancel" 
                   onClick={() => setIsProfileSettingsOpen(false)}
                 >
-                  Cancelar
+                  {lang === 'es' ? 'Cancelar' : 'Cancel'}
                 </button>
                 <button type="submit" className="create-profile-save">
-                  Guardar
+                  {lang === 'es' ? 'Guardar' : 'Save'}
                 </button>
               </div>
             </form>
@@ -4426,7 +4759,187 @@ export default function Library({
         </div>
       )}
 
-      <AnkiConfigModal isOpen={isAnkiConfigOpen} onClose={() => setIsAnkiConfigOpen(false)} />
+      {/* Google Drive / Cloud Sync Modal */}
+      {isGDriveSyncOpen && (
+        <div className="modal-overlay" onClick={() => setIsGDriveSyncOpen(false)} style={{ zIndex: 1200 }}>
+          <div className="settings-modal" onClick={(e) => e.stopPropagation()} style={{ width: '90%', maxWidth: '420px', padding: '24px' }}>
+            <div className="modal-header" style={{ marginBottom: '20px' }}>
+              <h3 className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Cloud size={20} style={{ color: '#4285F4' }} />
+                <span>{lang === 'es' ? 'Sincronización Google Drive' : 'Google Drive Sync'}</span>
+              </h3>
+              <button className="close-modal-btn" onClick={() => setIsGDriveSyncOpen(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.5)' }}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.5, marginBottom: '20px' }}>
+              {lang === 'es' 
+                ? 'Sincroniza tus libros, progreso y vocabulario directamente con tu cuenta de Google Drive utilizando la API oficial.' 
+                : 'Sync your books, progress, and vocabulary directly with your Google Drive account using the official API.'}
+            </div>
+
+            {/* Client ID / Secret Configuration */}
+            {!gDriveTokens && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
+                <div>
+                  <label style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                    CLIENT ID
+                  </label>
+                  <input 
+                    type="password"
+                    value={gDriveClientId}
+                    onChange={(e) => setGDriveClientId(e.target.value)}
+                    placeholder="Enter Client ID..."
+                    className="edit-form-input"
+                    style={{ width: '100%', fontSize: '0.8rem', padding: '8px 10px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                    CLIENT SECRET (OPTIONAL)
+                  </label>
+                  <input 
+                    type="password"
+                    value={gDriveClientSecret}
+                    onChange={(e) => setGDriveClientSecret(e.target.value)}
+                    placeholder="Enter Client Secret..."
+                    className="edit-form-input"
+                    style={{ width: '100%', fontSize: '0.8rem', padding: '8px 10px', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff' }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Connection Status Card */}
+            <div style={{ 
+              background: 'rgba(255,255,255,0.02)', 
+              border: '1px solid rgba(255,255,255,0.06)', 
+              borderRadius: '12px', 
+              padding: '16px', 
+              marginBottom: '20px' 
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>
+                  {lang === 'es' ? 'ESTADO' : 'STATUS'}
+                </span>
+                <span style={{ 
+                  fontSize: '0.75rem', 
+                  fontWeight: 700, 
+                  textTransform: 'uppercase',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  background: gDriveSyncStatus === 'authorized' ? 'rgba(52, 211, 153, 0.1)' : gDriveSyncStatus === 'syncing' ? 'rgba(251, 191, 36, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                  color: gDriveSyncStatus === 'authorized' ? '#34d399' : gDriveSyncStatus === 'syncing' ? '#fbbf24' : '#f87171'
+                }}>
+                  {gDriveSyncStatus === 'authorized' ? (lang === 'es' ? 'Conectado' : 'Connected') :
+                   gDriveSyncStatus === 'syncing' ? (lang === 'es' ? 'Sincronizando...' : 'Syncing...') :
+                   (lang === 'es' ? 'Desconectado' : 'Disconnected')}
+                </span>
+              </div>
+
+              {gDriveTokens ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#34d399', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>✅</span> <span>{lang === 'es' ? 'Cuenta vinculada' : 'Account linked'}</span>
+                  </div>
+                  {lastSyncTime && (
+                    <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: '4px' }}>
+                      {lang === 'es' ? 'Última sincronización:' : 'Last sync:'} {lastSyncTime}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.4)', fontStyle: 'italic' }}>
+                  {lang === 'es' ? 'Ninguna cuenta conectada' : 'No account connected'}
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
+              <button 
+                type="button"
+                onClick={handleConnectGDrive}
+                disabled={gDriveSyncStatus === 'syncing'}
+                className="vocab-action-btn"
+                style={{ width: '100%', padding: '12px', justifyContent: 'center', gap: '8px', fontSize: '0.85rem' }}
+              >
+                <span>🔑</span> {gDriveTokens ? (lang === 'es' ? 'Re-conectar cuenta' : 'Re-connect account') : (lang === 'es' ? 'Conectar cuenta' : 'Connect account')}
+              </button>
+
+              {gDriveTokens && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <button 
+                      type="button"
+                      onClick={handleUploadGDrive}
+                      disabled={gDriveSyncStatus === 'syncing'}
+                      className="vocab-action-btn"
+                      style={{ padding: '12px', justifyContent: 'center', gap: '6px', fontSize: '0.85rem', background: 'rgba(66, 133, 244, 0.1)', color: '#4285F4', border: '1px solid rgba(66, 133, 244, 0.2)' }}
+                    >
+                      <span>📤</span> {lang === 'es' ? 'Subir copia completa' : 'Upload full backup'}
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={handleDownloadGDrive}
+                      disabled={gDriveSyncStatus === 'syncing'}
+                      className="vocab-action-btn"
+                      style={{ padding: '12px', justifyContent: 'center', gap: '6px', fontSize: '0.85rem', background: 'rgba(52, 211, 153, 0.1)', color: '#34d399', border: '1px solid rgba(52, 211, 153, 0.2)' }}
+                    >
+                      <span>📥</span> {lang === 'es' ? 'Descargar' : 'Download'}
+                    </button>
+                  </div>
+
+                  {/* Auto-Sync Toggle Option */}
+                  <label style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'space-between',
+                    padding: '12px', 
+                    borderRadius: '8px',
+                    background: 'rgba(255,255,255,0.01)',
+                    border: '1px solid rgba(255,255,255,0.03)',
+                    cursor: 'pointer',
+                    marginTop: '10px'
+                  }}>
+                    <span style={{ fontSize: '0.8rem', color: '#fff', fontWeight: 600 }}>
+                      {lang === 'es' ? 'Sincronización automática' : 'Auto-Sync on startup'}
+                    </span>
+                    <input 
+                      type="checkbox"
+                      checked={isAutoSyncEnabled}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setIsAutoSyncEnabled(val);
+                        localStorage.setItem('gdrive_autosync_enabled', val ? 'true' : 'false');
+                      }}
+                      style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                    />
+                  </label>
+                </>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button 
+                type="button"
+                className="create-profile-cancel"
+                onClick={() => setIsGDriveSyncOpen(false)}
+                style={{ padding: '8px 16px', fontSize: '0.85rem' }}
+              >
+                {lang === 'es' ? 'Cerrar' : 'Close'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <React.Suspense fallback={null}>
+        {isAnkiConfigOpen && (
+          <AnkiConfigModal isOpen={isAnkiConfigOpen} onClose={() => setIsAnkiConfigOpen(false)} />
+        )}
+      </React.Suspense>
     </div>
   );
 }

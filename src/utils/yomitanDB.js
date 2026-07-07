@@ -351,27 +351,92 @@ export async function searchYomitanDB(word, reading = '') {
   return null;
 }
 
-export async function getAllDictionaryData() {
+export async function exportDictionaryDataToZip(zip, onProgress) {
   const db = await getDB();
+  
+  onProgress('Exportando metadatos de diccionarios...', 5);
   const dictionaries = await new Promise(r => {
     const tx = db.transaction(STORE_DICTS, 'readonly');
     const req = tx.objectStore(STORE_DICTS).getAll();
     req.onsuccess = () => r(req.result || []);
     req.onerror = () => r([]);
   });
-  const terms = await new Promise(r => {
+  
+  onProgress('Exportando términos del diccionario...', 10);
+  const termChunkSize = 25000;
+  let currentTermChunk = [];
+  let termChunkCount = 0;
+  let totalTermsExported = 0;
+  
+  await new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_TERMS, 'readonly');
-    const req = tx.objectStore(STORE_TERMS).getAll();
-    req.onsuccess = () => r(req.result || []);
-    req.onerror = () => r([]);
+    const store = tx.objectStore(STORE_TERMS);
+    const request = store.openCursor();
+    
+    request.onsuccess = (event) => {
+      const cursor = event.target.result;
+      if (cursor) {
+        currentTermChunk.push(cursor.value);
+        totalTermsExported++;
+        
+        if (currentTermChunk.length >= termChunkSize) {
+          zip.file(`terms_chunk_${termChunkCount}.json`, JSON.stringify(currentTermChunk));
+          termChunkCount++;
+          currentTermChunk = [];
+          onProgress(`Exportados ${totalTermsExported} términos...`, 15 + Math.min(30, Math.floor(totalTermsExported / 10000)));
+        }
+        cursor.continue();
+      } else {
+        if (currentTermChunk.length > 0) {
+          zip.file(`terms_chunk_${termChunkCount}.json`, JSON.stringify(currentTermChunk));
+          termChunkCount++;
+        }
+        resolve();
+      }
+    };
+    request.onerror = reject;
   });
-  const frequencies = await new Promise(r => {
+  
+  zip.file('terms_info.json', JSON.stringify({ chunkCount: termChunkCount, totalCount: totalTermsExported }));
+  
+  onProgress('Exportando frecuencias del diccionario...', 50);
+  const freqChunkSize = 25000;
+  let currentFreqChunk = [];
+  let freqChunkCount = 0;
+  let totalFreqsExported = 0;
+  
+  await new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_FREQS, 'readonly');
-    const req = tx.objectStore(STORE_FREQS).getAll();
-    req.onsuccess = () => r(req.result || []);
-    req.onerror = () => r([]);
+    const store = tx.objectStore(STORE_FREQS);
+    const request = store.openCursor();
+    
+    request.onsuccess = (event) => {
+      const cursor = event.target.result;
+      if (cursor) {
+        currentFreqChunk.push(cursor.value);
+        totalFreqsExported++;
+        
+        if (currentFreqChunk.length >= freqChunkSize) {
+          zip.file(`frequencies_chunk_${freqChunkCount}.json`, JSON.stringify(currentFreqChunk));
+          freqChunkCount++;
+          currentFreqChunk = [];
+          onProgress(`Exportadas ${totalFreqsExported} frecuencias...`, 55 + Math.min(35, Math.floor(totalFreqsExported / 10000)));
+        }
+        cursor.continue();
+      } else {
+        if (currentFreqChunk.length > 0) {
+          zip.file(`frequencies_chunk_${freqChunkCount}.json`, JSON.stringify(currentFreqChunk));
+          freqChunkCount++;
+        }
+        resolve();
+      }
+    };
+    request.onerror = reject;
   });
-  return { dictionaries, terms, frequencies };
+  
+  zip.file('frequencies_info.json', JSON.stringify({ chunkCount: freqChunkCount, totalCount: totalFreqsExported }));
+  
+  return dictionaries;
 }
 
 export async function importAllDictionaryData({ dictionaries, terms, frequencies }) {

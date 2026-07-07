@@ -198,23 +198,8 @@ const LOCAL_DICTIONARY = {
   }
 };
 
-// Free Google Translate API helper to translate English definitions to Spanish
-async function translateToSpanish(text) {
-  try {
-    const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=es&dt=t&q=${encodeURIComponent(text)}`);
-    if (!response.ok) return text;
-    const data = await response.json();
-    if (data && data[0] && data[0][0]) {
-      return data[0].map(item => item[0]).join('').trim();
-    }
-  } catch (error) {
-    console.error('Translation failed:', error);
-  }
-  return text;
-}
-
 // Look up a word (first in local database, then on Jisho.org API via CORS proxy)
-export async function lookupWord(word, reading = '', targetLang = 'en') {
+export async function lookupWord(word, reading = '') {
   // 1. Clean the word: remove trailing particles or spaces
   const cleanWord = word.trim();
   if (!cleanWord) return null;
@@ -280,28 +265,6 @@ export async function lookupWord(word, reading = '', targetLang = 'en') {
       definitions: ['No translation found. Click "Search Jisho" for online lookup.'],
       isFallback: true
     };
-  }
-
-  // 4. Translate definitions to Spanish if targetLang is 'es'
-  if (targetLang === 'es') {
-    if (entry.definitionsEs) {
-      entry.definitions = entry.definitionsEs;
-    } else {
-      try {
-        const translatedDefs = await Promise.all(
-          entry.definitions.map(async (def) => {
-            if (def.includes('No translation found') || def.includes('No se encontró definición')) {
-              return 'No se encontró definición directa. Haz clic en "Buscar en Jisho" para ver más en línea.';
-            }
-            return await translateToSpanish(def);
-          })
-        );
-        entry.definitionsEs = translatedDefs;
-        entry.definitions = translatedDefs;
-      } catch (err) {
-        console.error('Failed to translate entry definitions:', err);
-      }
-    }
   }
 
   return entry;
