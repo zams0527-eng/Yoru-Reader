@@ -420,31 +420,54 @@ export default function Library({
     setProg(0);
     
     try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      let arrayBuffer;
       
-      const reader = response.body.getReader();
-      const contentLength = +response.headers.get('Content-Length');
-      let receivedLength = 0;
-      let chunks = [];
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        receivedLength += value.length;
-        if (contentLength) {
-          const percent = Math.round((receivedLength / contentLength) * 100);
-          setDownloadProgress(percent);
-          setMsg(`Descargando: ${percent}%`);
-        } else {
-          setMsg(`Descargado ${Math.round(receivedLength / 1024)} KB`);
+      if (window.electronAPI && window.electronAPI.downloadGoogleDrive) {
+        const removeListener = window.electronAPI.onDownloadProgress((data) => {
+          if (data.id === url) {
+            if (data.percent >= 0) {
+              setDownloadProgress(data.percent);
+              setMsg(`Descargando: ${data.percent}%`);
+            } else {
+              setMsg(`Descargado ${Math.round(data.downloadedBytes / 1024)} KB`);
+            }
+          }
+        });
+        
+        try {
+          const buffer = await window.electronAPI.downloadGoogleDrive(url, url);
+          arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+        } finally {
+          removeListener();
         }
+      } else {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const reader = response.body.getReader();
+        const contentLength = +response.headers.get('Content-Length');
+        let receivedLength = 0;
+        let chunks = [];
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          receivedLength += value.length;
+          if (contentLength) {
+            const percent = Math.round((receivedLength / contentLength) * 100);
+            setDownloadProgress(percent);
+            setMsg(`Descargando: ${percent}%`);
+          } else {
+            setMsg(`Descargado ${Math.round(receivedLength / 1024)} KB`);
+          }
+        }
+        const blob = new Blob(chunks);
+        arrayBuffer = await blob.arrayBuffer();
       }
       
       setMsg('Procesando base de datos...');
-      const blob = new Blob(chunks);
-      const file = new File([blob], `${title.replace(/\s+/g, '_')}.zip`, { type: 'application/zip' });
+      const file = new File([arrayBuffer], `${title.replace(/\s+/g, '_')}.zip`, { type: 'application/zip' });
       
       let hasTerms = !isFreq;
       let hasFreqs = isFreq;

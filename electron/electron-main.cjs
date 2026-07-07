@@ -123,6 +123,54 @@ ipcMain.handle('start-google-oauth', async (event, clientId) => {
   });
 });
 
+const https = require('https');
+
+ipcMain.handle('download-google-drive', async (event, { urlString, id }) => {
+  return new Promise((resolve, reject) => {
+    const options = {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    };
+
+    function download(url) {
+      https.get(url, options, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          download(res.headers.location);
+          return;
+        }
+        if (res.statusCode !== 200) {
+          reject(new Error(`HTTP status code ${res.statusCode}`));
+          return;
+        }
+
+        const totalLength = parseInt(res.headers['content-length'], 10) || 0;
+        let downloadedLength = 0;
+        const chunks = [];
+        
+        res.on('data', (chunk) => {
+          chunks.push(chunk);
+          downloadedLength += chunk.length;
+          if (totalLength > 0) {
+            const percent = Math.round((downloadedLength / totalLength) * 100);
+            event.sender.send('download-progress-event', { id, percent, downloadedBytes: downloadedLength });
+          } else {
+            event.sender.send('download-progress-event', { id, percent: -1, downloadedBytes: downloadedLength });
+          }
+        });
+        
+        res.on('end', () => {
+          const buffer = Buffer.concat(chunks);
+          resolve(buffer);
+        });
+      }).on('error', (err) => {
+        reject(err);
+      });
+    }
+    
+    download(urlString);
+  });
+});
 
 app.whenReady().then(createWindow);
 
