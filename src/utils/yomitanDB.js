@@ -472,10 +472,48 @@ export async function searchYomitanDB(word, reading = '') {
         if (res.tags) {
           res.tags.split(' ').filter(t => t.length > 0).forEach(t => tagsSet.add(t));
         }
-        res.definitions.forEach(def => {
-          const cleaned = cleanDefinition(def);
-          if (cleaned) combinedDefs.push(cleaned);
+        
+        const defs = res.definitions.map(cleanDefinition).filter(Boolean);
+        
+        // Detect if there are any Spanish definitions in this specific entry's definitions
+        const hasSpanish = defs.some(d => {
+          if (/[áéíóúñü]/i.test(d)) return true;
+          
+          const clean = d.toLowerCase().replace(/[^a-z\s]/g, '');
+          const words = clean.split(/\s+/);
+          const spaWords = new Set(['de', 'la', 'el', 'en', 'un', 'una', 'y', 'o', 'que', 'del', 'al', 'los', 'las', 'con', 'para', 'por', 'se', 'es', 'su', 'sus', 'casa', 'libro', 'palabra', 'tiempo', 'gente', 'vida', 'cosa', 'niño', 'mundo']);
+          return words.some(w => spaWords.has(w));
         });
+        
+        if (hasSpanish) {
+          // If Spanish is present, filter out the English definitions from this entry
+          const filtered = defs.filter(d => {
+            if (/[áéíóúñü]/i.test(d)) return true;
+            
+            const clean = d.toLowerCase().replace(/[^a-z\s]/g, '');
+            const words = clean.split(/\s+/);
+            
+            const engWords = new Set(['the', 'of', 'to', 'and', 'a', 'in', 'is', 'for', 'on', 'with', 'as', 'by', 'at', 'an', 'be', 'this', 'that', 'from', 'it', 'school', 'day', 'after', 'before', 'water', 'house', 'book', 'word', 'time', 'year', 'people', 'way', 'man', 'life', 'thing', 'child', 'world', 'gentleman']);
+            const spaWords = new Set(['de', 'la', 'el', 'en', 'un', 'una', 'y', 'o', 'que', 'del', 'al', 'los', 'las', 'con', 'para', 'por', 'se', 'es', 'su', 'sus']);
+            
+            let engCount = 0;
+            let spaCount = 0;
+            words.forEach(w => {
+              if (engWords.has(w)) engCount++;
+              if (spaWords.has(w)) spaCount++;
+            });
+            
+            return engCount <= spaCount;
+          });
+          
+          if (filtered.length > 0) {
+            combinedDefs.push(...filtered);
+          } else {
+            combinedDefs.push(...defs);
+          }
+        } else {
+          combinedDefs.push(...defs);
+        }
       });
       
       const posTags = [...tagsSet].slice(0, 3);
