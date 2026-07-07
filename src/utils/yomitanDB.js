@@ -587,54 +587,34 @@ export async function searchYomitanDB(word, reading = '') {
 
       const combinedDefs = [];
       const tagsSet = new Set();
-      
+
+      // Helpers to classify definitions by language
+      const SPA_DIACRITICS = /[áéíóúüñÁÉÍÓÚÜÑ¿¡]/u;
+      const SPA_WORDS = /\b(de|del|el|la|los|las|en|un|una|unos|unas|con|por|para|que|es|son|su|sus|se|al|como|más|no|si|lo|le|les|muy|también|pero|cuando|este|esta|estos|estas|fue|ser|hay|ya|porque|aunque|donde|mientras|entre)\b/i;
+      const ENG_WORDS = /\b(the|of|to|and|a|in|is|for|on|with|as|by|at|an|be|this|that|from|it|are|or|if|but|after|before|during|while|have|has|had|not|also|can|will|its|was|were|been|one|two|three|four|five|used|made|when|which|who|what|where|how)\b/i;
+
+      const isSpanish = (text) => SPA_DIACRITICS.test(text) || SPA_WORDS.test(text);
+      const isEnglish = (text) => !SPA_DIACRITICS.test(text) && ENG_WORDS.test(text) && !SPA_WORDS.test(text);
+
       results.forEach(res => {
         if (res.tags) {
           res.tags.split(' ').filter(t => t.length > 0).forEach(t => tagsSet.add(t));
         }
-        
+
         const defs = res.definitions.map(cleanDefinition).filter(Boolean);
-        
-        // Detect if there are any Spanish definitions in this specific entry's definitions
-        const hasSpanish = defs.some(d => {
-          if (/[áéíóúñü]/i.test(d)) return true;
-          
-          const clean = d.toLowerCase().replace(/[^a-z\s]/g, '');
-          const words = clean.split(/\s+/);
-          const spaWords = new Set(['de', 'la', 'el', 'en', 'un', 'una', 'y', 'o', 'que', 'del', 'al', 'los', 'las', 'con', 'para', 'por', 'se', 'es', 'su', 'sus', 'casa', 'libro', 'palabra', 'tiempo', 'gente', 'vida', 'cosa', 'niño', 'mundo']);
-          return words.some(w => spaWords.has(w));
-        });
-        
+
+        // Check if this entry has at least one Spanish definition
+        const hasSpanish = defs.some(isSpanish);
+
         if (hasSpanish) {
-          // If Spanish is present, filter out the English definitions from this entry
-          const filtered = defs.filter(d => {
-            if (/[áéíóúñü]/i.test(d)) return true;
-            
-            const clean = d.toLowerCase().replace(/[^a-z\s]/g, '');
-            const words = clean.split(/\s+/);
-            
-            const engWords = new Set(['the', 'of', 'to', 'and', 'a', 'in', 'is', 'for', 'on', 'with', 'as', 'by', 'at', 'an', 'be', 'this', 'that', 'from', 'it', 'school', 'day', 'after', 'before', 'water', 'house', 'book', 'word', 'time', 'year', 'people', 'way', 'man', 'life', 'thing', 'child', 'world', 'gentleman']);
-            const spaWords = new Set(['de', 'la', 'el', 'en', 'un', 'una', 'y', 'o', 'que', 'del', 'al', 'los', 'las', 'con', 'para', 'por', 'se', 'es', 'su', 'sus']);
-            
-            let engCount = 0;
-            let spaCount = 0;
-            words.forEach(w => {
-              if (engWords.has(w)) engCount++;
-              if (spaWords.has(w)) spaCount++;
-            });
-            
-            return engCount <= spaCount;
-          });
-          
-          if (filtered.length > 0) {
-            combinedDefs.push(...filtered);
-          } else {
-            combinedDefs.push(...defs);
-          }
+          // Keep only non-English defs (Spanish + Japanese notes + other)
+          const filtered = defs.filter(d => !isEnglish(d));
+          combinedDefs.push(...(filtered.length > 0 ? filtered : defs));
         } else {
           combinedDefs.push(...defs);
         }
       });
+
       
       const posTags = [...tagsSet].slice(0, 3);
       const finalResult = {
