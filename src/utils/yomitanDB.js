@@ -7,44 +7,22 @@ const STORE_TERMS = 'terms';
 const STORE_FREQS = 'frequencies';
 
 let dbInstance = null;
-let dbCloseTimeout = null;
 
 /**
- * Cierra la conexión de IndexedDB para liberar memoria.
+ * Cierra de forma inmediata la conexión de IndexedDB para liberar memoria.
  */
 export async function closeDB() {
-  if (dbCloseTimeout) {
-    clearTimeout(dbCloseTimeout);
-    dbCloseTimeout = null;
-  }
   if (dbInstance) {
     dbInstance.close();
     dbInstance = null;
-    console.log("Conexión a IndexedDB cerrada para liberar memoria RAM.");
+    console.log("Conexión a IndexedDB cerrada de forma inmediata para liberar memoria RAM.");
   }
-}
-
-/**
- * Programa el cierre de la conexión después de un período de inactividad (5 segundos).
- */
-function scheduleDBClose() {
-  if (dbCloseTimeout) {
-    clearTimeout(dbCloseTimeout);
-  }
-  dbCloseTimeout = setTimeout(() => {
-    closeDB();
-  }, 5000);
 }
 
 /**
  * Obtiene la instancia activa de IndexedDB.
  */
 export async function getDB() {
-  if (dbCloseTimeout) {
-    clearTimeout(dbCloseTimeout);
-    dbCloseTimeout = null;
-  }
-  
   if (dbInstance) return dbInstance;
   
   return new Promise((resolve, reject) => {
@@ -81,7 +59,7 @@ export async function getDB() {
 }
 
 /**
- * Obtiene la lista de diccionarios instalados.
+ * Obtiene la lista de diccionarios instalados y cierra la conexión.
  */
 export async function getInstalledDictionaries() {
   const db = await getDB();
@@ -95,12 +73,12 @@ export async function getInstalledDictionaries() {
     });
     return result;
   } finally {
-    scheduleDBClose();
+    await closeDB();
   }
 }
 
 /**
- * Elimina un diccionario y todos sus registros en lotes para evitar sobrecarga de memoria.
+ * Elimina un diccionario y sus registros asociados en micro-lotes para evitar consumo de memoria.
  */
 export async function deleteDictionary(title) {
   const db = await getDB();
@@ -126,17 +104,16 @@ export async function deleteDictionary(title) {
         
         request.onsuccess = (e) => {
           const cursor = e.target.result;
-          if (cursor && count < 5000) { // Borrar de 5000 en 5000
+          if (cursor && count < 5000) {
             cursor.delete();
             count++;
             cursor.continue();
           } else {
-            resolve(!!cursor); // Devuelve true si quedan más por borrar
+            resolve(!!cursor);
           }
         };
         request.onerror = reject;
       });
-      // Ceder el hilo para permitir Garbage Collection
       await new Promise(r => setTimeout(r, 20));
     }
     
@@ -165,7 +142,7 @@ export async function deleteDictionary(title) {
       await new Promise(r => setTimeout(r, 20));
     }
   } finally {
-    scheduleDBClose();
+    await closeDB();
   }
 }
 
@@ -198,7 +175,6 @@ export async function importYomitanZip(file, onProgress) {
     
     const db = await getDB();
     
-    // Guardar metadatos del diccionario
     await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_DICTS, 'readwrite');
       tx.objectStore(STORE_DICTS).put({
@@ -214,18 +190,16 @@ export async function importYomitanZip(file, onProgress) {
 
     let totalProcessed = 0;
 
-    // 1. Importar términos por lotes de archivos y vaciar variables
     if (termFiles.length > 0) {
       const totalFiles = termFiles.length;
-      for (let i = 0; i < termFiles.length; i++) {
+      for (let i = 0; i < totalFiles; i++) {
         const filename = termFiles[i];
         onProgress(`Procesando términos ${i+1}/${totalFiles}...`, 10 + Math.round((i / totalFiles) * 40));
         
         let content = await zip.file(filename).async('string');
         let termsArray = JSON.parse(content);
-        content = null; // Liberar string original
+        content = null;
         
-        // Escribir en IndexedDB
         await new Promise((resolve, reject) => {
           const tx = db.transaction(STORE_TERMS, 'readwrite');
           const store = tx.objectStore(STORE_TERMS);
@@ -248,12 +222,11 @@ export async function importYomitanZip(file, onProgress) {
           tx.onerror = reject;
         });
         
-        termsArray = null; // Liberar array en memoria
-        await new Promise(r => setTimeout(r, 30)); // Ceder el hilo para GC
+        termsArray = null;
+        await new Promise(r => setTimeout(r, 30));
       }
     }
 
-    // 2. Importar frecuencias por lotes de archivos
     if (metaFiles.length > 0) {
       const totalMetaFiles = metaFiles.length;
       for (let i = 0; i < metaFiles.length; i++) {
@@ -262,7 +235,7 @@ export async function importYomitanZip(file, onProgress) {
         
         let content = await zip.file(filename).async('string');
         let metaArray = JSON.parse(content);
-        content = null; // Liberar string original
+        content = null;
         
         await new Promise((resolve, reject) => {
           const tx = db.transaction(STORE_FREQS, 'readwrite');
@@ -308,8 +281,8 @@ export async function importYomitanZip(file, onProgress) {
           tx.onerror = reject;
         });
         
-        metaArray = null; // Liberar array
-        await new Promise(r => setTimeout(r, 30)); // Ceder el hilo para GC
+        metaArray = null;
+        await new Promise(r => setTimeout(r, 30));
       }
     }
     
@@ -319,59 +292,78 @@ export async function importYomitanZip(file, onProgress) {
     console.error('Error importando Yomitan ZIP:', error);
     throw error;
   } finally {
-    zip = null; // Asegurar liberación del ZIP
-    scheduleDBClose();
+    zip = null;
+    await closeDB();
   }
 }
 
 /**
- * Obtiene las frecuencias de una palabra de forma optimizada.
+ * Obtiene las frecuencias de una palabra proyectando únicamente los campos necesarios y cerrando la conexión.
  */
 export async function getFrequenciesForWord(word) {
   const db = await getDB();
+  const freqs = [];
   try {
-    const freqs = await new Promise((resolve) => {
+    await new Promise((resolve) => {
       const tx = db.transaction(STORE_FREQS, 'readonly');
       const store = tx.objectStore(STORE_FREQS);
       const index = store.index('term');
-      const request = index.getAll(IDBKeyRange.only(word));
+      const request = index.openCursor(IDBKeyRange.only(word));
       
-      request.onsuccess = () => {
-        const matches = request.result || [];
-        const resultList = matches.map(m => ({
-          dictionary: m.dictionary,
-          value: m.value,
-          displayValue: m.displayValue
-        }));
-        resolve(resultList);
+      request.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          const val = cursor.value;
+          // Consultas selectivas: Extraer únicamente las propiedades necesarias
+          freqs.push({
+            dictionary: val.dictionary,
+            value: val.value,
+            displayValue: val.displayValue
+          });
+          cursor.continue();
+        } else {
+          resolve();
+        }
       };
-      request.onerror = () => resolve([]);
+      request.onerror = () => resolve();
     });
     return freqs;
   } finally {
-    scheduleDBClose();
+    await closeDB();
   }
 }
 
 /**
- * Realiza una búsqueda de palabras en la base de datos IndexedDB.
+ * Realiza una búsqueda de palabras en la base de datos IndexedDB usando cursores y proyección
+ * para minimizar drásticamente el consumo de RAM, y cierra la conexión inmediatamente al terminar.
  */
 export async function searchYomitanDB(word, reading = '') {
   const db = await getDB();
-  const results = [];
+  let results = [];
   
   try {
-    // 1. Buscar coincidencia de término exacto
+    // 1. Buscar coincidencia de término exacto usando cursores (Consultas selectivas)
     await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_TERMS, 'readonly');
       const store = tx.objectStore(STORE_TERMS);
       const index = store.index('term');
-      const request = index.getAll(IDBKeyRange.only(word));
+      const request = index.openCursor(IDBKeyRange.only(word));
       
-      request.onsuccess = () => {
-        const matches = request.result || [];
-        results.push(...matches);
-        resolve();
+      request.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          const val = cursor.value;
+          // Guardar únicamente lo requerido para ahorrar memoria
+          results.push({
+            term: val.term,
+            reading: val.reading,
+            definitions: val.definitions,
+            tags: val.tags
+          });
+          cursor.continue();
+        } else {
+          resolve();
+        }
       };
       request.onerror = reject;
     });
@@ -382,12 +374,22 @@ export async function searchYomitanDB(word, reading = '') {
         const tx = db.transaction(STORE_TERMS, 'readonly');
         const store = tx.objectStore(STORE_TERMS);
         const index = store.index('reading');
-        const request = index.getAll(IDBKeyRange.only(reading));
+        const request = index.openCursor(IDBKeyRange.only(reading));
         
-        request.onsuccess = () => {
-          const matches = request.result || [];
-          results.push(...matches);
-          resolve();
+        request.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (cursor) {
+            const val = cursor.value;
+            results.push({
+              term: val.term,
+              reading: val.reading,
+              definitions: val.definitions,
+              tags: val.tags
+            });
+            cursor.continue();
+          } else {
+            resolve();
+          }
         };
         request.onerror = reject;
       });
@@ -398,6 +400,7 @@ export async function searchYomitanDB(word, reading = '') {
     if (results.length > 0) {
       const combinedDefs = [];
       const tagsSet = new Set();
+      
       results.forEach(res => {
         if (res.tags) {
           res.tags.split(' ').filter(t => t.length > 0).forEach(t => tagsSet.add(t));
@@ -419,13 +422,16 @@ export async function searchYomitanDB(word, reading = '') {
         isFromYomitan: true
       };
       
-      // Limpiar arrays temporales locales
+      // Garbage Collection Manual: Destruir referencias internas y liberar RAM
       results.length = 0; 
+      results = null;
+      tagsSet.clear();
+      
       return finalResult;
     }
     
     if (freqs.length > 0) {
-      return {
+      const finalResult = {
         word,
         reading: reading || '',
         definitions: [],
@@ -433,16 +439,22 @@ export async function searchYomitanDB(word, reading = '') {
         frequencies: freqs,
         isFromYomitan: true
       };
+      results.length = 0;
+      results = null;
+      return finalResult;
     }
     
+    results.length = 0;
+    results = null;
     return null;
   } finally {
-    scheduleDBClose();
+    // Cerramos la conexión de forma inmediata para forzar la liberación de memoria en Chromium
+    await closeDB();
   }
 }
 
 /**
- * Exporta el contenido de los diccionarios en lotes pequeños liberando memoria entre iteraciones.
+ * Exporta el contenido de los diccionarios liberando memoria entre iteraciones.
  */
 export async function exportDictionaryDataToZip(zip, onProgress) {
   const db = await getDB();
@@ -457,7 +469,7 @@ export async function exportDictionaryDataToZip(zip, onProgress) {
     });
     
     onProgress('Exportando términos del diccionario...', 10);
-    const termChunkSize = 5000; // Reducido para evitar picos de memoria RAM
+    const termChunkSize = 5000;
     let currentTermChunk = [];
     let termChunkCount = 0;
     let totalTermsExported = 0;
@@ -476,7 +488,7 @@ export async function exportDictionaryDataToZip(zip, onProgress) {
           if (currentTermChunk.length >= termChunkSize) {
             zip.file(`terms_chunk_${termChunkCount}.json`, JSON.stringify(currentTermChunk));
             termChunkCount++;
-            currentTermChunk.length = 0; // Limpiar array manteniendo la referencia
+            currentTermChunk.length = 0;
             onProgress(`Exportados ${totalTermsExported} términos...`, 15 + Math.min(30, Math.floor(totalTermsExported / 10000)));
           }
           cursor.continue();
@@ -484,7 +496,7 @@ export async function exportDictionaryDataToZip(zip, onProgress) {
           if (currentTermChunk.length > 0) {
             zip.file(`terms_chunk_${termChunkCount}.json`, JSON.stringify(currentTermChunk));
             termChunkCount++;
-            currentTermChunk = null; // Liberar del todo
+            currentTermChunk = null;
           }
           resolve();
         }
@@ -495,7 +507,7 @@ export async function exportDictionaryDataToZip(zip, onProgress) {
     zip.file('terms_info.json', JSON.stringify({ chunkCount: termChunkCount, totalCount: totalTermsExported }));
     
     onProgress('Exportando frecuencias del diccionario...', 50);
-    const freqChunkSize = 5000; // Reducido para memoria eficiente
+    const freqChunkSize = 5000;
     let currentFreqChunk = [];
     let freqChunkCount = 0;
     let totalFreqsExported = 0;
@@ -514,7 +526,7 @@ export async function exportDictionaryDataToZip(zip, onProgress) {
           if (currentFreqChunk.length >= freqChunkSize) {
             zip.file(`frequencies_chunk_${freqChunkCount}.json`, JSON.stringify(currentFreqChunk));
             freqChunkCount++;
-            currentFreqChunk.length = 0; // Limpiar
+            currentFreqChunk.length = 0;
             onProgress(`Exportadas ${totalFreqsExported} frecuencias...`, 55 + Math.min(35, Math.floor(totalFreqsExported / 10000)));
           }
           cursor.continue();
@@ -522,7 +534,7 @@ export async function exportDictionaryDataToZip(zip, onProgress) {
           if (currentFreqChunk.length > 0) {
             zip.file(`frequencies_chunk_${freqChunkCount}.json`, JSON.stringify(currentFreqChunk));
             freqChunkCount++;
-            currentFreqChunk = null; // Liberar
+            currentFreqChunk = null;
           }
           resolve();
         }
@@ -534,12 +546,12 @@ export async function exportDictionaryDataToZip(zip, onProgress) {
     
     return dictionaries;
   } finally {
-    scheduleDBClose();
+    await closeDB();
   }
 }
 
 /**
- * Importa todos los diccionarios por micro-lotes con pausas (yields) para evitar fugas y consumo excesivo.
+ * Importa todos los diccionarios por micro-lotes con pausas para evitar fugas.
  */
 export async function importAllDictionaryData({ dictionaries, terms, frequencies }) {
   const db = await getDB();
@@ -555,7 +567,6 @@ export async function importAllDictionaryData({ dictionaries, terms, frequencies
       });
     }
     
-    // Importar términos en pequeños lotes de 2500 elementos con descanso para Garbage Collector
     if (terms && terms.length > 0) {
       const batchSize = 2500;
       for (let i = 0; i < terms.length; i += batchSize) {
@@ -568,11 +579,10 @@ export async function importAllDictionaryData({ dictionaries, terms, frequencies
           tx.onerror = reject;
         });
         chunk = null;
-        await new Promise(r => setTimeout(r, 15)); // Yield GC
+        await new Promise(r => setTimeout(r, 15));
       }
     }
     
-    // Importar frecuencias en lotes
     if (frequencies && frequencies.length > 0) {
       const batchSize = 2500;
       for (let i = 0; i < frequencies.length; i += batchSize) {
@@ -585,10 +595,10 @@ export async function importAllDictionaryData({ dictionaries, terms, frequencies
           tx.onerror = reject;
         });
         chunk = null;
-        await new Promise(r => setTimeout(r, 15)); // Yield GC
+        await new Promise(r => setTimeout(r, 15));
       }
     }
   } finally {
-    scheduleDBClose();
+    await closeDB();
   }
 }
