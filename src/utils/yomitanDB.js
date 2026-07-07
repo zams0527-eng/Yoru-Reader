@@ -415,6 +415,14 @@ export async function getFrequenciesForWord(word) {
   }
 
   try {
+    // Get the set of actually installed dictionary titles to filter out orphaned entries
+    const installedTitles = await new Promise((resolve) => {
+      const tx = db.transaction(STORE_DICTS, 'readonly');
+      const req = tx.objectStore(STORE_DICTS).getAllKeys();
+      req.onsuccess = () => resolve(new Set(req.result));
+      req.onerror = () => resolve(new Set());
+    });
+
     await new Promise((resolve) => {
       const tx = db.transaction(STORE_FREQS, 'readonly');
       const store = tx.objectStore(STORE_FREQS);
@@ -425,7 +433,8 @@ export async function getFrequenciesForWord(word) {
         const cursor = e.target.result;
         if (cursor) {
           const val = cursor.value;
-          if (!disabledDicts.includes(val.dictionary)) {
+          // Only include if the dictionary is installed AND not disabled
+          if (installedTitles.has(val.dictionary) && !disabledDicts.includes(val.dictionary)) {
             freqs.push({
               dictionary: val.dictionary,
               value: val.value,
