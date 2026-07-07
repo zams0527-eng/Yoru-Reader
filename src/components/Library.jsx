@@ -333,7 +333,7 @@ export default function Library({
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
       if (e.key === 'q' || e.key === 'Q') {
         e.preventDefault();
-        setIsDisplaySettingsOpen(prev => !prev);
+        setIsSettingsOpen(prev => !prev);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -4966,8 +4966,8 @@ export default function Library({
             lastSyncTime,
             isAutoSyncEnabled, setIsAutoSyncEnabled,
             handleConnectGDrive,
-            handleUploadBackupToGDrive,
-            handleDownloadBackupFromGDrive
+            handleUploadBackupToGDrive: handleUploadGDrive,
+            handleDownloadBackupFromGDrive: handleDownloadGDrive
           }}
         />
       )}
