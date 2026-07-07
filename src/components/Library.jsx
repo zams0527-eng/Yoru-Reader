@@ -342,8 +342,15 @@ export default function Library({
 
   const handleDeleteDict = async (title) => {
     if (window.confirm(`¿Seguro que quieres borrar el diccionario "${title}"?`)) {
-      await deleteDictionary(title);
-      await loadInstalledDicts();
+      // Immediately remove from state so the UI updates instantly
+      setInstalledDicts(prev => prev.filter(d => d.title !== title));
+      try {
+        await deleteDictionary(title);
+      } catch (err) {
+        console.error('Error deleting dictionary:', err);
+        // Reload on error to restore correct state
+        await loadInstalledDicts();
+      }
     }
   };
 

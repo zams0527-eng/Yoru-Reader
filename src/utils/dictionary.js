@@ -218,21 +218,13 @@ export async function lookupWord(word, reading = '') {
     console.error('Yomitan DB search error:', err);
   }
 
-  // 3. Check local preset offline dictionary next
-  if (!entry) {
-    if (LOCAL_DICTIONARY[cleanWord]) {
-      entry = { ...LOCAL_DICTIONARY[cleanWord] };
-    } else if (reading && LOCAL_DICTIONARY[reading]) {
-      entry = { ...LOCAL_DICTIONARY[reading] };
-    }
-  }
 
-  // 4. Check Jisho cache
+  // 3. Fallback to Jisho cache
   if (!entry && JISHO_CACHE.has(cleanWord)) {
     entry = { ...JISHO_CACHE.get(cleanWord) };
   }
 
-  // 3. Query Jisho.org via allorigins CORS Proxy if not found
+  // 4. Query Jisho.org via allorigins CORS Proxy if not found
   if (!entry) {
     try {
       const jishoUrl = `https://jisho.org/api/v1/search/words?keyword=${encodeURIComponent(cleanWord)}`;
