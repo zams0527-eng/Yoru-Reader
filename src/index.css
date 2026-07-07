@@ -5365,13 +5365,11 @@ rt {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  padding-bottom: 12px;
+  margin-bottom: 24px;
 }
 
 .settings-menu-group:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
+  margin-bottom: 0;
 }
 
 .settings-group-header {

@@ -2579,9 +2579,9 @@ export default function Library({
             <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', background: '#2d2d34', padding: '2px 5px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)', fontWeight: 'bold' }}>CTRL F</span>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
             {/* General Section */}
-            <div style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '14px' }}>
+            <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
                 <span>🔧</span> {lang === 'es' ? 'General' : 'General'}
               </div>
@@ -2596,7 +2596,7 @@ export default function Library({
             </div>
 
             {/* Reader Section */}
-            <div style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '14px' }}>
+            <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
                 <span>📖</span> {lang === 'es' ? 'Lector' : 'Reader'}
               </div>
@@ -2611,7 +2611,7 @@ export default function Library({
             </div>
 
             {/* Integration Section */}
-            <div style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '14px' }}>
+            <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
                 <span>🔌</span> {lang === 'es' ? 'Integración' : 'Integration'}
               </div>
@@ -2623,7 +2623,7 @@ export default function Library({
             </div>
 
             {/* Seguimiento Section */}
-            <div style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '14px' }}>
+            <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
                 <span>📊</span> {lang === 'es' ? 'Seguimiento' : 'Tracking'}
               </div>
