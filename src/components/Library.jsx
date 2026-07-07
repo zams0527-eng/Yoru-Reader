@@ -145,9 +145,11 @@ export default function Library({
   const [dictImportProgress, setDictImportProgress] = useState(0);
   const [dictImportMsg, setDictImportMsg] = useState('');
   const [isImportingDict, setIsImportingDict] = useState(false);
+  const [dictImportSuccess, setDictImportSuccess] = useState(false);
   const [freqImportProgress, setFreqImportProgress] = useState(0);
   const [freqImportMsg, setFreqImportMsg] = useState('');
   const [isImportingFreq, setIsImportingFreq] = useState(false);
+  const [freqImportSuccess, setFreqImportSuccess] = useState(false);
   const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false);
   const [downloadingDictUrl, setDownloadingDictUrl] = useState(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
@@ -287,8 +289,10 @@ export default function Library({
     const setMsg = isFreq ? setFreqImportMsg : setDictImportMsg;
     const setProg = isFreq ? setFreqImportProgress : setDictImportProgress;
     const setIsImporting = isFreq ? setIsImportingFreq : setIsImportingDict;
+    const setSuccess = isFreq ? setFreqImportSuccess : setDictImportSuccess;
 
     setIsImporting(true);
+    setSuccess(false);
     setProg(0);
     setMsg('Iniciando...');
     try {
@@ -332,10 +336,19 @@ export default function Library({
         console.warn("Inspect/update dict type flags failed:", errInspect);
       }
 
-      await loadInstalledDicts();
+      // Show success state briefly, then hide bar and reload in background
+      setSuccess(true);
+      setMsg('¡Instalado correctamente!');
+      setProg(100);
+      setTimeout(() => {
+        setIsImporting(false);
+        setSuccess(false);
+        setProg(0);
+        setMsg('');
+        loadInstalledDicts();
+      }, 1500);
     } catch (err) {
       setMsg('Error: ' + err.message);
-    } finally {
       setIsImporting(false);
       e.target.value = '';
     }
@@ -421,10 +434,12 @@ export default function Library({
     const setMsg = isFreq ? setFreqImportMsg : setDictImportMsg;
     const setProg = isFreq ? setFreqImportProgress : setDictImportProgress;
     const setIsImporting = isFreq ? setIsImportingFreq : setIsImportingDict;
+    const setSuccess = isFreq ? setFreqImportSuccess : setDictImportSuccess;
 
     setDownloadingDictUrl(url);
     setDownloadProgress(0);
     setIsImporting(true);
+    setSuccess(false);
     setMsg('Conectando...');
     setProg(0);
     
@@ -505,11 +520,21 @@ export default function Library({
         console.warn("Preset dict metadata update failed:", errInspect);
       }
       
-      await loadInstalledDicts();
+      // Show success, then hide bar and reload dicts in background
+      setSuccess(true);
+      setMsg('¡Instalado correctamente!');
+      setProg(100);
       setIsLibraryModalOpen(false);
+      setTimeout(() => {
+        setIsImporting(false);
+        setSuccess(false);
+        setProg(0);
+        setMsg('');
+        setDownloadingDictUrl(null);
+        loadInstalledDicts();
+      }, 1500);
     } catch (err) {
       alert('Error instalando diccionario: ' + err.message);
-    } finally {
       setIsImporting(false);
       setDownloadingDictUrl(null);
     }
@@ -3747,13 +3772,13 @@ export default function Library({
                 </p>
                 
                 {isImportingDict && (
-                  <div style={{ margin: '16px 0', background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '8px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      <span>{dictImportMsg}</span>
+                  <div style={{ margin: '16px 0', background: dictImportSuccess ? 'rgba(34,197,94,0.08)' : 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '8px', border: dictImportSuccess ? '1px solid rgba(34,197,94,0.3)' : '1px solid transparent', transition: 'all 0.3s' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.8rem', color: dictImportSuccess ? '#4ade80' : 'var(--text-muted)' }}>
+                      <span>{dictImportSuccess ? '✓ ' : ''}{dictImportMsg}</span>
                       <span>{dictImportProgress}%</span>
                     </div>
                     <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
-                      <div style={{ width: `${dictImportProgress}%`, height: '100%', background: 'var(--primary)', transition: 'width 0.2s' }}></div>
+                      <div style={{ width: `${dictImportProgress}%`, height: '100%', background: dictImportSuccess ? '#4ade80' : 'var(--primary)', transition: 'width 0.2s, background 0.3s' }}></div>
                     </div>
                   </div>
                 )}
@@ -3780,13 +3805,13 @@ export default function Library({
                 </div>
 
                 {isImportingFreq && (
-                  <div style={{ margin: '16px 0', background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '8px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      <span>{freqImportMsg}</span>
+                  <div style={{ margin: '16px 0', background: freqImportSuccess ? 'rgba(34,197,94,0.08)' : 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '8px', border: freqImportSuccess ? '1px solid rgba(34,197,94,0.3)' : '1px solid transparent', transition: 'all 0.3s' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.8rem', color: freqImportSuccess ? '#4ade80' : 'var(--text-muted)' }}>
+                      <span>{freqImportSuccess ? '✓ ' : ''}{freqImportMsg}</span>
                       <span>{freqImportProgress}%</span>
                     </div>
                     <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
-                      <div style={{ width: `${freqImportProgress}%`, height: '100%', background: 'var(--primary)', transition: 'width 0.2s' }}></div>
+                      <div style={{ width: `${freqImportProgress}%`, height: '100%', background: freqImportSuccess ? '#4ade80' : 'var(--primary)', transition: 'width 0.2s, background 0.3s' }}></div>
                     </div>
                   </div>
                 )}
