@@ -146,6 +146,7 @@ export default function Library({
   const [dictImportMsg, setDictImportMsg] = useState('');
   const [isImportingDict, setIsImportingDict] = useState(false);
   const [settingsSearchQuery, setSettingsSearchQuery] = useState('');
+  const [activeSettingsSection, setActiveSettingsSection] = useState('sec-theme');
   const [activeMenuBookId, setActiveMenuBookId] = useState(null);
   const [menuOpenLeft, setMenuOpenLeft] = useState(false); // true = dropdown opens to the left of trigger
   const [activeHeaderDropdown, setActiveHeaderDropdown] = useState(null); // null | 'import' | 'database' | 'theme' | 'more'
@@ -2561,6 +2562,36 @@ export default function Library({
       return terms.every(term => tagsStr.toLowerCase().includes(term));
     };
 
+    const renderSidebarBtn = (sectionId, label, searchKeywords) => {
+      if (!matchesSearch(searchKeywords)) return null;
+      const isActive = activeSettingsSection === sectionId;
+      return (
+        <button
+          onClick={() => {
+            setActiveSettingsSection(sectionId);
+            setSettingsSearchQuery('');
+          }}
+          style={{
+            background: isActive ? 'rgba(255, 255, 255, 0.08)' : 'none',
+            border: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '6px 8px',
+            borderRadius: '5px',
+            fontSize: '0.88rem',
+            color: isActive ? '#ffffff' : 'rgba(255,255,255,0.7)',
+            width: '100%',
+            textAlign: 'left',
+            cursor: 'pointer',
+            fontWeight: isActive ? '600' : 'normal'
+          }}
+        >
+          {label}
+        </button>
+      );
+    };
+
     return (
       <div className="tab-view-container settings-view-panel yomitan-settings-layout" style={{ display: 'flex', gap: '24px', alignItems: 'stretch', height: '100%', width: '100%', margin: '0' }}>
         {/* Left Sidebar */}
@@ -2586,12 +2617,8 @@ export default function Library({
                 <span>🔧</span> {lang === 'es' ? 'General' : 'General'}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
-                {matchesSearch('tema theme active dark light sepia') && (
-                  <button onClick={() => scrollToSection('sec-theme')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{lang === 'es' ? '🎨 Tema' : '🎨 Theme'}</button>
-                )}
-                {matchesSearch('furigana traduccion translation learning status display pitch accent acento tono') && (
-                  <button onClick={() => scrollToSection('sec-display')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{lang === 'es' ? '🕒 Pantalla' : '🕒 Screen'}</button>
-                )}
+                {renderSidebarBtn('sec-theme', lang === 'es' ? '🎨 Tema' : '🎨 Theme', 'tema theme active dark light sepia')}
+                {renderSidebarBtn('sec-display', lang === 'es' ? '🕒 Pantalla' : '🕒 Screen', 'furigana traduccion translation learning status display pitch accent acento tono')}
               </div>
             </div>
 
@@ -2601,12 +2628,8 @@ export default function Library({
                 <span>📖</span> {lang === 'es' ? 'Lector' : 'Reader'}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
-                {matchesSearch('size texto text style font voz audio speed velocidad genero') && (
-                  <button onClick={() => scrollToSection('sec-text-style')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{lang === 'es' ? '🎨 Estilo de texto' : '🎨 Text Style'}</button>
-                )}
-                {matchesSearch('highlight oracion cursor hover highlights') && (
-                  <button onClick={() => scrollToSection('sec-highlights')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{lang === 'es' ? '🎯 Resaltado' : '🎯 Highlights'}</button>
-                )}
+                {renderSidebarBtn('sec-text-style', lang === 'es' ? '🎨 Estilo de texto' : '🎨 Text Style', 'size texto text style font voz audio speed velocidad genero')}
+                {renderSidebarBtn('sec-highlights', lang === 'es' ? '🎯 Resaltado' : '🎯 Highlights', 'highlight oracion cursor hover highlights')}
               </div>
             </div>
 
@@ -2616,9 +2639,7 @@ export default function Library({
                 <span>🔌</span> {lang === 'es' ? 'Integración' : 'Integration'}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
-                {matchesSearch('anki integration connect card mapping local') && (
-                  <button onClick={() => scrollToSection('sec-anki')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{lang === 'es' ? '🃏 Integración con Anki' : '🃏 Anki Integration'}</button>
-                )}
+                {renderSidebarBtn('sec-anki', lang === 'es' ? '🃏 Integración con Anki' : '🃏 Anki Integration', 'anki integration connect card mapping local')}
               </div>
             </div>
 
@@ -2628,15 +2649,9 @@ export default function Library({
                 <span>📊</span> {lang === 'es' ? 'Seguimiento' : 'Tracking'}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
-                {matchesSearch('stats config estadisticas tracking delete books annotations enabled') && (
-                  <button onClick={() => scrollToSection('sec-stats')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>📈 {lang === 'es' ? 'Estadísticas' : 'Statistics'}</button>
-                )}
-                {matchesSearch('reading day dia lectura start hours limites horas nocturno') && (
-                  <button onClick={() => scrollToSection('sec-reading-day')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>🕒 {lang === 'es' ? 'Día de lectura' : 'Reading Day'}</button>
-                )}
-                {matchesSearch('sync merge sincronizar combinar conflicto storage sync settings gdrive drive cloud') && (
-                  <button onClick={() => scrollToSection('sec-sync-merge')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>☁️ {lang === 'es' ? 'Sincronizar y combinar' : 'Sync & Merge'}</button>
-                )}
+                {renderSidebarBtn('sec-stats', lang === 'es' ? '📈 Estadísticas' : '📈 Statistics', 'stats config estadisticas tracking delete books annotations enabled')}
+                {renderSidebarBtn('sec-reading-day', lang === 'es' ? '🕒 Día de lectura' : '🕒 Reading Day', 'reading day dia lectura start hours limites horas nocturno')}
+                {renderSidebarBtn('sec-sync-merge', lang === 'es' ? '☁️ Sincronizar y combinar' : '☁️ Sync & Merge', 'sync merge sincronizar combinar conflicto storage sync settings gdrive drive cloud')}
               </div>
             </div>
 
@@ -2646,15 +2661,9 @@ export default function Library({
                 <span>🗄️</span> {lang === 'es' ? 'Datos' : 'Data'}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
-                {matchesSearch('backup import export catalogo perfil copia seguridad') && (
-                  <button onClick={() => scrollToSection('sec-backup')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{lang === 'es' ? '💾 Copias de seguridad' : '💾 Backups'}</button>
-                )}
-                {matchesSearch('diccionario dictionary offline jmdict frecuencia meta meta_bank zip') && (
-                  <button onClick={() => scrollToSection('sec-dicts')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: 'rgba(255,255,255,0.7)', width: '100%', textAlign: 'left', cursor: 'pointer' }}>{lang === 'es' ? '🗄️ Diccionarios' : '🗄️ Dictionaries'}</button>
-                )}
-                {matchesSearch('danger zone eliminar borrar todos datos irreversible reset clear storage') && (
-                  <button onClick={() => scrollToSection('sec-danger')} style={{ background: 'none', border: 'none', display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px', borderRadius: '5px', fontSize: '0.88rem', color: '#f87171', width: '100%', textAlign: 'left', cursor: 'pointer', fontWeight: 600 }}>{lang === 'es' ? '🔧 Zona de peligro' : '🔧 Danger Zone'}</button>
-                )}
+                {renderSidebarBtn('sec-backup', lang === 'es' ? '💾 Copias de seguridad' : '💾 Backups', 'backup import export catalogo perfil copia seguridad')}
+                {renderSidebarBtn('sec-dicts', lang === 'es' ? '🗄️ Diccionarios' : '🗄️ Dictionaries', 'diccionario dictionary offline jmdict frecuencia meta meta_bank zip')}
+                {renderSidebarBtn('sec-danger', lang === 'es' ? '🔧 Zona de peligro' : '🔧 Danger Zone', 'danger zone eliminar borrar todos datos irreversible reset clear storage')}
               </div>
             </div>
           </div>
@@ -2664,7 +2673,7 @@ export default function Library({
         <div className="yomitan-settings-pane" style={{ flex: 1, overflowY: 'auto', paddingRight: '10px', display: 'flex', flexDirection: 'column', gap: '24px', scrollBehavior: 'smooth', height: '100%', paddingBottom: '100px' }}>
           
           {/* Card: Theme */}
-          {matchesSearch('tema theme active dark light sepia') && (
+          {matchesSearch('tema theme active dark light sepia') && (settingsSearchQuery || activeSettingsSection === 'sec-theme') && (
             <div id="sec-theme" className="settings-section-card">
               <h3 className="settings-card-title">{lang === 'es' ? '🎨 Tema' : '🎨 Theme'}</h3>
               <p className="settings-card-desc">{lang === 'es' ? 'Elige la apariencia visual del lector para reducir la fatiga ocular.' : 'Choose the reader appearance to reduce eye strain.'}</p>
@@ -2685,7 +2694,7 @@ export default function Library({
           )}
 
           {/* Card: Display */}
-          {matchesSearch('furigana traduccion translation learning status display pitch accent acento tono') && (
+          {matchesSearch('furigana traduccion translation learning status display pitch accent acento tono') && (settingsSearchQuery || activeSettingsSection === 'sec-display') && (
             <div id="sec-display" className="settings-section-card">
               <h3 className="settings-card-title">{lang === 'es' ? '🕒 Pantalla' : '🕒 Screen'}</h3>
               <p className="settings-card-desc">{lang === 'es' ? 'Configura la visibilidad del furigana, traducciones y estados de aprendizaje.' : 'Configure furigana visibility, translations, and learning statuses.'}</p>
@@ -2754,7 +2763,7 @@ export default function Library({
           )}
 
           {/* Card: Text Style */}
-          {matchesSearch('size texto text style font voz audio speed velocidad genero') && (
+          {matchesSearch('size texto text style font voz audio speed velocidad genero') && (settingsSearchQuery || activeSettingsSection === 'sec-text-style') && (
             <div id="sec-text-style" className="settings-section-card">
               <h3 className="settings-card-title">{lang === 'es' ? '🎨 Estilos & Audio' : '🎨 Style & Audio'}</h3>
               <p className="settings-card-desc">{lang === 'es' ? 'Modifica el tamaño de la tipografía y los parámetros del reproductor de voz.' : 'Modify typography size and text-to-speech voice settings.'}</p>
@@ -2843,7 +2852,7 @@ export default function Library({
           )}
 
           {/* Card: Highlights */}
-          {matchesSearch('highlight oracion cursor hover highlights') && (
+          {matchesSearch('highlight oracion cursor hover highlights') && (settingsSearchQuery || activeSettingsSection === 'sec-highlights') && (
             <div id="sec-highlights" className="settings-section-card">
               <h3 className="settings-card-title">{lang === 'es' ? '🎯 Resaltados' : '🎯 Highlights'}</h3>
               <p className="settings-card-desc">{lang === 'es' ? 'Controla la interacción visual al pasar el cursor sobre las oraciones.' : 'Controls visual interaction when hovering over sentences.'}</p>
@@ -2863,7 +2872,7 @@ export default function Library({
           )}
 
           {/* Card: Anki Integration */}
-          {matchesSearch('anki integration connect card mapping local') && (
+          {matchesSearch('anki integration connect card mapping local') && (settingsSearchQuery || activeSettingsSection === 'sec-anki') && (
             <div id="sec-anki" className="settings-section-card">
               <h3 className="settings-card-title">{lang === 'es' ? '🃏 Integración con Anki' : '🃏 Anki Integration'}</h3>
               <p className="settings-card-desc">{lang === 'es' ? 'Conéctate a tu Anki local para añadir tarjetas directamente desde las oraciones y palabras buscadas.' : 'Connect to your local Anki instance to mine flashcards directly from sentences and dictionary words.'}</p>
@@ -2880,7 +2889,7 @@ export default function Library({
           )}
 
           {/* Card: Estadísticas (Yatsu style) */}
-          {matchesSearch('stats config estadisticas tracking delete books annotations enabled') && (
+          {matchesSearch('stats config estadisticas tracking delete books annotations enabled') && (settingsSearchQuery || activeSettingsSection === 'sec-stats') && (
             <div id="sec-stats" className="settings-section-card">
               <h3 className="settings-card-title">📈 {lang === 'es' ? 'Estadísticas' : 'Statistics'}</h3>
               <p className="settings-card-desc">{lang === 'es' ? 'Configura el almacenamiento del historial de lectura y las acciones de limpieza.' : 'Configure the storage of reading history and cleanup actions.'}</p>
@@ -2953,7 +2962,7 @@ export default function Library({
           )}
 
           {/* Card: Día de lectura */}
-          {matchesSearch('reading day dia lectura start hours limites horas nocturno') && (
+          {matchesSearch('reading day dia lectura start hours limites horas nocturno') && (settingsSearchQuery || activeSettingsSection === 'sec-reading-day') && (
             <div id="sec-reading-day" className="settings-section-card">
               <h3 className="settings-card-title">🕒 {lang === 'es' ? 'Día de lectura' : 'Reading Day'}</h3>
               <p className="settings-card-desc">{lang === 'es' ? 'Establece los límites horarios para el cálculo del historial de lectura diario.' : 'Sets calendar hour boundaries for daily reading history calculations.'}</p>
@@ -2984,7 +2993,7 @@ export default function Library({
           )}
 
           {/* Card: Sincronizar y combinar */}
-          {matchesSearch('sync merge sincronizar combinar conflicto storage sync settings gdrive drive cloud') && (
+          {matchesSearch('sync merge sincronizar combinar conflicto storage sync settings gdrive drive cloud') && (settingsSearchQuery || activeSettingsSection === 'sec-sync-merge') && (
             <div id="sec-sync-merge" className="settings-section-card">
               <h3 className="settings-card-title">☁️ {lang === 'es' ? 'Sincronizar y combinar' : 'Sync & Merge'}</h3>
               <p className="settings-card-desc">{lang === 'es' ? 'Configura la sincronización con almacenamiento en la nube y cómo se resuelven los conflictos.' : 'Configure cloud storage synchronization and how metadata conflicts are resolved.'}</p>
@@ -3103,7 +3112,7 @@ export default function Library({
           )}
 
           {/* Card: Backup */}
-          {matchesSearch('backup import export catalogo perfil copia seguridad') && (
+          {matchesSearch('backup import export catalogo perfil copia seguridad') && (settingsSearchQuery || activeSettingsSection === 'sec-backup') && (
             <div id="sec-backup" className="settings-section-card">
               <h3 className="settings-card-title">{lang === 'es' ? '💾 Copias de seguridad' : '💾 Backups'}</h3>
               <p className="settings-card-desc">{lang === 'es' ? 'Guarda todo tu catálogo, historial de lectura, perfiles y configuraciones de Anki en un archivo local (se excluyen los diccionarios para mantener el archivo ligero).' : 'Export all your library books, reading statistics, profiles, and configurations to a local backup file.'}</p>
@@ -3132,7 +3141,7 @@ export default function Library({
           )}
 
           {/* Card: Dictionaries */}
-          {matchesSearch('diccionario dictionary offline jmdict frecuencia meta meta_bank zip') && (
+          {matchesSearch('diccionario dictionary offline jmdict frecuencia meta meta_bank zip') && (settingsSearchQuery || activeSettingsSection === 'sec-dicts') && (
             <div id="sec-dicts" className="settings-section-card">
               <h3 className="settings-card-title">{t('dictionaryTitle', lang)}</h3>
               <p className="settings-card-desc">{t('dictDesc', lang)}</p>
@@ -3189,7 +3198,7 @@ export default function Library({
           )}
 
           {/* Card: Danger Zone */}
-          {matchesSearch('danger zone eliminar borrar todos datos irreversible reset clear storage') && (
+          {matchesSearch('danger zone eliminar borrar todos datos irreversible reset clear storage') && (settingsSearchQuery || activeSettingsSection === 'sec-danger') && (
             <div id="sec-danger" className="settings-section-card" style={{ borderColor: 'rgba(239, 68, 68, 0.3)', background: 'rgba(239, 68, 68, 0.02)' }}>
               <h3 className="settings-card-title" style={{ color: '#f87171' }}>🔧 {lang === 'es' ? 'Zona de peligro' : 'Danger Zone'}</h3>
               <p className="settings-card-desc">{lang === 'es' ? 'Acciones destructivas e irreversibles sobre los datos almacenados en la aplicación.' : 'Irreversible destructive actions on stored application data.'}</p>
