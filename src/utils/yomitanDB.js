@@ -78,6 +78,54 @@ export async function getInstalledDictionaries() {
 }
 
 /**
+ * Migra los diccionarios existentes que no tienen los flags hasTerms/hasFreqs,
+ * detectando el tipo real consultando los stores de términos y frecuencias.
+ */
+export async function migrateDictFlags() {
+  const db = await getDB();
+  try {
+    const dicts = await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_DICTS, 'readonly');
+      const req = tx.objectStore(STORE_DICTS).getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+
+    const needsMigration = dicts.filter(d => d.hasTerms === undefined || d.hasFreqs === undefined);
+    if (needsMigration.length === 0) return;
+
+    for (const dict of needsMigration) {
+      const hasTerms = await new Promise((resolve) => {
+        const tx = db.transaction(STORE_TERMS, 'readonly');
+        const idx = tx.objectStore(STORE_TERMS).index('dictionary');
+        const req = idx.openCursor(IDBKeyRange.only(dict.title));
+        req.onsuccess = (e) => resolve(!!e.target.result);
+        req.onerror = () => resolve(false);
+      });
+
+      const hasFreqs = await new Promise((resolve) => {
+        const tx = db.transaction(STORE_FREQS, 'readonly');
+        const idx = tx.objectStore(STORE_FREQS).index('dictionary');
+        const req = idx.openCursor(IDBKeyRange.only(dict.title));
+        req.onsuccess = (e) => resolve(!!e.target.result);
+        req.onerror = () => resolve(false);
+      });
+
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_DICTS, 'readwrite');
+        tx.objectStore(STORE_DICTS).put({ ...dict, hasTerms, hasFreqs });
+        tx.oncomplete = resolve;
+        tx.onerror = reject;
+      });
+    }
+  } catch (err) {
+    console.warn('migrateDictFlags failed:', err);
+  } finally {
+    await closeDB();
+  }
+}
+
+/**
  * Elimina un diccionario y sus registros asociados de forma ultra-rápida en una sola transacción.
  */
 export async function deleteDictionary(title) {
@@ -166,6 +214,9 @@ export async function importYomitanZip(file, onProgress) {
     
     const db = await getDB();
     
+    const hasTerms = termFiles.length > 0;
+    const hasFreqs = metaFiles.length > 0;
+
     await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE_DICTS, 'readwrite');
       tx.objectStore(STORE_DICTS).put({
@@ -173,7 +224,9 @@ export async function importYomitanZip(file, onProgress) {
         format: indexData.format,
         revision: indexData.revision,
         description: indexData.description,
-        importedAt: Date.now()
+        importedAt: Date.now(),
+        hasTerms,
+        hasFreqs
       });
       tx.oncomplete = resolve;
       tx.onerror = reject;
