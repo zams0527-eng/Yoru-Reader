@@ -3544,8 +3544,7 @@ export default function Library({
       {/* 2. Two-column Sidebar + Main Content Layout */}
       {activeTab === 'library' && (
         <div className="library-layout-wrapper">
-          {books.length > 0 && (
-            <aside className="library-sidebar">
+          <aside className="library-sidebar">
               {/* Search Input */}
               <div className="sidebar-search-container">
                 <input
@@ -3720,7 +3719,6 @@ export default function Library({
                 })()}
               </div>
             </aside>
-          )}
 
           <main className="library-main-content">
             {books.length === 0 ? (
