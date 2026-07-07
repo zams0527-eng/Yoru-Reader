@@ -1,10 +1,5 @@
 import React, { useState } from 'react';
-import { 
-  X, Search, Palette, Eye, BookOpen, Type, Keyboard, Layout, 
-  TrendingUp, Database, Cloud, Settings, AlertTriangle, 
-  Cpu, Sliders, ShieldAlert, BarChart2, Bell, Shield, 
-  Volume2, Heart
-} from 'lucide-react';
+import { X, Search } from 'lucide-react';
 import { t } from '../utils/i18n';
 const AnkiConfigModal = React.lazy(() => import('./AnkiConfigModal'));
 
@@ -15,7 +10,8 @@ export default function SettingsModal({
   onSaveSettings, 
   mode = 'settings', 
   book, 
-  onUpdateBookDetails 
+  onUpdateBookDetails,
+  libraryViewProps // Opcional, para controlar las tarjetas de la biblioteca
 }) {
   if (!isOpen) return null;
   const [isAnkiConfigOpen, setIsAnkiConfigOpen] = useState(false);
@@ -144,45 +140,82 @@ export default function SettingsModal({
     return settings.fontSize || 36;
   };
 
-  // Definición de las opciones de menú en el sidebar
+  // Estructura de menú idéntica al screenshot del usuario (con emojis)
   const menuStructure = [
     {
-      category: lang === 'es' ? 'General' : 'General',
-      icon: <Sliders size={14} />,
+      category: 'GENERAL',
       items: [
-        { id: 'display', label: lang === 'es' ? 'Visualización' : 'Display', icon: <Eye size={14} /> }
+        { id: 'theme', label: 'Tema', icon: <span>🎨</span> },
+        { id: 'display', label: 'Pantalla', icon: <span>🕒</span> }
       ]
     },
     {
-      category: lang === 'es' ? 'Lector' : 'Reader',
-      icon: <BookOpen size={14} />,
+      category: 'LECTOR',
       items: [
-        { id: 'text-style', label: lang === 'es' ? 'Estilo de Texto' : 'Text Style', icon: <Type size={14} /> },
-        { id: 'writing', label: lang === 'es' ? 'Escritura' : 'Writing', icon: <Keyboard size={14} /> },
-        { id: 'rendering', label: lang === 'es' ? 'Renderizado' : 'Rendering', icon: <Palette size={14} /> }
+        { id: 'text-style', label: 'Estilo de texto', icon: <span>🎨</span> },
+        { id: 'rendering', label: 'Resaltado', icon: <span>🎯</span> }
       ]
     },
     {
-      category: lang === 'es' ? 'Datos' : 'Data',
-      icon: <Database size={14} />,
+      category: 'INTEGRACIÓN',
       items: [
-        { id: 'sources', label: lang === 'es' ? 'Fuentes (Anki)' : 'Sources (Anki)', icon: <Database size={14} /> }
+        { id: 'sources', label: 'Integración con Anki', icon: <span>🃏</span> }
       ]
     },
     {
-      category: lang === 'es' ? 'Avanzado' : 'Advanced',
-      icon: <Cpu size={14} />,
+      category: 'DATOS',
       items: [
-        { id: 'experimental', label: lang === 'es' ? 'Experimental (TTS)' : 'Experimental (TTS)', icon: <Volume2 size={14} /> }
+        { id: 'backups', label: 'Copias de seguridad', icon: <span>💾</span> },
+        { id: 'dictionaries', label: 'Diccionarios', icon: <span>🗄️</span> },
+        { id: 'danger-zone', label: 'Zona de peligro', icon: <span>🔧</span>, color: '#f87171' }
       ]
     }
   ];
 
-  // Renderiza el control para el tamaño de la fuente
+  // 1. GENERAL / Tema
+  const renderThemeContent = () => (
+    <div className="settings-panel-section">
+      <h4 className="settings-panel-title">Tema</h4>
+      <div className="migaku-row">
+        <span className="migaku-label">{lang === 'es' ? 'Tema del lector' : 'Reader Theme'}</span>
+        <select 
+          value={settings.readerTheme || 'dark'}
+          onChange={(e) => updateSetting('readerTheme', e.target.value)}
+          className="migaku-select"
+        >
+          <option value="dark">{lang === 'es' ? 'Oscuro Yoru (por defecto)' : 'Dark Yoru (default)'}</option>
+          <option value="sepia">{lang === 'es' ? 'Sepia Relajante' : 'Warm Sepia'}</option>
+          <option value="light">{lang === 'es' ? 'Claro clásico' : 'Classic Light'}</option>
+        </select>
+      </div>
+    </div>
+  );
+
+  // 2. GENERAL / Pantalla
+  const renderDisplayContent = () => (
+    <div className="settings-panel-section">
+      <h4 className="settings-panel-title">Pantalla</h4>
+      <div className="migaku-row">
+        <span className="migaku-label">{t('interfaceLanguage', lang)}</span>
+        <select 
+          value={settings.appLanguage || 'es'}
+          onChange={(e) => updateSetting('appLanguage', e.target.value)}
+          className="migaku-select"
+        >
+          <option value="es">Español 🇪🇸</option>
+          <option value="en">English 🇺🇸</option>
+        </select>
+      </div>
+    </div>
+  );
+
+  // 3. LECTOR / Estilo de texto
   const renderTextStyleContent = () => (
     <div className="settings-panel-section">
-      <h4 className="settings-panel-title">{lang === 'es' ? 'Estilo de Texto' : 'Text Style'}</h4>
-      <div className="migaku-slider-row">
+      <h4 className="settings-panel-title">Estilo de texto</h4>
+      
+      {/* Tamaño del texto */}
+      <div className="migaku-slider-row" style={{ marginBottom: '14px' }}>
         <span className="slider-label">{t('readerFontSize', lang)}</span>
         <div className="migaku-slider-container">
           <span className="slider-icon-small">A</span>
@@ -206,32 +239,9 @@ export default function SettingsModal({
           <span className="slider-icon-large">A</span>
         </div>
       </div>
-    </div>
-  );
 
-  // Renderiza el control para el idioma de la app
-  const renderDisplayContent = () => (
-    <div className="settings-panel-section">
-      <h4 className="settings-panel-title">{lang === 'es' ? 'Visualización' : 'Display'}</h4>
-      <div className="migaku-row">
-        <span className="migaku-label">{t('interfaceLanguage', lang)}</span>
-        <select 
-          value={settings.appLanguage || 'es'}
-          onChange={(e) => updateSetting('appLanguage', e.target.value)}
-          className="migaku-select"
-        >
-          <option value="es">Español 🇪🇸</option>
-          <option value="en">English 🇺🇸</option>
-        </select>
-      </div>
-    </div>
-  );
-
-  // Renderiza los controles de escritura (Furigana)
-  const renderWritingContent = () => (
-    <div className="settings-panel-section">
-      <h4 className="settings-panel-title">{lang === 'es' ? 'Escritura' : 'Writing'}</h4>
-      <div className="migaku-row">
+      {/* Furigana */}
+      <div className="migaku-row" style={{ marginBottom: '14px' }}>
         <span className="migaku-label">Furigana</span>
         <select 
           value={settings.showFurigana || 'unknown-only'}
@@ -243,14 +253,90 @@ export default function SettingsModal({
           <option value="none">{t('pitchNone', lang)}</option>
         </select>
       </div>
+
+      {/* Si se proveen configuraciones de biblioteca (Library View Settings) */}
+      {libraryViewProps && (
+        <div style={{ marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            {lang === 'es' ? 'Ajustes de Biblioteca' : 'Library Card Settings'}
+          </div>
+
+          {/* Tamaño de tarjetas */}
+          <div className="drawer-section">
+            <span className="migaku-label" style={{ fontSize: '0.85rem' }}>{lang === 'es' ? 'Ancho de tarjetas' : 'Card Width'} ({libraryViewProps.cardWidth}px)</span>
+            <input 
+              type="range" 
+              min="120" 
+              max="240" 
+              step="8"
+              value={libraryViewProps.cardWidth} 
+              onChange={(e) => libraryViewProps.setCardWidth(parseInt(e.target.value))}
+              style={{ width: '100%', accentColor: 'var(--primary)', cursor: 'pointer', marginTop: '6px' }}
+            />
+          </div>
+
+          {/* Ajuste de portada */}
+          <div className="migaku-row">
+            <span className="migaku-label">{lang === 'es' ? 'Imagen de portada' : 'Cover Image'}</span>
+            <select 
+              value={libraryViewProps.coverFit}
+              onChange={(e) => libraryViewProps.setCoverFit(e.target.value)}
+              className="migaku-select"
+            >
+              <option value="cover">{lang === 'es' ? 'Rellenar' : 'Fill'}</option>
+              <option value="contain">{lang === 'es' ? 'Ajustar' : 'Fit'}</option>
+            </select>
+          </div>
+
+          {/* Checkboxes de detalles */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+            <span className="migaku-label" style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>
+              {lang === 'es' ? 'Detalles a mostrar:' : 'Details to display:'}
+            </span>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              {[
+                { key: 'title', label: lang === 'es' ? 'Título' : 'Title', value: libraryViewProps.showCardTitle, setter: libraryViewProps.setShowCardTitle },
+                { key: 'series', label: lang === 'es' ? 'Serie' : 'Series', value: libraryViewProps.showCardSeries, setter: libraryViewProps.setShowCardSeries },
+                { key: 'author', label: lang === 'es' ? 'Autor' : 'Author', value: libraryViewProps.showCardAuthor, setter: libraryViewProps.setShowCardAuthor },
+                { key: 'tags', label: lang === 'es' ? 'Etiquetas' : 'Tags', value: libraryViewProps.showCardTags, setter: libraryViewProps.setShowCardTags },
+                { key: 'progress', label: lang === 'es' ? 'Progreso' : 'Progress', value: libraryViewProps.showCardProgress, setter: libraryViewProps.setShowCardProgress },
+                { key: 'status', label: lang === 'es' ? 'Estado' : 'Status', value: libraryViewProps.showCardStatus, setter: libraryViewProps.setShowCardStatus }
+              ].map(opt => (
+                <label key={opt.key} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8rem', color: 'rgba(255,255,255,0.8)', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={opt.value} 
+                    onChange={(e) => opt.setter(e.target.checked)}
+                    style={{ accentColor: 'var(--primary)' }}
+                  />
+                  <span>{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+        </div>
+      )}
     </div>
   );
 
-  // Renderiza los controles de renderizado (Interruptores, acento tonal, etc.)
+  // 4. LECTOR / Resaltado
   const renderRenderingContent = () => (
     <div className="settings-panel-section">
-      <h4 className="settings-panel-title">{lang === 'es' ? 'Renderizado' : 'Rendering'}</h4>
+      <h4 className="settings-panel-title">Resaltado</h4>
       
+      <div className="migaku-row">
+        <span className="migaku-label">{lang === 'es' ? 'Acento por color' : 'Pitch accent by color'}</span>
+        <select 
+          value={settings.pitchAccent || 'none'}
+          onChange={(e) => updateSetting('pitchAccent', e.target.value)}
+          className="migaku-select"
+        >
+          <option value="none">{t('pitchNone', lang)}</option>
+          <option value="pitch-color">{t('pitchColor', lang)}</option>
+        </select>
+      </div>
+
       <div className="migaku-row">
         <span className="migaku-label">{lang === 'es' ? 'Estado de aprendizaje' : 'Learning Status'}</span>
         <label className="migaku-switch">
@@ -274,25 +360,13 @@ export default function SettingsModal({
           <span className="migaku-switch-slider"></span>
         </label>
       </div>
-
-      <div className="migaku-row">
-        <span className="migaku-label">{lang === 'es' ? 'Acento por color' : 'Pitch accent by color'}</span>
-        <select 
-          value={settings.pitchAccent || 'none'}
-          onChange={(e) => updateSetting('pitchAccent', e.target.value)}
-          className="migaku-select"
-        >
-          <option value="none">{t('pitchNone', lang)}</option>
-          <option value="pitch-color">{t('pitchColor', lang)}</option>
-        </select>
-      </div>
     </div>
   );
 
-  // Renderiza la configuración de Anki
+  // 5. INTEGRACIÓN / Integración con Anki
   const renderSourcesContent = () => (
     <div className="settings-panel-section">
-      <h4 className="settings-panel-title">{lang === 'es' ? 'Fuentes de Datos' : 'Data Sources'}</h4>
+      <h4 className="settings-panel-title">Integración con Anki</h4>
       <div className="migaku-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '8px' }}>
         <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
           {lang === 'es' ? 'Configura la conexión con tu cliente de AnkiConnect para minar vocabulario instantáneamente.' : 'Configure connection to AnkiConnect client for mining vocabulary on the fly.'}
@@ -303,79 +377,108 @@ export default function SettingsModal({
           type="button"
           style={{ width: '100%', display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', color: '#fff', cursor: 'pointer' }}
         >
-          <span>🃏 {lang === 'es' ? 'Configuración de Anki' : 'Anki Configuration'}</span>
-          <ChevronRight size={16} />
+          <span>🃏 {lang === 'es' ? 'Configurar AnkiConnect' : 'Configure AnkiConnect'}</span>
+          <span style={{ fontSize: '0.9rem' }}>→</span>
         </button>
       </div>
     </div>
   );
 
-  // Renderiza la configuración Experimental / Azure TTS
-  const renderExperimentalContent = () => (
+  // 6. DATOS / Copias de seguridad
+  const renderBackupsContent = () => {
+    // Si la app corre con Google Drive, mostramos un resumen rápido del estado
+    const gDriveActive = localStorage.getItem('yoru_gdrive_tokens') !== null;
+    return (
+      <div className="settings-panel-section">
+        <h4 className="settings-panel-title">Copias de seguridad</h4>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* Resumen Google Drive */}
+          <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}>GOOGLE DRIVE</span>
+              <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: '8px', background: gDriveActive ? 'rgba(52,211,153,0.1)' : 'rgba(255,255,255,0.05)', color: gDriveActive ? '#34d399' : 'rgba(255,255,255,0.4)' }}>
+                {gDriveActive ? (lang === 'es' ? 'VINCULADO' : 'LINKED') : (lang === 'es' ? 'DESCONECTADO' : 'DISCONNECTED')}
+              </span>
+            </div>
+            <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', margin: '0 0 10px 0' }}>
+              {lang === 'es' ? 'Sincroniza tus libros y progreso en la nube.' : 'Sync your books and progress in the cloud.'}
+            </p>
+          </div>
+
+          {/* Exportación Local */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+            <span className="migaku-label" style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>
+              {lang === 'es' ? 'Copias Locales (Archivo ZIP)' : 'Local Backups (ZIP File)'}
+            </span>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.electronAPI && window.electronAPI.exportLibrary) {
+                    window.electronAPI.exportLibrary().then(res => {
+                      if (res) alert(lang === 'es' ? 'Copia de seguridad guardada con éxito.' : 'Backup saved successfully.');
+                    }).catch(e => alert(e.message));
+                  } else {
+                    alert(lang === 'es' ? 'La copia local solo está disponible en la versión de escritorio.' : 'Local backup is only available on desktop.');
+                  }
+                }}
+                style={{ flex: 1, padding: '8px 10px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}
+              >
+                💾 {lang === 'es' ? 'Exportar copia' : 'Export backup'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // 7. DATOS / Diccionarios
+  const renderDictionariesContent = () => (
     <div className="settings-panel-section">
-      <h4 className="settings-panel-title">{lang === 'es' ? 'Configuración de Audio (Microsoft / Azure)' : 'Audio Configuration (Microsoft / Azure)'}</h4>
-      
-      <div className="migaku-row">
-        <span className="migaku-label">{lang === 'es' ? 'Voz de reproducción' : 'Playback Voice'}</span>
-        <select 
-          value={settings.audioVoiceOption || 'Nanami'}
-          onChange={(e) => updateSetting('audioVoiceOption', e.target.value)}
-          className="migaku-select"
+      <h4 className="settings-panel-title">Diccionarios</h4>
+      <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Japonés - Español</span>
+          <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(255,224,0,0.1)', color: 'var(--primary)' }}>ACTIVO</span>
+        </div>
+        <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', margin: 0 }}>
+          {lang === 'es' ? 'Base de datos Yomitan de diccionario integrada correctamente.' : 'Integrated Yomitan dictionary database loaded.'}
+        </p>
+      </div>
+    </div>
+  );
+
+  // 8. DATOS / Zona de peligro
+  const renderDangerZoneContent = () => (
+    <div className="settings-panel-section">
+      <h4 className="settings-panel-title" style={{ color: '#f87171', borderLeftColor: '#f87171' }}>Zona de peligro</h4>
+      <div style={{ background: 'rgba(239, 68, 68, 0.03)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <p style={{ fontSize: '0.78rem', color: 'rgba(255, 255, 255, 0.6)', margin: 0, lineHeight: 1.4 }}>
+          {lang === 'es' ? 'Estas acciones son destructivas y no se pueden deshacer. Se borrarán tus estadísticas, libros importados y configuraciones.' : 'These actions are destructive and cannot be undone. Your stats, imported books, and settings will be permanently deleted.'}
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            const confirm = window.confirm(lang === 'es' ? '¿Estás absolutamente seguro de que deseas restablecer TODOS los datos? Esta acción es irreversible.' : 'Are you absolutely sure you want to reset ALL data? This is irreversible.');
+            if (confirm) {
+              localStorage.clear();
+              // Borrar IndexedDB de forma rápida
+              const req = indexedDB.deleteDatabase('yoru-reader-db');
+              req.onsuccess = () => {
+                alert(lang === 'es' ? 'Aplicación restablecida con éxito. Se reiniciará ahora.' : 'App reset successfully. Restarting now.');
+                window.location.reload();
+              };
+              req.onerror = () => {
+                window.location.reload();
+              };
+            }
+          }}
+          style={{ width: '100%', padding: '10px', fontSize: '0.8rem', background: '#ef4444', border: 'none', borderRadius: '6px', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
         >
-          <option value="Nanami">Nanami (Femenina)</option>
-          <option value="Mayu">Mayu (Femenina Joven)</option>
-          <option value="Keita">Keita (Masculina)</option>
-        </select>
-      </div>
-
-      <div className="migaku-row">
-        <span className="migaku-label">{t('voiceGender', lang)}</span>
-        <select 
-          value={settings.audioGender || 'female'}
-          onChange={(e) => updateSetting('audioGender', e.target.value)}
-          className="migaku-select"
-        >
-          <option value="female">{t('genderFemale', lang)}</option>
-          <option value="male">{t('genderMale', lang)}</option>
-        </select>
-      </div>
-
-      <div className="migaku-row">
-        <span className="migaku-label">{t('playbackSpeed', lang)}</span>
-        <select 
-          value={settings.audioSpeed || '1.0'}
-          onChange={(e) => updateSetting('audioSpeed', e.target.value)}
-          className="migaku-select"
-        >
-          <option value="1.0">Normal (1.0x)</option>
-          <option value="0.75">0.75x</option>
-          <option value="1.25">1.25x</option>
-          <option value="1.5">1.5x</option>
-        </select>
-      </div>
-
-      <div className="migaku-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '4px', marginTop: '10px' }}>
-        <span className="migaku-label" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Azure TTS API Key</span>
-        <input 
-          type="password"
-          placeholder="Azure Key (dejar vacío para usar voz gratis local)"
-          value={settings.azureApiKey || ''}
-          onChange={(e) => updateSetting('azureApiKey', e.target.value)}
-          className="migaku-select"
-          style={{ padding: '8px 12px', fontSize: '0.85rem', width: '100%', boxSizing: 'border-box' }}
-        />
-      </div>
-
-      <div className="migaku-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '4px' }}>
-        <span className="migaku-label" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Azure TTS Region</span>
-        <input 
-          type="text"
-          placeholder="eastus (ej: japaneast, eastus, etc.)"
-          value={settings.azureRegion || ''}
-          onChange={(e) => updateSetting('azureRegion', e.target.value)}
-          className="migaku-select"
-          style={{ padding: '8px 12px', fontSize: '0.85rem', width: '100%', boxSizing: 'border-box' }}
-        />
+          🔧 {lang === 'es' ? 'Restablecer base de datos y ajustes' : 'Reset Database & Settings'}
+        </button>
       </div>
     </div>
   );
@@ -383,18 +486,22 @@ export default function SettingsModal({
   // Muestra el panel según la sección seleccionada
   const renderActiveContent = () => {
     switch (activeSection) {
+      case 'theme':
+        return renderThemeContent();
       case 'display':
         return renderDisplayContent();
       case 'text-style':
         return renderTextStyleContent();
-      case 'writing':
-        return renderWritingContent();
       case 'rendering':
         return renderRenderingContent();
       case 'sources':
         return renderSourcesContent();
-      case 'experimental':
-        return renderExperimentalContent();
+      case 'backups':
+        return renderBackupsContent();
+      case 'dictionaries':
+        return renderDictionariesContent();
+      case 'danger-zone':
+        return renderDangerZoneContent();
       default:
         return renderTextStyleContent();
     }
@@ -402,12 +509,14 @@ export default function SettingsModal({
 
   // Lógica de filtrado de búsqueda
   const allSettingsItems = [
-    { id: 'display', keywords: 'display visualizacion interfaz idioma language interfaces spanish english', render: renderDisplayContent },
-    { id: 'text-style', keywords: 'text style estilo texto fuente font size tamaño slider', render: renderTextStyleContent },
-    { id: 'writing', keywords: 'writing escritura furigana kanji rt ruby', render: renderWritingContent },
-    { id: 'rendering', keywords: 'rendering renderizado acento pitch learning status cursor hover', render: renderRenderingContent },
-    { id: 'sources', keywords: 'sources fuentes anki anki-connect deck cards note', render: renderSourcesContent },
-    { id: 'experimental', keywords: 'experimental audio tts azure voice voz nanami mayu keita region key speed rate', render: renderExperimentalContent },
+    { id: 'theme', keywords: 'theme tema dark light sepia fondo background', render: renderThemeContent },
+    { id: 'display', keywords: 'display visualizacion interfaz idioma language interfaces spanish english pantalla', render: renderDisplayContent },
+    { id: 'text-style', keywords: 'text style estilo texto fuente font size tamaño slider furigana tarjetas library covers', render: renderTextStyleContent },
+    { id: 'rendering', keywords: 'rendering renderizado acento pitch learning status cursor hover resaltado', render: renderRenderingContent },
+    { id: 'sources', keywords: 'sources fuentes anki anki-connect deck cards note integracion', render: renderSourcesContent },
+    { id: 'backups', keywords: 'backups copias seguridad google drive cloud zip export backup local', render: renderBackupsContent },
+    { id: 'dictionaries', keywords: 'dictionaries diccionarios yomitan deinflector words', render: renderDictionariesContent },
+    { id: 'danger-zone', keywords: 'danger zone peligro reset clear delete database restablecer borrar', render: renderDangerZoneContent }
   ];
 
   const filteredItems = searchQuery.trim() 
@@ -421,7 +530,7 @@ export default function SettingsModal({
         {/* Panel Izquierdo: Sidebar Navigation */}
         <div className="settings-sidebar-left">
           <div className="settings-sidebar-title">
-            <span>Settings</span>
+            <span>Configuración</span>
             <button className="settings-close-btn-mobile" onClick={onClose}>
               <X size={16} />
             </button>
@@ -432,7 +541,7 @@ export default function SettingsModal({
             <Search size={14} className="search-icon-prefix" />
             <input 
               type="text" 
-              placeholder="Find..." 
+              placeholder={lang === 'es' ? 'Buscar...' : 'Find...'} 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="settings-search-input"
@@ -446,7 +555,6 @@ export default function SettingsModal({
               {menuStructure.map((group, idx) => (
                 <div key={idx} className="settings-menu-group">
                   <div className="settings-group-header">
-                    {group.icon}
                     <span>{group.category}</span>
                   </div>
                   <div className="settings-group-items">
@@ -455,6 +563,7 @@ export default function SettingsModal({
                         key={item.id}
                         onClick={() => setActiveSection(item.id)}
                         className={`settings-menu-item-btn ${activeSection === item.id ? 'active' : ''}`}
+                        style={{ color: item.color || 'rgba(255, 255, 255, 0.65)' }}
                       >
                         {item.icon}
                         <span>{item.label}</span>
@@ -470,8 +579,7 @@ export default function SettingsModal({
             <div className="settings-sidebar-menu-list">
               <div className="settings-menu-group">
                 <div className="settings-group-header">
-                  <Sliders size={14} />
-                  <span>{lang === 'es' ? 'Resultados de búsqueda' : 'Search Results'}</span>
+                  <span>{lang === 'es' ? 'Resultados' : 'Results'}</span>
                 </div>
                 <div className="settings-group-items">
                   {filteredItems.map(item => {
@@ -489,7 +597,7 @@ export default function SettingsModal({
                   })}
                   {filteredItems.length === 0 && (
                     <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.3)', padding: '10px 14px', fontStyle: 'italic' }}>
-                      {lang === 'es' ? 'No se encontraron resultados' : 'No results found'}
+                      {lang === 'es' ? 'Sin resultados' : 'No results found'}
                     </div>
                   )}
                 </div>
@@ -502,7 +610,7 @@ export default function SettingsModal({
         <div className="settings-sidebar-right">
           <div className="settings-right-header">
             <span className="settings-header-label">
-              {lang === 'es' ? 'Ajustes de Lector' : 'Reader Settings'}
+              {lang === 'es' ? 'Ajustes Generales' : 'General Settings'}
             </span>
             <button className="settings-close-x-btn" onClick={onClose} title={lang === 'es' ? 'Cerrar' : 'Close'}>
               <X size={18} />
@@ -533,14 +641,5 @@ export default function SettingsModal({
         )}
       </React.Suspense>
     </div>
-  );
-}
-
-// Icono ChevronRight auxiliar para submenús
-function ChevronRight({ size = 16 }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-chevron-right">
-      <path d="m9 18 6-6-6-6"/>
-    </svg>
   );
 }

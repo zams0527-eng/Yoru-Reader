@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Plus, Info, Trash2, ListChecks, Check, BarChart3, HelpCircle, Pencil, X, ArrowUpDown, Settings, SlidersHorizontal, Calendar, BookOpen, Clock, Flame, Download, Upload, MoreVertical, Search, EyeOff, User, Tag, RotateCcw, CircleSlash, Play, Pause, ChevronDown, Database, Palette, Cloud, FolderOpen } from 'lucide-react';
+import SettingsModal from './SettingsModal';
 import JSZip from 'jszip';
 import { importBookFile } from '../utils/fileImport';
 import { db } from '../utils/db';
@@ -123,6 +124,7 @@ export default function Library({
     return localStorage.getItem('yatsu_group_by') || 'none'; // 'none' | 'author'
   });
   const [isDisplaySettingsOpen, setIsDisplaySettingsOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('library'); // 'library' | 'statistics' | 'settings' | 'notes'
   const [notesSearch, setNotesSearch] = useState('');
   const [notesFilterStatus, setNotesFilterStatus] = useState('all');
@@ -3383,9 +3385,9 @@ export default function Library({
 
           {/* 4. Display Settings Cog */}
           <button 
-            className={`header-display-settings-btn ${isDisplaySettingsOpen ? 'active' : ''}`}
-            onClick={() => setIsDisplaySettingsOpen(!isDisplaySettingsOpen)}
-            title={lang === 'es' ? 'Ajustes de visualización (Q)' : 'Display Settings (Q)'}
+            className={`header-display-settings-btn ${isSettingsOpen ? 'active' : ''}`}
+            onClick={() => setIsSettingsOpen(true)}
+            title={lang === 'es' ? 'Configuración (Q)' : 'Settings (Q)'}
             type="button"
           >
             <SlidersHorizontal size={18} />
@@ -4940,6 +4942,25 @@ export default function Library({
           <AnkiConfigModal isOpen={isAnkiConfigOpen} onClose={() => setIsAnkiConfigOpen(false)} />
         )}
       </React.Suspense>
+
+      {isSettingsOpen && (
+        <SettingsModal 
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          settings={settings}
+          onSaveSettings={onSaveSettings}
+          libraryViewProps={{
+            showCardTitle, setShowCardTitle,
+            showCardSeries, setShowCardSeries,
+            showCardAuthor, setShowCardAuthor,
+            showCardTags, setShowCardTags,
+            showCardProgress, setShowCardProgress,
+            showCardStatus, setShowCardStatus,
+            coverFit, setCoverFit,
+            cardWidth, setCardWidth
+          }}
+        />
+      )}
     </div>
   );
 }
