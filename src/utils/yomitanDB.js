@@ -151,7 +151,10 @@ export async function importYomitanZip(file, onProgress) {
       throw new Error('Archivo index.json no encontrado. ¿Es un diccionario de Yomitan válido?');
     }
     
-    const dictTitle = indexData.title;
+    let dictTitle = indexData.title;
+    if (dictTitle.startsWith('JMdict') && !dictTitle.includes('Spanish') && !dictTitle.includes('English') && !dictTitle.includes('Frecuencia')) {
+      dictTitle = dictTitle.replace('JMdict', 'JMdict (English)');
+    }
     onProgress(`Instalando ${dictTitle}...`, 10);
     
     const termFiles = Object.keys(zip.files).filter(name => name.startsWith('term_bank_') && name.endsWith('.json'));
@@ -295,14 +298,16 @@ export async function getFrequenciesForWord(word) {
   let disabledDicts = [];
   let dictOrder = [];
   try {
-    const settingsStr = localStorage.getItem('yoru_settings');
+    const activeProfile = localStorage.getItem('migaku_reader_active_profile_id') || 'profile-default';
+    const settingsKey = `migaku_reader_settings_${activeProfile}`;
+    const settingsStr = localStorage.getItem(settingsKey) || localStorage.getItem('migaku_reader_settings');
     if (settingsStr) {
       const parsed = JSON.parse(settingsStr);
       disabledDicts = parsed.disabledDictionaries || [];
       dictOrder = parsed.dictionaryOrder || [];
     }
   } catch (errSettings) {
-    console.warn(errSettings);
+    console.warn("Could not read settings for filtering:", errSettings);
   }
 
   try {
@@ -381,14 +386,16 @@ export async function searchYomitanDB(word, reading = '') {
   let disabledDicts = [];
   let dictOrder = [];
   try {
-    const settingsStr = localStorage.getItem('yoru_settings');
+    const activeProfile = localStorage.getItem('migaku_reader_active_profile_id') || 'profile-default';
+    const settingsKey = `migaku_reader_settings_${activeProfile}`;
+    const settingsStr = localStorage.getItem(settingsKey) || localStorage.getItem('migaku_reader_settings');
     if (settingsStr) {
       const parsed = JSON.parse(settingsStr);
       disabledDicts = parsed.disabledDictionaries || [];
       dictOrder = parsed.dictionaryOrder || [];
     }
   } catch (errSettings) {
-    console.warn(errSettings);
+    console.warn("Could not read settings for filtering:", errSettings);
   }
 
   try {
@@ -702,6 +709,67 @@ export async function importAllDictionaryData({ dictionaries, terms, frequencies
         await new Promise(r => setTimeout(r, 15));
       }
     }
+  } finally {
+    await closeDB();
+  }
+}
+
+/**
+ * Migra los nombres de los diccionarios de inglés para agregar "(English)" de forma retrocompatible.
+ */
+export async function migrateEnglishDictName() {
+  const db = await getDB();
+  try {
+    const tx = db.transaction([STORE_DICTS, STORE_TERMS, STORE_FREQS], 'readwrite');
+    const dictStore = tx.objectStore(STORE_DICTS);
+    const termStore = tx.objectStore(STORE_TERMS);
+    const freqStore = tx.objectStore(STORE_FREQS);
+    
+    const dicts = await new Promise((resolve) => {
+      const req = dictStore.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+    });
+    
+    const targetDict = dicts.find(d => d.title.startsWith('JMdict') && !d.title.includes('Spanish') && !d.title.includes('English') && !d.title.includes('Frecuencia'));
+    if (!targetDict) return;
+    
+    const oldTitle = targetDict.title;
+    const newTitle = oldTitle.replace('JMdict', 'JMdict (English)');
+    
+    // Save new dictionary metadata
+    dictStore.put({
+      ...targetDict,
+      title: newTitle
+    });
+    dictStore.delete(oldTitle);
+    
+    // Update terms in DB
+    const termIndex = termStore.index('dictionary');
+    const termRequest = termIndex.openCursor(IDBKeyRange.only(oldTitle));
+    termRequest.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        const val = cursor.value;
+        val.dictionary = newTitle;
+        cursor.update(val);
+        cursor.continue();
+      }
+    };
+    
+    // Update frequencies in DB
+    const freqIndex = freqStore.index('dictionary');
+    const freqRequest = freqIndex.openCursor(IDBKeyRange.only(oldTitle));
+    freqRequest.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        const val = cursor.value;
+        val.dictionary = newTitle;
+        cursor.update(val);
+        cursor.continue();
+      }
+    };
+  } catch (err) {
+    console.warn("Migration of English dictionary name failed:", err);
   } finally {
     await closeDB();
   }
