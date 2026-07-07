@@ -4959,6 +4959,16 @@ export default function Library({
             coverFit, setCoverFit,
             cardWidth, setCardWidth
           }}
+          gDriveProps={{
+            gDriveClientId, setGDriveClientId,
+            gDriveClientSecret, setGDriveClientSecret,
+            gDriveTokens, gDriveSyncStatus,
+            lastSyncTime,
+            isAutoSyncEnabled, setIsAutoSyncEnabled,
+            handleConnectGDrive,
+            handleUploadBackupToGDrive,
+            handleDownloadBackupFromGDrive
+          }}
         />
       )}
     </div>
