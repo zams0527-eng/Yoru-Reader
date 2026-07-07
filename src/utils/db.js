@@ -206,7 +206,14 @@ export const db = {
   async addBook(book) {
     const books = await this.getBooks();
     // Check if book already exists by title
-    if (books.some(b => b.title === book.title)) {
+    const existingIdx = books.findIndex(b => b.title === book.title);
+    if (existingIdx !== -1) {
+      if (books[existingIdx].isDeleted) {
+        // Restore/undelete it!
+        books[existingIdx].isDeleted = false;
+        books[existingIdx].chapters = book.chapters || [];
+        await this.saveBooks(books);
+      }
       return books;
     }
     const newBook = {
@@ -218,7 +225,9 @@ export const db = {
       progress: {
         currentChapter: 0,
         currentPage: 0,
-        percent: 0
+        percent: 0,
+        charactersRead: 0,
+        secondsRead: 0
       },
       status: 'unread', // 'unread', 'reading', 'completed'
       createdAt: new Date().toISOString()
@@ -237,8 +246,16 @@ export const db = {
     
     for (let i = 0; i < booksList.length; i++) {
       const book = booksList[i];
-      if (books.some(b => b.title === book.title)) {
-        console.log(`db.addBooks - Saltando "${book.title}" porque ya existe.`);
+      const existingIdx = books.findIndex(b => b.title === book.title);
+      if (existingIdx !== -1) {
+        if (books[existingIdx].isDeleted) {
+          // Restore/undelete it!
+          books[existingIdx].isDeleted = false;
+          books[existingIdx].chapters = book.chapters || [];
+          addedCount++;
+        } else {
+          console.log(`db.addBooks - Saltando "${book.title}" porque ya existe.`);
+        }
         continue;
       }
       const newBook = {
@@ -316,16 +333,46 @@ export const db = {
 
   async deleteBook(bookId) {
     const books = await this.getBooks();
-    const filteredBooks = books.filter(b => b.id !== bookId);
-    await this.saveBooks(filteredBooks);
-    return filteredBooks;
+    const settings = this.getSettings();
+    let updatedBooks;
+    if (settings.keepStatsOnDelete !== false) {
+      updatedBooks = books.map(b => {
+        if (b.id === bookId) {
+          const updated = { ...b, isDeleted: true };
+          if (settings.keepAnnotationsOnDelete === false) {
+            updated.chapters = [];
+          }
+          return updated;
+        }
+        return b;
+      });
+    } else {
+      updatedBooks = books.filter(b => b.id !== bookId);
+    }
+    await this.saveBooks(updatedBooks);
+    return updatedBooks;
   },
 
   async deleteBooks(bookIds) {
     const books = await this.getBooks();
-    const filteredBooks = books.filter(b => !bookIds.includes(b.id));
-    await this.saveBooks(filteredBooks);
-    return filteredBooks;
+    const settings = this.getSettings();
+    let updatedBooks;
+    if (settings.keepStatsOnDelete !== false) {
+      updatedBooks = books.map(b => {
+        if (bookIds.includes(b.id)) {
+          const updated = { ...b, isDeleted: true };
+          if (settings.keepAnnotationsOnDelete === false) {
+            updated.chapters = [];
+          }
+          return updated;
+        }
+        return b;
+      });
+    } else {
+      updatedBooks = books.filter(b => !bookIds.includes(b.id));
+    }
+    await this.saveBooks(updatedBooks);
+    return updatedBooks;
   },
 
   async updateBookDetails(bookId, data) {

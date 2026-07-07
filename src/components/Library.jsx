@@ -1280,7 +1280,7 @@ export default function Library({
 
   // Dynamic filtering based on active sidebar navigation and search box
   const getFilteredBooks = () => {
-    let list = books;
+    let list = books.filter(b => !b.isDeleted);
 
     // 1. Category Filter
     if (activeFilter.type === 'unread') {
@@ -1319,7 +1319,7 @@ export default function Library({
 
   // Compute unique authors and counts dynamically
   const authorCounts = {};
-  books.forEach(b => {
+  books.filter(b => !b.isDeleted).forEach(b => {
     const author = b.author || 'Desconocido';
     authorCounts[author] = (authorCounts[author] || 0) + 1;
   });
@@ -2037,7 +2037,7 @@ export default function Library({
 
   const renderStatisticsTab = () => {
     // 1. Filter books based on statsExcludedBookIds
-    const activeStatsBooks = books.filter(b => !statsExcludedBookIds.includes(b.id));
+    const activeStatsBooks = books.filter(b => (!b.isDeleted || settings.keepStatsOnDelete !== false) && !statsExcludedBookIds.includes(b.id));
     const totalBooks = activeStatsBooks.length;
     const totalChars = activeStatsBooks.reduce((acc, b) => acc + (b.progress.charactersRead || 0), 0);
     const totalSeconds = activeStatsBooks.reduce((acc, b) => acc + (b.progress.secondsRead || 0), 0);
@@ -2126,7 +2126,7 @@ export default function Library({
       }));
 
     // Filter books list for Filters view
-    const filteredBooksListForStats = books.filter(b => {
+    const filteredBooksListForStats = books.filter(b => !b.isDeleted).filter(b => {
       const query = statsTitleFilter.toLowerCase();
       return b.title.toLowerCase().includes(query) || (b.author && b.author.toLowerCase().includes(query));
     });
