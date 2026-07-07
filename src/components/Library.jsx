@@ -145,6 +145,9 @@ export default function Library({
   const [dictImportProgress, setDictImportProgress] = useState(0);
   const [dictImportMsg, setDictImportMsg] = useState('');
   const [isImportingDict, setIsImportingDict] = useState(false);
+  const [freqImportProgress, setFreqImportProgress] = useState(0);
+  const [freqImportMsg, setFreqImportMsg] = useState('');
+  const [isImportingFreq, setIsImportingFreq] = useState(false);
   const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false);
   const [downloadingDictUrl, setDownloadingDictUrl] = useState(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
@@ -275,15 +278,20 @@ export default function Library({
     }
   };
 
-  const handleYomitanUpload = async (e) => {
+  const handleYomitanUpload = async (e, isFreq = false) => {
     const file = e.target.files[0];
     if (!file) return;
-    setIsImportingDict(true);
-    setDictImportProgress(0);
-    setDictImportMsg('Iniciando...');
+    
+    const setMsg = isFreq ? setFreqImportMsg : setDictImportMsg;
+    const setProg = isFreq ? setFreqImportProgress : setDictImportProgress;
+    const setIsImporting = isFreq ? setIsImportingFreq : setIsImportingDict;
+
+    setIsImporting(true);
+    setProg(0);
+    setMsg('Iniciando...');
     try {
-      let hasTerms = true;
-      let hasFreqs = false;
+      let hasTerms = !isFreq;
+      let hasFreqs = isFreq;
       try {
         const zipFileObj = await JSZip.loadAsync(file);
         const termFiles = Object.keys(zipFileObj.files).filter(name => name.startsWith('term_bank_') && name.endsWith('.json'));
@@ -295,8 +303,8 @@ export default function Library({
       }
 
       await importYomitanZip(file, (msg, prog) => {
-        setDictImportMsg(msg);
-        setDictImportProgress(prog);
+        setMsg(msg);
+        setProg(prog);
       });
 
       try {
@@ -304,7 +312,10 @@ export default function Library({
         const zipFileObj = await JSZip.loadAsync(file);
         const indexStr = await zipFileObj.file('index.json').async('string');
         const indexData = JSON.parse(indexStr);
-        const dictTitle = indexData.title;
+        let dictTitle = indexData.title;
+        if (dictTitle.startsWith('JMdict') && !dictTitle.includes('Spanish') && !dictTitle.includes('English') && !dictTitle.includes('Frecuencia')) {
+          dictTitle = dictTitle.replace('JMdict', 'JMdict (English)');
+        }
         
         const tx = dbInst.transaction('dictionaries', 'readwrite');
         const store = tx.objectStore('dictionaries');
@@ -321,9 +332,9 @@ export default function Library({
 
       await loadInstalledDicts();
     } catch (err) {
-      setDictImportMsg('Error: ' + err.message);
+      setMsg('Error: ' + err.message);
     } finally {
-      setIsImportingDict(false);
+      setIsImporting(false);
       e.target.value = '';
     }
   };
@@ -397,12 +408,16 @@ export default function Library({
     setDraggingCategory(null);
   };
 
-  const handleInstallPresetDict = async (title, url) => {
+  const handleInstallPresetDict = async (title, url, isFreq = false) => {
+    const setMsg = isFreq ? setFreqImportMsg : setDictImportMsg;
+    const setProg = isFreq ? setFreqImportProgress : setDictImportProgress;
+    const setIsImporting = isFreq ? setIsImportingFreq : setIsImportingDict;
+
     setDownloadingDictUrl(url);
     setDownloadProgress(0);
-    setIsImportingDict(true);
-    setDictImportMsg('Conectando...');
-    setDictImportProgress(0);
+    setIsImporting(true);
+    setMsg('Conectando...');
+    setProg(0);
     
     try {
       const response = await fetch(url);
@@ -421,26 +436,26 @@ export default function Library({
         if (contentLength) {
           const percent = Math.round((receivedLength / contentLength) * 100);
           setDownloadProgress(percent);
-          setDictImportMsg(`Descargando: ${percent}%`);
+          setMsg(`Descargando: ${percent}%`);
         } else {
-          setDictImportMsg(`Descargado ${Math.round(receivedLength / 1024)} KB`);
+          setMsg(`Descargado ${Math.round(receivedLength / 1024)} KB`);
         }
       }
       
-      setDictImportMsg('Procesando base de datos...');
+      setMsg('Procesando base de datos...');
       const blob = new Blob(chunks);
       const file = new File([blob], `${title.replace(/\s+/g, '_')}.zip`, { type: 'application/zip' });
       
-      let hasTerms = true;
-      let hasFreqs = false;
+      let hasTerms = !isFreq;
+      let hasFreqs = isFreq;
       if (title.toLowerCase().includes('frecuencia') || title.toLowerCase().includes('freq')) {
         hasTerms = false;
         hasFreqs = true;
       }
       
       await importYomitanZip(file, (msg, prog) => {
-        setDictImportMsg(msg);
-        setDictImportProgress(prog);
+        setMsg(msg);
+        setProg(prog);
       });
       
       try {
@@ -463,7 +478,7 @@ export default function Library({
     } catch (err) {
       alert('Error instalando diccionario: ' + err.message);
     } finally {
-      setIsImportingDict(false);
+      setIsImporting(false);
       setDownloadingDictUrl(null);
     }
   };
@@ -568,6 +583,7 @@ export default function Library({
   };
 
   const renderActions = (isFreq) => {
+    const isImporting = isFreq ? isImportingFreq : isImportingDict;
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '16px', flexWrap: 'wrap' }}>
         <button
@@ -603,8 +619,8 @@ export default function Library({
             padding: '8px 20px',
             fontSize: '0.78rem',
             fontWeight: 700,
-            cursor: isImportingDict ? 'not-allowed' : 'pointer',
-            opacity: isImportingDict ? 0.6 : 1,
+            cursor: isImporting ? 'not-allowed' : 'pointer',
+            opacity: isImporting ? 0.6 : 1,
             textTransform: 'uppercase',
             letterSpacing: '0.05em',
             display: 'inline-flex',
@@ -617,8 +633,8 @@ export default function Library({
           <input 
             type="file" 
             accept=".zip"
-            onChange={handleYomitanUpload}
-            disabled={isImportingDict}
+            onChange={(e) => handleYomitanUpload(e, isFreq)}
+            disabled={isImporting}
             style={{ display: 'none' }}
           />
         </label>
@@ -752,7 +768,7 @@ export default function Library({
                         </div>
                         <button
                           disabled={isImportingDict}
-                          onClick={() => handleInstallPresetDict(d.title, d.url)}
+                          onClick={() => handleInstallPresetDict(d.title, d.url, false)}
                           style={{
                             background: isDownloading ? 'rgba(255,255,255,0.1)' : 'var(--primary)',
                             color: '#fff',
@@ -3711,6 +3727,18 @@ export default function Library({
                     ? 'utilizamos la lista de palabras frecuentes más importante para las estadísticas de la página y para resaltar palabras en las oraciones recomendadas.'
                     : 'we use the most important frequency list for page statistics and to highlight words in recommended sentences.'}
                 </div>
+
+                {isImportingFreq && (
+                  <div style={{ margin: '16px 0', background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      <span>{freqImportMsg}</span>
+                      <span>{freqImportProgress}%</span>
+                    </div>
+                    <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
+                      <div style={{ width: `${freqImportProgress}%`, height: '100%', background: 'var(--primary)', transition: 'width 0.2s' }}></div>
+                    </div>
+                  </div>
+                )}
 
                 <div style={{ marginTop: '16px' }}>
                   {renderDictList(true)}
