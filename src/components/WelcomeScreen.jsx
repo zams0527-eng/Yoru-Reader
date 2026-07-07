@@ -141,11 +141,13 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
   };
 
   const handleRestoreDriveBackup = async () => {
-    const clientId = localStorage.getItem('gdrive_client_id') || prompt(lang === 'es' ? 'Ingresa tu Google Drive Client ID:' : 'Enter your Google Drive Client ID:');
-    if (!clientId) return;
+    const defaultClientId = '658624509601-2ef33pve1i9mifecbe4n2nk0lmop9ggu.apps.googleusercontent.com';
+    const defaultClientSecret = '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';
+
+    const clientId = localStorage.getItem('gdrive_client_id') || defaultClientId;
     localStorage.setItem('gdrive_client_id', clientId.trim());
 
-    const clientSecret = localStorage.getItem('gdrive_client_secret') || prompt(lang === 'es' ? 'Ingresa tu Client Secret (deja vacío si no lo requieres):' : 'Enter your Client Secret (leave empty if not required):') || '';
+    const clientSecret = localStorage.getItem('gdrive_client_secret') || defaultClientSecret;
     localStorage.setItem('gdrive_client_secret', clientSecret.trim());
 
     try {
