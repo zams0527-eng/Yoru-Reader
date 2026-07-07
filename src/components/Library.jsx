@@ -669,37 +669,52 @@ export default function Library({
 
     const presetDicts = [
       {
-        title: 'JMDict Español',
+        title: 'JMdict (Spanish)',
         desc: 'Diccionario de japonés a español (multilingüe). Recomendado para hispanohablantes.',
-        url: 'https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMdict_spanish.zip'
-      },
-      {
-        title: 'JMDict Inglés',
-        desc: 'El diccionario principal de japonés a inglés, completo y detallado.',
-        url: 'https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMdict_english.zip'
+        url: 'https://drive.google.com/uc?export=download&id=1EX6Ofpl-BMblKRoao3fPZMxLkEuDKv8K'
       }
     ];
 
     const presetFreqs = [
       {
         title: 'Netflix Frecuencias',
-        desc: 'Frecuencias extraídas de subtítulos de Netflix Japón.',
-        url: 'https://github.com/MarvNC/yomitan-dictionaries'
+        desc: 'Frecuencia basada en diálogos y subtítulos de Netflix Japón.',
+        url: 'https://drive.google.com/uc?export=download&id=1bykLy0sg5628HkMNQecTwIUkNXpg5sbH'
       },
       {
-        title: 'Slice of Life Frecuencias',
-        desc: 'Frecuencia de diálogos del género anime de recuentos de la vida.',
-        url: 'https://github.com/MarvNC/yomitan-dictionaries'
+        title: 'JPDB Frecuencias',
+        desc: 'Frecuencia recomendada basada en la base de datos de JPDB.',
+        url: 'https://drive.google.com/uc?export=download&id=1A61XZPDb0kEYexMDicqCVLFojG2RtADP'
+      },
+      {
+        title: 'Jiten (Anime) Frecuencias',
+        desc: 'Frecuencia de vocabulario usado en anime.',
+        url: 'https://drive.google.com/uc?export=download&id=1GXTXs1uTVo-6q38hf2lHHJOoXReucDEJ'
+      },
+      {
+        title: 'BCCWJ Frecuencias',
+        desc: 'Balanced Corpus of Contemporary Written Japanese (Corpus balanceado de japonés escrito).',
+        url: 'https://drive.google.com/uc?export=download&id=1STX2n7Gu4h2u2Gb_4kCT0fRdENvGkfDW'
+      },
+      {
+        title: 'Novelas Frecuencias',
+        desc: 'Frecuencia de vocabulario en novelas literarias y ligeras.',
+        url: 'https://drive.google.com/uc?export=download&id=1KvF7eD3CnykE3GVbAsQkzQ7e1ZHRCxpU'
+      },
+      {
+        title: 'Novelas Visuales (VN) Frecuencias',
+        desc: 'Frecuencia de términos de novelas visuales japonesas.',
+        url: 'https://drive.google.com/uc?export=download&id=1Gbv8tD4kKzSTweYU4jIFMDPf7RsNHPD8'
+      },
+      {
+        title: 'Wikipedia Frecuencias',
+        desc: 'Frecuencias extraídas de artículos de Wikipedia en japonés.',
+        url: 'https://drive.google.com/uc?export=download&id=1xt_gbDJf7rXcbu2jo_SFss088Rmpt4dG'
       },
       {
         title: 'YouTube Frecuencias',
-        desc: 'Frecuencias de diálogos de videos de vlogs y canales de YouTube.',
-        url: 'https://github.com/MarvNC/yomitan-dictionaries'
-      },
-      {
-        title: 'Internet Frecuencias',
-        desc: 'Compilación de frecuencias generales de la web japonesa.',
-        url: 'https://github.com/MarvNC/yomitan-dictionaries'
+        desc: 'Frecuencias de diálogos de vlogs y videos populares de YouTube Japón.',
+        url: 'https://drive.google.com/uc?export=download&id=19IOBISb1eUJbGUO4nsfxP1XmzRhpH3yS'
       }
     ];
 
@@ -799,35 +814,39 @@ export default function Library({
                 </h4>
                 <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', marginTop: 0, marginBottom: '12px', lineHeight: '1.4' }}>
                   {lang === 'es' 
-                    ? 'Debido al gran volumen y a la constante actualización comunitaria, puedes descargar estos archivos .zip directamente desde la biblioteca oficial en GitHub e importarlos usando "Instalar desde archivo".'
-                    : 'Due to large file sizes and daily community updates, you can download these .zip files directly from the official GitHub library and import them using "Install from file".'}
+                    ? 'Descarga e instala directamente cualquiera de las listas de frecuencias comunitarias en la aplicación con un solo clic.'
+                    : 'Download and install any of the community frequency lists directly into the application with a single click.'}
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {presetFreqs.map(d => (
-                    <div key={d.title} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.88rem' }}>{d.title}</div>
-                        <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '3px' }}>{d.desc}</div>
+                  {presetFreqs.map(d => {
+                    const isDownloading = downloadingDictUrl === d.url;
+                    return (
+                      <div key={d.title} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, color: '#fff', fontSize: '0.88rem' }}>{d.title}</div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '3px' }}>{d.desc}</div>
+                        </div>
+                        <button
+                          disabled={isImportingFreq}
+                          onClick={() => handleInstallPresetDict(d.title, d.url, true)}
+                          style={{
+                            background: isDownloading ? 'rgba(255,255,255,0.1)' : 'var(--primary)',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            padding: '6px 12px',
+                            fontSize: '0.78rem',
+                            fontWeight: 600,
+                            cursor: isImportingFreq ? 'not-allowed' : 'pointer',
+                            whiteSpace: 'nowrap',
+                            transition: 'all 0.2s'
+                          }}
+                        >
+                          {isDownloading ? `${downloadProgress}%` : (lang === 'es' ? 'Instalar' : 'Install')}
+                        </button>
                       </div>
-                      <button
-                        onClick={() => window.open(d.url)}
-                        style={{
-                          background: 'rgba(255,255,255,0.04)',
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          color: '#fff',
-                          borderRadius: '6px',
-                          padding: '6px 12px',
-                          fontSize: '0.78rem',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                          transition: 'all 0.2s'
-                        }}
-                      >
-                        {lang === 'es' ? 'Ir a Descargas' : 'Go to Downloads'}
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
