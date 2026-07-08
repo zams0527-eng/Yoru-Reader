@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ArrowLeft, ArrowRight, Settings, Volume2, ExternalLink, BookOpen, Play, Plus, X, Square, Sliders } from 'lucide-react';
 import { tokenizeText } from '../utils/japanese';
 import { lookupWord } from '../utils/dictionary';
-import SettingsModal from './SettingsModal';
+
 import html2canvas from 'html2canvas';
 import { t } from '../utils/i18n';
 import { synthesizeSpeechAzure } from '../utils/azureTtsService';
@@ -117,8 +117,6 @@ export default function Reader({
   const [loading, setLoading] = useState(true);
   
   // Modals & Popups
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [modalMode, setModalMode] = useState('settings'); // 'settings' | 'info'
   const [selectedWord, setSelectedWord] = useState(null);
   const [dictEntry, setDictEntry] = useState(null);
   const [dictLoading, setDictLoading] = useState(false);
@@ -805,7 +803,7 @@ export default function Reader({
     reproducirTexto(rawText, settings.audioVoiceOption || 'Nanami');
   };
 
-  // Keyboard shortcuts (A/D/Arrows for navigation, Esc to close modals, V for TTS, M for mining, S for settings)
+  // Keyboard shortcuts (A/D/Arrows for navigation, Esc to close modals, V for TTS, M for mining)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (
@@ -837,8 +835,6 @@ export default function Reader({
         if (selectedWord) {
           setSelectedWord(null);
           setDictEntry(null);
-        } else if (isSettingsOpen) {
-          setIsSettingsOpen(false);
         } else if (isReaderSidebarOpen) {
           setIsReaderSidebarOpen(false);
         } else if (isJumpModalOpen) {
@@ -891,7 +887,6 @@ export default function Reader({
     currentChapter, 
     totalPages, 
     selectedWord, 
-    isSettingsOpen, 
     isReaderSidebarOpen, 
     isJumpModalOpen, 
     isComprehensionOpen, 
@@ -1342,14 +1337,7 @@ export default function Reader({
         )}
       </button>
 
-      {/* Settings & Info Modal */}
-      <SettingsModal 
-        isOpen={isSettingsOpen} 
-        onClose={() => setIsSettingsOpen(false)}
-        settings={settings}
-        onSaveSettings={onSaveSettings}
-        mode={modalMode}
-      />
+
 
       {/* Jump to Page Modal (Migaku style) */}
       {isJumpModalOpen && (
