@@ -887,6 +887,8 @@ export default function Reader({
     currentChapter, 
     totalPages, 
     selectedWord, 
+    dictEntry,
+    tokenizedParagraphs,
     isReaderSidebarOpen, 
     isJumpModalOpen, 
     isComprehensionOpen, 
