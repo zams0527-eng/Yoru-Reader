@@ -150,106 +150,6 @@ export default function Reader({
 
 
 
-  // Keyboard shortcuts (A/D/Arrows for navigation, Esc to close modals, V for TTS, M for mining, S for settings)
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (
-        e.target.tagName === 'INPUT' || 
-        e.target.tagName === 'TEXTAREA' || 
-        e.target.tagName === 'SELECT' || 
-        e.target.isContentEditable
-      ) {
-        return;
-      }
-
-      const key = e.key.toLowerCase();
-
-      // 1. Navigation: Left / A (Previous Page)
-      if (e.key === 'ArrowLeft' || key === 'a') {
-        e.preventDefault();
-        handlePrevPage();
-      }
-
-      // 2. Navigation: Right / D (Next Page)
-      else if (e.key === 'ArrowRight' || key === 'd') {
-        e.preventDefault();
-        handleNextPage();
-      }
-
-      // 3. Close Modals / Popups: Esc
-      else if (e.key === 'Escape') {
-        e.preventDefault();
-        if (selectedWord) {
-          setSelectedWord(null);
-          setDictEntry(null);
-        } else if (isSettingsOpen) {
-          setIsSettingsOpen(false);
-        } else if (isReaderSidebarOpen) {
-          setIsReaderSidebarOpen(false);
-        } else if (isJumpModalOpen) {
-          setIsJumpModalOpen(false);
-        } else if (isComprehensionOpen) {
-          setIsComprehensionOpen(false);
-        }
-      }
-
-      // 4. TTS: V
-      else if (key === 'v') {
-        e.preventDefault();
-        leerPaginaEnVozAlta();
-      }
-
-      // 5. Mine to Anki: M
-      else if (key === 'm') {
-        e.preventDefault();
-        if (selectedWord) {
-          handleMineToAnki();
-        }
-      }
-
-      // 6. General Settings: S
-      else if (key === 's') {
-        e.preventDefault();
-        setModalMode('settings');
-        setIsSettingsOpen(true);
-      }
-
-      // 7. Sidebar Settings: Q
-      else if (key === 'q') {
-        e.preventDefault();
-        setIsReaderSidebarOpen(prev => !prev);
-      }
-
-      // 8. Fullscreen: F
-      else if (key === 'f') {
-        e.preventDefault();
-        if (!document.fullscreenElement) {
-          document.documentElement.requestFullscreen().catch(err => {
-            console.error(`Error enabling full-screen mode: ${err.message}`);
-          });
-        } else {
-          if (document.exitFullscreen) {
-            document.exitFullscreen();
-          }
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    currentPage, 
-    currentChapter, 
-    totalPages, 
-    selectedWord, 
-    isSettingsOpen, 
-    isReaderSidebarOpen, 
-    isJumpModalOpen, 
-    isComprehensionOpen, 
-    isTtsPlaying, 
-    currentPageTokens, 
-    settings
-  ]);
 
   // Silenciar reproducción si el lector se desmonta
   useEffect(() => {
@@ -905,13 +805,106 @@ export default function Reader({
     reproducirTexto(rawText, settings.audioVoiceOption || 'Nanami');
   };
 
+  // Keyboard shortcuts (A/D/Arrows for navigation, Esc to close modals, V for TTS, M for mining, S for settings)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (
+        e.target.tagName === 'INPUT' || 
+        e.target.tagName === 'TEXTAREA' || 
+        e.target.tagName === 'SELECT' || 
+        e.target.isContentEditable
+      ) {
+        return;
+      }
 
+      const key = e.key.toLowerCase();
 
+      // 1. Navigation: Left / A (Previous Page)
+      if (e.key === 'ArrowLeft' || key === 'a') {
+        e.preventDefault();
+        handlePrevPage();
+      }
 
+      // 2. Navigation: Right / D (Next Page)
+      else if (e.key === 'ArrowRight' || key === 'd') {
+        e.preventDefault();
+        handleNextPage();
+      }
 
+      // 3. Close Modals / Popups: Esc
+      else if (e.key === 'Escape') {
+        e.preventDefault();
+        if (selectedWord) {
+          setSelectedWord(null);
+          setDictEntry(null);
+        } else if (isSettingsOpen) {
+          setIsSettingsOpen(false);
+        } else if (isReaderSidebarOpen) {
+          setIsReaderSidebarOpen(false);
+        } else if (isJumpModalOpen) {
+          setIsJumpModalOpen(false);
+        } else if (isComprehensionOpen) {
+          setIsComprehensionOpen(false);
+        }
+      }
 
+      // 4. TTS: V
+      else if (key === 'v') {
+        e.preventDefault();
+        leerPaginaEnVozAlta();
+      }
 
+      // 5. Mine to Anki: M
+      else if (key === 'm') {
+        e.preventDefault();
+        if (selectedWord) {
+          handleMineToAnki();
+        }
+      }
 
+      // 6. General Settings: S
+      else if (key === 's') {
+        e.preventDefault();
+        setModalMode('settings');
+        setIsSettingsOpen(true);
+      }
+
+      // 7. Sidebar Settings: Q
+      else if (key === 'q') {
+        e.preventDefault();
+        setIsReaderSidebarOpen(prev => !prev);
+      }
+
+      // 8. Fullscreen: F
+      else if (key === 'f') {
+        e.preventDefault();
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(err => {
+            console.error(`Error enabling full-screen mode: ${err.message}`);
+          });
+        } else {
+          if (document.exitFullscreen) {
+            document.exitFullscreen();
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    currentPage, 
+    currentChapter, 
+    totalPages, 
+    selectedWord, 
+    isSettingsOpen, 
+    isReaderSidebarOpen, 
+    isJumpModalOpen, 
+    isComprehensionOpen, 
+    isTtsPlaying, 
+    currentPageTokens, 
+    settings
+  ]);
 
   // Get learning status style class
   const getWordStatusClass = (token) => {
