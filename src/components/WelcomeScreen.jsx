@@ -216,6 +216,27 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
     return () => { if (listenerHandle) listenerHandle.remove(); };
   }, []);
 
+  // Handle F shortcut for Fullscreen
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(err => {
+            console.error(`Error enabling full-screen mode: ${err.message}`);
+          });
+        } else {
+          if (document.exitFullscreen) {
+            document.exitFullscreen();
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const handleRestoreDriveBackup = async () => {
     const defaultClientId = '658624509601-2ef33pve1i9mifecbe4n2nk0lmop9ggu.apps.googleusercontent.com';
     const defaultClientSecret = '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';
@@ -463,34 +484,36 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
           </button>
         </form>
 
-        <div style={{ margin: '24px 0 16px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ margin: '16px 0 12px 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <hr style={{ flex: 1, border: 'none', borderTop: '1px solid rgba(255,255,255,0.08)' }} />
-          <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             {lang === 'es' ? '¿Tienes una copia?' : 'Have a backup?'}
           </span>
           <hr style={{ flex: 1, border: 'none', borderTop: '1px solid rgba(255,255,255,0.08)' }} />
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px' }}>
           {/* Restaurar Local */}
           <label 
             className="welcome-submit-btn" 
             style={{ 
+              flex: 1,
               background: 'rgba(255,255,255,0.03)', 
               border: '1px solid rgba(255,255,255,0.08)', 
               color: '#fff', 
-              fontSize: '0.85rem', 
-              padding: '10px', 
+              fontSize: '0.78rem', 
+              padding: '10px 6px', 
               display: 'inline-flex', 
               alignItems: 'center', 
               justifyContent: 'center', 
-              gap: '8px', 
+              gap: '6px', 
               cursor: 'pointer',
               textTransform: 'none',
-              boxShadow: 'none'
+              boxShadow: 'none',
+              margin: 0
             }}
           >
-            💾 {lang === 'es' ? 'Importar respaldo local (.zip, .json)' : 'Import local backup (.zip, .json)'}
+            💾 {lang === 'es' ? 'Local' : 'Local'}
             <input 
               type="file" 
               accept=".json,.zip"
@@ -506,23 +529,25 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
             disabled={isSyncing}
             className="welcome-submit-btn" 
             style={{ 
+              flex: 1,
               background: 'rgba(52, 211, 153, 0.05)', 
               border: '1px solid rgba(52, 211, 153, 0.2)', 
               color: '#34d399', 
-              fontSize: '0.85rem', 
-              padding: '10px', 
+              fontSize: '0.78rem', 
+              padding: '10px 6px', 
               display: 'inline-flex', 
               alignItems: 'center', 
               justifyContent: 'center', 
-              gap: '8px', 
+              gap: '6px', 
               cursor: 'pointer',
               textTransform: 'none',
-              boxShadow: 'none'
+              boxShadow: 'none',
+              margin: 0
             }}
           >
             ☁️ {isSyncing 
-              ? (lang === 'es' ? 'Sincronizando...' : 'Syncing...') 
-              : (lang === 'es' ? 'Restaurar desde Google Drive' : 'Restore from Google Drive')}
+              ? (lang === 'es' ? 'Wait...' : 'Wait...') 
+              : (lang === 'es' ? 'Google Drive' : 'Google Drive')}
           </button>
         </div>
       </div>
