@@ -137,7 +137,7 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
       }
     } catch (e) {
       console.error(e);
-      alert((lang === 'es' ? 'Error al importar la biblioteca: ' : 'Error importing library: ') + e.message);
+      alert((lang === 'es' ? 'Error al importar la biblioteca: ' : 'Error importing library: ') + (e.message || String(e)));
     } finally {
       document.body.style.cursor = 'default';
     }

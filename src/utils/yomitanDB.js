@@ -770,7 +770,7 @@ export async function importAllDictionaryData({ dictionaries, terms, frequencies
         const store = tx.objectStore(STORE_DICTS);
         dictionaries.forEach(d => store.put(d));
         tx.oncomplete = resolve;
-        tx.onerror = reject;
+        tx.onerror = (e) => reject(tx.error || e.target.error || new Error('Dictionary transaction failed'));
       });
     }
     
@@ -781,9 +781,9 @@ export async function importAllDictionaryData({ dictionaries, terms, frequencies
         await new Promise((resolve, reject) => {
           const tx = db.transaction(STORE_TERMS, 'readwrite');
           const store = tx.objectStore(STORE_TERMS);
-          chunk.forEach(t => store.add(t));
+          chunk.forEach(t => store.put(t));
           tx.oncomplete = resolve;
-          tx.onerror = reject;
+          tx.onerror = (e) => reject(tx.error || e.target.error || new Error('Terms transaction failed'));
         });
         chunk = null;
         await new Promise(r => setTimeout(r, 15));
@@ -797,9 +797,9 @@ export async function importAllDictionaryData({ dictionaries, terms, frequencies
         await new Promise((resolve, reject) => {
           const tx = db.transaction(STORE_FREQS, 'readwrite');
           const store = tx.objectStore(STORE_FREQS);
-          chunk.forEach(f => store.add(f));
+          chunk.forEach(f => store.put(f));
           tx.oncomplete = resolve;
-          tx.onerror = reject;
+          tx.onerror = (e) => reject(tx.error || e.target.error || new Error('Frequencies transaction failed'));
         });
         chunk = null;
         await new Promise(r => setTimeout(r, 15));
