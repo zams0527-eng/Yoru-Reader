@@ -111,6 +111,7 @@ export default function App() {
   const [activeBook, setActiveBook] = useState(null);
   const [wordStatuses, setWordStatuses] = useState({});
   const [settings, setSettings] = useState(db.getSettings());
+  const lang = settings.appLanguage || 'es';
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [infoBook, setInfoBook] = useState(null);
 
@@ -551,10 +552,10 @@ export default function App() {
 
   const handleDeleteProfile = (profileId) => {
     if (profiles.length <= 1) {
-      alert("No puedes eliminar el único perfil.");
+      alert(lang === 'es' ? "No puedes eliminar el único perfil." : "You cannot delete the only profile.");
       return;
     }
-    if (confirm("¿Estás seguro de que deseas eliminar este perfil? Se perderán todos sus libros e historial.")) {
+    if (confirm(lang === 'es' ? "¿Estás seguro de que deseas eliminar este perfil? Se perderán todos sus libros e historial." : "Are you sure you want to delete this profile? All books and history will be lost.")) {
       const updatedProfiles = profiles.filter(p => p.id !== profileId);
       db.saveProfiles(updatedProfiles);
       setProfiles(updatedProfiles);
@@ -586,7 +587,7 @@ export default function App() {
       {profiles.length === 0 ? (
         <WelcomeScreen onCreateProfile={handleAddProfile} settings={settings} onSaveSettings={handleSaveSettings} />
       ) : activeBook ? (
-        <React.Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#fff', fontSize: '1.2rem', fontFamily: 'var(--font-heading)' }}>Cargando lector...</div>}>
+        <React.Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#fff', fontSize: '1.2rem', fontFamily: 'var(--font-heading)' }}>{lang === 'es' ? 'Cargando lector...' : 'Loading reader...'}</div>}>
           <Reader 
             book={activeBook}
             onBack={() => setActiveBook(null)}

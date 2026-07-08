@@ -1,7 +1,9 @@
 {
   "name": "lector",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "author": "Yoru cafe",
+  "description": "Lector de novelas ligeras en japonés con integración de diccionarios y Anki.",
   "type": "module",
   "main": "electron/electron-main.cjs",
   "scripts": {
@@ -12,9 +14,16 @@
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
     "electron:start": "electron .",
-    "electron:package": "vite build && electron-packager . Yoru-Reader --platform=win32 --arch=x64 --out=dist-electron --overwrite"
+    "electron:package": "vite build && electron-packager . Yoru-Reader --platform=win32 --arch=x64 --out=dist-electron --overwrite",
+    "electron:build": "node build/prepare-nsis.js && vite build && electron-builder",
+    "android:sync": "npm run build && npx cap sync",
+    "android:open": "npx cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/browser": "^8.0.3",
+    "@capacitor/core": "^8.4.1",
     "html2canvas": "^1.4.1",
     "jszip": "^3.10.1",
     "lucide-react": "^1.23.0",
@@ -23,13 +32,46 @@
     "ws": "^8.21.0"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.4.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
     "electron": "^43.0.0",
+    "electron-builder": "^26.15.3",
     "electron-packager": "^17.1.2",
     "gh-pages": "^6.3.0",
+    "jimp": "^1.6.1",
     "oxlint": "^1.71.0",
     "vite": "^8.1.1"
+  },
+  "build": {
+    "appId": "com.yorureader.app",
+    "productName": "Yoru-Reader",
+    "directories": {
+      "output": "dist-electron-installer"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Yoru Reader",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "installerHeader": "build/installerHeader.bmp",
+      "installerSidebar": "build/installerSidebar.bmp",
+      "uninstallerSidebar": "build/installerSidebar.bmp"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ]
   }
 }

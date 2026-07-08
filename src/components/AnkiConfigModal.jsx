@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ChevronRight } from 'lucide-react';
+import { X, ChevronRight, Layers, Download, AlertTriangle } from 'lucide-react';
 import { db } from '../utils/db';
 import { tokenizeText } from '../utils/japanese';
 const DEFAULT_ANKI_SETTINGS = {
@@ -53,7 +53,7 @@ const AVAILABLE_TOKENS = [
 ];
 
 // ── Anki Cards sub-modal ──────────────────────────────────────────────────────
-function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableModels }) {
+function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableModels, lang }) {
   const [activeTab, setActiveTab] = useState('expression');
   const [local, setLocal] = useState(settings);
 
@@ -75,7 +75,7 @@ function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableMo
     <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1400 }}>
       <div className="yomitan-cards-modal" onClick={e => e.stopPropagation()}>
         {/* Title */}
-        <div className="yomitan-cards-title">Anki Cards</div>
+        <div className="yomitan-cards-title">{lang === 'es' ? 'Campos de tarjeta de Anki' : 'Anki Card Fields'}</div>
 
         {/* Tabs */}
         <div className="yomitan-cards-tabs">
@@ -85,7 +85,9 @@ function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableMo
               className={`yomitan-cards-tab ${activeTab === t ? 'active' : ''}`}
               onClick={() => setActiveTab(t)}
             >
-              {t.charAt(0).toUpperCase() + t.slice(1)}
+              {t === 'expression' ? (lang === 'es' ? 'Expresión' : 'Expression') :
+               t === 'reading' ? (lang === 'es' ? 'Lectura' : 'Reading') :
+               (lang === 'es' ? 'Kanji' : 'Kanji')}
             </button>
           ))}
         </div>
@@ -94,7 +96,7 @@ function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableMo
         <div className="yomitan-cards-body">
           {/* Deck */}
           <div className="yomitan-cards-row">
-            <span className="yomitan-cards-label">Deck</span>
+            <span className="yomitan-cards-label">{lang === 'es' ? 'Mazo' : 'Deck'}</span>
             <div className="yomitan-cards-input-wrap">
               <select
                 className="yomitan-cards-select"
@@ -111,7 +113,7 @@ function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableMo
 
           {/* Model */}
           <div className="yomitan-cards-row">
-            <span className="yomitan-cards-label">Model</span>
+            <span className="yomitan-cards-label">{lang === 'es' ? 'Modelo' : 'Model'}</span>
             <div className="yomitan-cards-input-wrap">
               <select
                 className="yomitan-cards-select"
@@ -130,8 +132,8 @@ function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableMo
           <div className="yomitan-fields-divider" />
 
           <div className="yomitan-fields-header">
-            <span>Field</span>
-            <span>Value</span>
+            <span>{lang === 'es' ? 'Campo' : 'Field'}</span>
+            <span>{lang === 'es' ? 'Valor' : 'Value'}</span>
           </div>
 
           {/* Field rows */}
@@ -145,7 +147,7 @@ function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableMo
                   onChange={e => setFieldToken(fieldName, e.target.value)}
                 >
                   {AVAILABLE_TOKENS.map(t => (
-                    <option key={t} value={t}>{t || '(vacío)'}</option>
+                    <option key={t} value={t}>{t || (lang === 'es' ? '(vacío)' : '(empty)')}</option>
                   ))}
                 </select>
               </div>
@@ -155,12 +157,12 @@ function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableMo
 
         {/* Footer */}
         <div className="yomitan-cards-footer">
-          <button className="yomitan-cards-help-btn" onClick={() => {}}>Help</button>
+          <button className="yomitan-cards-help-btn" onClick={() => {}}>{lang === 'es' ? 'Ayuda' : 'Help'}</button>
           <button
             className="yomitan-cards-close-btn"
             onClick={() => { onSave(local); onClose(); }}
           >
-            Close
+            {lang === 'es' ? 'Guardar y cerrar' : 'Save & Close'}
           </button>
         </div>
       </div>
@@ -287,7 +289,7 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
       }
       
       if (!cardsData.result || cardsData.result.length === 0) {
-        alert(`No se encontraron tarjetas en estudio ni maduras en el mazo "${deck}". Asegúrate de haber comenzado a estudiar este mazo en tu Anki.`);
+        alert(lang === 'es' ? `No se encontraron tarjetas en estudio ni maduras en el mazo "${deck}". Asegúrate de haber comenzado a estudiar este mazo en tu Anki.` : `No learning or mature cards were found in the deck "${deck}". Make sure you have started studying this deck in your Anki.`);
         return;
       }
       
@@ -301,7 +303,7 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
       });
       const infoData = await infoRes.json();
       if (!infoData.result) {
-        alert('Error al recuperar información de las tarjetas.');
+        alert(lang === 'es' ? 'Error al recuperar información de las tarjetas.' : 'Failed to retrieve card information.');
         return;
       }
       
@@ -356,13 +358,17 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
       }
       
       if (words.length === 0) {
-         alert('No se pudieron extraer palabras del campo "' + wordField + '".');
+         alert(lang === 'es' ? 'No se pudieron extraer palabras del campo "' + wordField + '".' : 'Could not extract words from field "' + wordField + '".');
          return;
       }
       
-      const confirmMessage = isFallbackToAllStudied
-        ? `No se encontraron tarjetas maduras (intervalo ≥ 21 días) en "${deck}". Sin embargo, se encontraron ${words.length} tarjetas en estudio/repaso. ¿Deseas importarlas como "Conocido" en Yoru Reader?`
-        : `Se encontraron ${words.length} palabras maduras en Anki. ¿Deseas importarlas como "Conocido" en Yoru Reader?`;
+      const confirmMessage = lang === 'es'
+        ? (isFallbackToAllStudied
+            ? `No se encontraron tarjetas maduras (intervalo ≥ 21 días) en "${deck}". Sin embargo, se encontraron ${words.length} tarjetas en estudio/repaso. ¿Deseas importarlas como "Conocido" en Yoru Reader?`
+            : `Se encontraron ${words.length} palabras maduras en Anki. ¿Deseas importarlas como "Conocido" en Yoru Reader?`)
+        : (isFallbackToAllStudied
+            ? `No mature cards (interval ≥ 21 days) were found in "${deck}". However, ${words.length} learning/review cards were found. Do you want to import them as "Known" in Yoru Reader?`
+            : `Found ${words.length} mature words in Anki. Do you want to import them as "Known" in Yoru Reader?`);
 
       if (confirm(confirmMessage)) {
         const currentStatuses = db.getWordStatuses();
@@ -371,12 +377,12 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
           updated[w] = 'known';
         });
         db.saveWordStatuses(updated);
-        alert(`¡Importadas ${words.length} palabras con éxito! Reiniciando para actualizar...`);
+        alert(lang === 'es' ? `¡Importadas ${words.length} palabras con éxito! Reiniciando para actualizar...` : `Successfully imported ${words.length} words! Restarting to update...`);
         window.location.reload();
       }
     } catch (err) {
       console.error(err);
-      alert('Error durante la sincronización: ' + err.message);
+      alert((lang === 'es' ? 'Error durante la sincronización: ' : 'Error during synchronization: ') + err.message);
     }
   };
 
@@ -394,7 +400,7 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
           {/* ── Header ── */}
           <div className="yomitan-anki-header">
             <div className="yomitan-anki-header-left">
-              <span className="yomitan-anki-icon">🃏</span>
+              <Layers size={16} style={{ color: 'var(--primary)', marginRight: '2px' }} />
               <span className="yomitan-anki-title">{lang === 'es' ? 'Configuración de Anki' : 'Anki Configuration'}</span>
             </div>
             <div className="yomitan-anki-header-right">
@@ -439,7 +445,7 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
               <div className="yomitan-anki-field-group">
                 <div className="yomitan-anki-field-label-row">
                   <span className="yomitan-anki-field-title">{lang === 'es' ? 'Dirección del servidor AnkiConnect' : 'AnkiConnect server address'}</span>
-                  <span className="yomitan-anki-field-desc">{lang === 'es' ? 'Cambia la dirección URL del servidor local de AnkiConnect.' : 'Change the URL of the AnkiConnect server.'} <a href="https://foosoft.net/projects/anki-connect/" target="_blank" rel="noopener noreferrer" style={{ color: '#60a5fa' }}>{lang === 'es' ? 'Más...' : 'More...'}</a></span>
+                  <span className="yomitan-anki-field-desc">{lang === 'es' ? 'Cambia la dirección URL del servidor local de AnkiConnect.' : 'Change the URL of the AnkiConnect server.'} <a href="https://foosoft.net/projects/anki-connect/" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)' }}>{lang === 'es' ? 'Más...' : 'More...'}</a></span>
                 </div>
                 <input
                   className="yomitan-anki-input"
@@ -469,8 +475,9 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
 
             {connectionStatus === 'error' && (
               <div className="anki-connection-error-box" style={{ margin: '10px 20px', padding: '12px 16px', background: 'rgba(239, 68, 68, 0.08)', border: '1px dashed rgba(239, 68, 68, 0.3)', borderRadius: '10px' }}>
-                <span style={{ color: '#f87171', fontSize: '0.82rem', fontWeight: 700, display: 'block', marginBottom: '6px' }}>
-                  🔴 Error de conexión. Asegúrate de que Anki esté abierto y AnkiConnect configurado.
+                <span style={{ color: '#f87171', fontSize: '0.82rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
+                  <AlertTriangle size={14} />
+                  <span>{lang === 'es' ? 'Error de conexión. Asegúrate de que Anki esté abierto y AnkiConnect configurado.' : 'Connection error. Make sure Anki is open and AnkiConnect is configured.'}</span>
                 </span>
                 <span style={{ color: '#cbd5e1', fontSize: '0.78rem', lineHeight: '1.5', display: 'block' }}>
                   <strong>Configuración de CORS en AnkiConnect:</strong>
@@ -598,7 +605,8 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
                     transition: 'all 0.2s'
                   }}
                 >
-                  {lang === 'es' ? '📥 Importar palabras conocidas de Anki' : '📥 Import Known Words from Anki'}
+                  <Download size={14} />
+                  <span>{lang === 'es' ? 'Importar palabras conocidas de Anki' : 'Import Known Words from Anki'}</span>
                 </button>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '6px', textAlign: 'center' }}>
                   {lang === 'es'
@@ -627,6 +635,7 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
       {/* ── Anki Cards sub-modal ── */}
       {isCardsModalOpen && (
         <AnkiCardsModal
+          lang={lang}
           settings={settings}
           availableDecks={availableDecks}
           availableModels={availableModels}

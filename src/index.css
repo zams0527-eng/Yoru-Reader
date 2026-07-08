@@ -135,16 +135,12 @@ button {
 /* --- LIBRARY VIEW --- */
 .library-container {
   width: 100%;
+  height: 100vh;
+  overflow: hidden;
   padding: 64px 0 0 0;
   margin: 0;
   max-width: none;
-}
-
-.library-container.fixed-layout {
-  height: 100vh !important;
-  overflow: hidden !important;
-  padding: 64px 0 0 0 !important;
-  box-sizing: border-box !important;
+  box-sizing: border-box;
 }
 
 .library-section {
@@ -1209,6 +1205,7 @@ rt {
   -webkit-text-fill-color: transparent;
   background-clip: text;
   user-select: none;
+  white-space: nowrap;
 }
 
 /* Yoru Cafe brand pill badge inside header */
@@ -1843,7 +1840,12 @@ rt {
   padding: 0; 
   max-height: 70vh; 
   overflow-y: auto; 
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.15) transparent;
 }
+.yomitan-anki-body::-webkit-scrollbar { width: 5px; }
+.yomitan-anki-body::-webkit-scrollbar-track { background: transparent; }
+.yomitan-anki-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
 
 .yomitan-anki-section {
   padding: 12px 16px;
@@ -1932,8 +1934,8 @@ rt {
   transition: all 0.15s;
 }
 .yomitan-cards-tab.active {
-  color: #60a5fa;
-  border-bottom-color: #60a5fa;
+  color: var(--primary);
+  border-bottom-color: var(--primary);
 }
 .yomitan-cards-tab:hover:not(.active) { color: #cbd5e1; }
 
@@ -1976,7 +1978,7 @@ rt {
   cursor: pointer;
   outline: none;
 }
-.yomitan-cards-select:focus { border-color: rgba(255,255,255,0.3); }
+.yomitan-cards-select:focus { border-color: var(--primary); }
 .yomitan-cards-select option { background: #1c1c20; }
 
 .yomitan-fields-divider {
@@ -2015,17 +2017,20 @@ rt {
 }
 .yomitan-cards-help-btn:hover { background: rgba(255,255,255,0.07); color: #e2e8f0; }
 .yomitan-cards-close-btn {
-  background: #3b82f6;
-  border: none;
+  background: rgba(255, 224, 0, 0.08);
+  border: 1px solid var(--primary);
   border-radius: 7px;
-  color: #fff;
+  color: var(--primary);
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 700;
   padding: 7px 22px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: all 0.2s;
 }
-.yomitan-cards-close-btn:hover { background: #2563eb; }
+.yomitan-cards-close-btn:hover {
+  background: rgba(255, 224, 0, 0.15);
+  box-shadow: 0 0 12px rgba(255, 224, 0, 0.25);
+}
 
 
 
@@ -3272,20 +3277,36 @@ rt {
    ========================================= */
 .library-layout-wrapper {
   display: flex;
-  min-height: calc(100vh - 64px);
+  height: calc(100vh - 64px);
   width: 100%;
+  overflow: hidden;
 }
 
 .library-sidebar {
   width: 260px;
   flex-shrink: 0;
   background: #0d0d0f;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: none;
   padding: 24px 16px;
   display: flex;
   flex-direction: column;
   gap: 24px;
   overflow-y: auto;
+}
+
+/* Custom scrollbar for sidebar */
+.library-sidebar::-webkit-scrollbar {
+  width: 5px;
+}
+.library-sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.library-sidebar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+}
+.library-sidebar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .library-main-content {
@@ -3294,6 +3315,21 @@ rt {
   background: #08080a;
   overflow-y: auto;
   min-width: 0; /* Prevents flex overflow */
+}
+
+/* Custom scrollbar for library content */
+.library-main-content::-webkit-scrollbar {
+  width: 6px;
+}
+.library-main-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.library-main-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+}
+.library-main-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
 }
 
 /* Sidebar Search Box */
@@ -5499,12 +5535,13 @@ rt {
 @media (max-width: 680px) {
   .settings-sidebar-modal {
     flex-direction: column;
-    height: 90vh;
-    width: 95%;
+    height: 96vh !important;
+    width: 96% !important;
+    margin: auto !important;
   }
   .settings-sidebar-left {
-    width: 100%;
-    height: auto;
+    width: 100% !important;
+    height: 100% !important;
     border-right: none;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   }
@@ -5516,7 +5553,413 @@ rt {
     cursor: pointer;
   }
   .settings-close-x-btn {
-    display: none;
+    display: flex !important;
+    color: rgba(255, 255, 255, 0.5) !important;
+  }
+  .settings-sidebar-modal.mobile-subview-menu .settings-sidebar-right {
+    display: none !important;
+  }
+  .settings-sidebar-modal.mobile-subview-content .settings-sidebar-left {
+    display: none !important;
+  }
+  .settings-sidebar-modal.mobile-subview-content .settings-sidebar-right {
+    display: flex !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+  .settings-back-btn-mobile {
+    display: flex !important;
+    align-items: center;
+    background: transparent;
+    border: none;
+    color: var(--primary);
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    margin-right: 12px;
+    padding: 6px 0;
+  }
+  .settings-sidebar-right {
+    height: 100% !important;
+    width: 100% !important;
+  }
+  .settings-right-content-viewport {
+    flex: 1 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
   }
 }
+
+/* --- Mobile Responsive Layout Styles --- */
+@media (max-width: 768px) {
+  /* Hide standard header tabs */
+  .header-navigation-tabs {
+    display: none !important;
+  }
+  
+  .library-brand-name {
+    font-size: 1.05rem !important;
+    letter-spacing: 1px !important;
+  }
+  
+  /* Make header compact */
+  .library-header {
+    padding: 0 12px;
+    height: 56px;
+  }
+  
+  .library-header-actions {
+    gap: 6px !important;
+  }
+  
+  .header-display-settings-btn {
+    width: 32px !important;
+    height: 32px !important;
+  }
+  
+  .header-action-btn-text {
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 50% !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+  }
+  
+  .header-action-btn-text span,
+  .header-action-btn-text svg.lucide-chevron-down {
+    display: none !important;
+  }
+  
+  .library-container {
+    padding: 56px 0 60px 0 !important; /* padding bottom for bottom tab bar */
+  }
+  
+  .library-layout-wrapper {
+    height: calc(100vh - 116px) !important; /* 56px header + 60px bottom bar */
+  }
+  
+  /* Sidebar Drawer styling */
+  .library-sidebar {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    width: 280px;
+    height: calc(100vh - 116px);
+    z-index: 999;
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.6);
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  
+  .library-sidebar.open {
+    transform: translateX(0);
+  }
+  
+  /* Sidebar backdrop overlay */
+  .sidebar-overlay {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    width: 100vw;
+    height: calc(100vh - 116px);
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
+    z-index: 998;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  
+  .sidebar-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  
+  /* Main content padding on mobile */
+  .library-main-content {
+    padding: 20px 16px;
+  }
+  
+  /* Bottom tab bar styling */
+  .bottom-navigation-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 60px;
+    background: #0d0d0f;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    z-index: 1000;
+    box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.4);
+    padding: 0 10px;
+  }
+  
+  .bottom-tab-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.72rem;
+    cursor: pointer;
+    flex: 1;
+    height: 100%;
+    transition: color 0.15s ease;
+  }
+  
+  .bottom-tab-btn.active {
+    color: var(--primary); /* Yellow primary */
+  }
+  
+  .bottom-tab-btn span {
+    font-size: 0.65rem;
+    font-weight: 500;
+  }
+  
+  /* Compact Statistics Sub-navigation */
+  .stats-sub-tabs-container {
+    gap: 4px !important;
+    margin-bottom: 20px !important;
+    padding: 3px !important;
+  }
+  
+  .stats-sub-tab-btn {
+    padding: 8px 4px !important;
+  }
+  
+  .sub-tab-title {
+    font-size: 0.76rem !important;
+    white-space: nowrap !important;
+  }
+  
+  .sub-tab-desc {
+    display: none !important;
+  }
+  
+  /* Settings category drilldown mobile views */
+  .yomitan-settings-layout {
+    flex-direction: column !important;
+    gap: 0 !important;
+    height: 100% !important;
+  }
+  
+  .yomitan-settings-sidebar {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-right: none !important;
+    padding-right: 0 !important;
+    padding-left: 0 !important;
+    height: 100% !important;
+    overflow-y: auto !important;
+    box-sizing: border-box !important;
+  }
+  
+  .yomitan-settings-pane {
+    width: 100% !important;
+    padding-right: 0 !important;
+    height: 100% !important;
+  }
+  
+  .settings-section-card {
+    margin-bottom: 16px !important;
+    padding: 16px !important;
+  }
+  
+  /* Compact statistics panel on mobile */
+  .statistics-top-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+    margin-bottom: 14px !important;
+  }
+  
+  .tab-view-title {
+    font-size: 1.2rem !important;
+    margin-bottom: 2px !important;
+  }
+  
+  .tab-view-subtitle {
+    font-size: 0.74rem !important;
+    line-height: 1.2 !important;
+  }
+  
+  .stats-toggle-group {
+    width: 100% !important;
+    display: flex !important;
+  }
+  
+  .stats-toggle-btn {
+    flex: 1 !important;
+    text-align: center !important;
+    font-size: 0.74rem !important;
+    padding: 5px 8px !important;
+  }
+  
+  .tab-view-container {
+    padding: 1.5rem 6px 5rem 6px !important;
+  }
+
+  .stats-overview-grid {
+    gap: 6px !important;
+    grid-template-columns: 1fr 1fr !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  
+  .stats-overview-item {
+    padding: 8px 10px !important;
+    gap: 8px !important;
+    border-radius: 10px !important;
+  }
+  
+  .stats-icon-circle {
+    width: 28px !important;
+    height: 28px !important;
+  }
+  
+  .stats-icon-circle svg {
+    width: 12px !important;
+    height: 12px !important;
+  }
+  
+  .item-label {
+    font-size: 0.55rem !important;
+  }
+  
+  .item-val {
+    font-size: 0.95rem !important;
+  }
+  
+  .item-sub {
+    font-size: 0.6rem !important;
+  }
+
+  .stats-book-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+    padding: 10px 12px !important;
+  }
+  
+  .stats-book-name {
+    max-width: 100% !important;
+    font-size: 0.85rem !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+  }
+  
+  /* Make settings options take full screen width */
+  .settings-view-panel.tab-view-container {
+    padding: 1rem 6px 5rem 6px !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+  
+  .yomitan-settings-pane {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    width: 100% !important;
+  }
+  
+  .settings-section-card {
+    width: 100% !important;
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Compact Heatmap adaptation on mobile */
+  .heatmap-subtitle,
+  .heatmap-scale-select,
+  .heatmap-legend-row {
+    display: none !important;
+  }
+  
+  .stats-heatmap-panel {
+    padding: 14px !important;
+  }
+  
+  .heatmap-grid-scroll {
+    overflow: visible !important;
+    width: 100% !important;
+  }
+  
+  .heatmap-grid-container {
+    zoom: 0.53 !important;
+    min-width: unset !important;
+    width: 100% !important;
+    margin: 12px auto 0 auto !important;
+  }
+
+  /* Welcome Screen Full Screen on mobile */
+  .welcome-screen-container {
+    padding: 0 !important;
+    background-color: #131316 !important;
+  }
+  .welcome-card {
+    border-radius: 0 !important;
+    border: none !important;
+    min-height: 100vh !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    padding: 24px 20px !important;
+    box-shadow: none !important;
+    max-width: 100% !important;
+  }
+
+  /* Display Settings Drawer Full Screen on mobile */
+  .display-settings-drawer {
+    width: 100% !important;
+    height: 100vh !important;
+    top: 0 !important;
+    right: -100% !important;
+    position: fixed !important;
+    z-index: 2000 !important;
+  }
+  .display-settings-drawer.open {
+    right: 0 !important;
+  }
+
+  /* Settings view container height collapse fix */
+  .settings-view-panel.tab-view-container {
+    padding: 1rem 12px 5rem 12px !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: calc(100vh - 116px) !important;
+    overflow: hidden !important;
+    display: flex !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .books-grid {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)) !important;
+    gap: 1.25rem 0.75rem !important;
+  }
+  
+  .book-card {
+    padding: 6px !important;
+  }
+  
+  .library-main-content {
+    padding: 16px 12px !important;
+  }
+  
+  .section-title {
+    font-size: 1.4rem !important;
+  }
+}
+
 

@@ -1,9 +1,12 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Camera, User, Globe } from 'lucide-react';
 import { t } from '../utils/i18n';
 import JSZip from 'jszip';
 import { db } from '../utils/db';
 import { googleDriveService } from '../utils/googleDriveService';
+import { Browser } from '@capacitor/browser';
+import { App as CapacitorApp } from '@capacitor/app';
+import { importAllDictionaryData } from '../utils/yomitanDB';
 
 const PRESET_AVATARS = [
   { avatar: 'linear-gradient(135deg, #ff5e62 0%, #ff9966 100%)', emoji: '🦊' }
@@ -140,6 +143,79 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
     }
   };
 
+  // Chrome Custom Tabs OAuth callback for Welcome Screen
+  useEffect(() => {
+    const ANDROID_CLIENT_ID = '658624509601-fbje3dvug1pkle2a4c5fc49ssr0numf2.apps.googleusercontent.com';
+    const REDIRECT_URI = 'com.googleusercontent.apps.658624509601-fbje3dvug1pkle2a4c5fc49ssr0numf2:/oauth2redirect';
+
+    const handleAppUrlOpen = async (event) => {
+      const url = event.url || '';
+      if (!url.startsWith('com.googleusercontent.apps.658624509601-fbje3dvug1pkle2a4c5fc49ssr0numf2')) return;
+
+      const parsed = new URL(url.replace('com.googleusercontent.apps.658624509601-fbje3dvug1pkle2a4c5fc49ssr0numf2:/oauth2redirect', 'https://placeholder.com/oauth2redirect'));
+      const code = parsed.searchParams.get('code');
+      const state = parsed.searchParams.get('state');
+
+      if (!code || state !== 'gdrive_auth_welcome') return;
+
+      try { await Browser.close(); } catch (_) {}
+
+      const clientId = (localStorage.getItem('gdrive_client_id') || ANDROID_CLIENT_ID).trim();
+      // Android clients are public — no client_secret needed
+      const clientSecret = localStorage.getItem('gdrive_client_secret') || '';
+
+      setIsSyncing(true);
+      document.body.style.cursor = 'wait';
+      try {
+        const tokens = await googleDriveService.exchangeCodeForTokens(
+          code,
+          REDIRECT_URI,
+          clientId,
+          clientSecret
+        );
+        if (!tokens) {
+          alert(lang === 'es' ? 'Error al conectar con Google Drive.' : 'Failed to connect to Google Drive.');
+          return;
+        }
+        localStorage.setItem('gdrive_tokens', JSON.stringify(tokens));
+        const info = await googleDriveService.getUserInfo(tokens, clientId, clientSecret);
+        localStorage.setItem('gdrive_user_email', info.email);
+        const zipBlob = await googleDriveService.downloadBlobFile(
+          tokens, clientId, 'yoru_reader_full_backup.zip', clientSecret
+        );
+        if (!zipBlob) {
+          alert(lang === 'es'
+            ? 'No se encontró ningún archivo de copia de seguridad (yoru_reader_full_backup.zip) en Google Drive.'
+            : 'No backup file (yoru_reader_full_backup.zip) was found in your Google Drive.');
+          return;
+        }
+        const fileObj = new File([zipBlob], 'yoru_reader_full_backup.zip', { type: 'application/zip' });
+        await handleImportLocalBackup({ target: { files: [fileObj] } });
+      } catch (err) {
+        console.error(err);
+        alert((lang === 'es' ? 'Error al restaurar desde Drive: ' : 'Error restoring from Drive: ') + err.message);
+      } finally {
+        setIsSyncing(false);
+        document.body.style.cursor = 'default';
+      }
+    };
+
+    let listenerHandle = null;
+    CapacitorApp.addListener('appUrlOpen', handleAppUrlOpen).then(h => {
+      listenerHandle = h;
+    }).catch(() => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get('code');
+      const state = urlParams.get('state');
+      if (code && state === 'gdrive_auth_welcome') {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        handleAppUrlOpen({ url: `com.googleusercontent.apps.658624509601-fbje3dvug1pkle2a4c5fc49ssr0numf2:/oauth2redirect?code=${code}&state=${state}` });
+      }
+    });
+
+    return () => { if (listenerHandle) listenerHandle.remove(); };
+  }, []);
+
   const handleRestoreDriveBackup = async () => {
     const defaultClientId = '658624509601-2ef33pve1i9mifecbe4n2nk0lmop9ggu.apps.googleusercontent.com';
     const defaultClientSecret = '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';
@@ -155,7 +231,26 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
       document.body.style.cursor = 'wait';
 
       if (!window.electronAPI || !window.electronAPI.startGoogleOauth) {
-        alert(lang === 'es' ? 'El puente nativo de Electron no está disponible.' : 'The Electron native bridge is not available.');
+        const ANDROID_CLIENT_ID = '658624509601-fbje3dvug1pkle2a4c5fc49ssr0numf2.apps.googleusercontent.com';
+        const REDIRECT_URI = 'com.googleusercontent.apps.658624509601-fbje3dvug1pkle2a4c5fc49ssr0numf2:/oauth2redirect';
+        localStorage.setItem('gdrive_client_id', ANDROID_CLIENT_ID);
+        localStorage.removeItem('gdrive_client_secret');
+        const oauthUrl = "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({
+          client_id: ANDROID_CLIENT_ID,
+          redirect_uri: REDIRECT_URI,
+          response_type: "code",
+          scope: "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email",
+          state: "gdrive_auth_welcome",
+          access_type: "offline",
+          prompt: "consent"
+        });
+        try {
+          await Browser.open({ url: oauthUrl });
+        } catch {
+          window.open(oauthUrl, '_blank');
+        }
+        setIsSyncing(false);
+        document.body.style.cursor = 'default';
         return;
       }
 

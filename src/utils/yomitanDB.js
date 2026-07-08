@@ -63,18 +63,13 @@ export async function getDB() {
  */
 export async function getInstalledDictionaries() {
   const db = await getDB();
-  try {
-    const result = await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_DICTS, 'readonly');
-      const store = tx.objectStore(STORE_DICTS);
-      const request = store.getAll();
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    return result;
-  } finally {
-    await closeDB();
-  }
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_DICTS, 'readonly');
+    const store = tx.objectStore(STORE_DICTS);
+    const request = store.getAll();
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
 }
 
 /**
@@ -120,8 +115,6 @@ export async function migrateDictFlags() {
     }
   } catch (err) {
     console.warn('migrateDictFlags failed:', err);
-  } finally {
-    await closeDB();
   }
 }
 
@@ -171,8 +164,6 @@ export async function cleanOrphanedEntries() {
     console.log('[yomitanDB] Orphaned entries cleaned. Active dicts:', [...knownTitles]);
   } catch (err) {
     console.warn('cleanOrphanedEntries failed:', err);
-  } finally {
-    await closeDB();
   }
 }
 
@@ -182,55 +173,51 @@ export async function cleanOrphanedEntries() {
 export async function deleteDictionary(title) {
   const db = await getDB();
   
-  try {
-    // 1. Borrar de la tabla de diccionarios
-    await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_DICTS, 'readwrite');
-      tx.objectStore(STORE_DICTS).delete(title);
-      tx.oncomplete = resolve;
-      tx.onerror = reject;
-    });
+  // 1. Borrar de la tabla de diccionarios
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_DICTS, 'readwrite');
+    tx.objectStore(STORE_DICTS).delete(title);
+    tx.oncomplete = resolve;
+    tx.onerror = reject;
+  });
+  
+  // 2. Borrar todos los términos en una sola transacción rápida
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_TERMS, 'readwrite');
+    const store = tx.objectStore(STORE_TERMS);
+    const index = store.index('dictionary');
+    const request = index.openCursor(IDBKeyRange.only(title));
     
-    // 2. Borrar todos los términos en una sola transacción rápida
-    await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_TERMS, 'readwrite');
-      const store = tx.objectStore(STORE_TERMS);
-      const index = store.index('dictionary');
-      const request = index.openCursor(IDBKeyRange.only(title));
-      
-      request.onsuccess = (e) => {
-        const cursor = e.target.result;
-        if (cursor) {
-          cursor.delete();
-          cursor.continue();
-        } else {
-          resolve();
-        }
-      };
-      request.onerror = reject;
-    });
+    request.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        cursor.delete();
+        cursor.continue();
+      } else {
+        resolve();
+      }
+    };
+    request.onerror = reject;
+  });
+  
+  // 3. Borrar todas las frecuencias en una sola transacción rápida
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_FREQS, 'readwrite');
+    const store = tx.objectStore(STORE_FREQS);
+    const index = store.index('dictionary');
+    const request = index.openCursor(IDBKeyRange.only(title));
     
-    // 3. Borrar todas las frecuencias en una sola transacción rápida
-    await new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_FREQS, 'readwrite');
-      const store = tx.objectStore(STORE_FREQS);
-      const index = store.index('dictionary');
-      const request = index.openCursor(IDBKeyRange.only(title));
-      
-      request.onsuccess = (e) => {
-        const cursor = e.target.result;
-        if (cursor) {
-          cursor.delete();
-          cursor.continue();
-        } else {
-          resolve();
-        }
-      };
-      request.onerror = reject;
-    });
-  } finally {
-    await closeDB();
-  }
+    request.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        cursor.delete();
+        cursor.continue();
+      } else {
+        resolve();
+      }
+    };
+    request.onerror = reject;
+  });
 }
 
 /**
@@ -284,111 +271,130 @@ export async function importYomitanZip(file, onProgress) {
     });
 
     let totalProcessed = 0;
+    const BATCH_SIZE = 5000;
 
     if (termFiles.length > 0) {
       const totalFiles = termFiles.length;
       for (let i = 0; i < totalFiles; i++) {
         const filename = termFiles[i];
-        onProgress(`Procesando términos ${i+1}/${totalFiles}...`, 10 + Math.round((i / totalFiles) * 40));
         
         let content = await zip.file(filename).async('string');
         let termsArray = JSON.parse(content);
         content = null;
         
-        await new Promise((resolve, reject) => {
-          const tx = db.transaction(STORE_TERMS, 'readwrite');
-          const store = tx.objectStore(STORE_TERMS);
+        const totalTerms = termsArray.length;
+        for (let j = 0; j < totalTerms; j += BATCH_SIZE) {
+          const chunk = termsArray.slice(j, j + BATCH_SIZE);
           
-          termsArray.forEach(termData => {
-            if (Array.isArray(termData)) {
-              store.add({
-                dictionary: dictTitle,
-                term: termData[0],
-                reading: termData[1] || '',
-                definitions: typeof termData[5] === 'string' ? [termData[5]] : termData[5] || [],
-                tags: termData[2] || '',
-                score: termData[4] || 0
-              });
-              totalProcessed++;
-            }
+          const currentPercent = 10 + Math.round((i / totalFiles) * 40) + Math.round((j / totalTerms) * (40 / totalFiles));
+          const termProgressMsg = totalFiles > 1 
+            ? `Procesando términos ${i+1}/${totalFiles} (${Math.round((j / totalTerms) * 100)}%)...` 
+            : `Procesando términos (${Math.round((j / totalTerms) * 100)}%)...`;
+          onProgress(termProgressMsg, currentPercent);
+          
+          await new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_TERMS, 'readwrite');
+            const store = tx.objectStore(STORE_TERMS);
+            
+            chunk.forEach(termData => {
+              if (Array.isArray(termData)) {
+                store.add({
+                  dictionary: dictTitle,
+                  term: termData[0],
+                  reading: termData[1] || '',
+                  definitions: typeof termData[5] === 'string' ? [termData[5]] : termData[5] || [],
+                  tags: termData[2] || '',
+                  score: termData[4] || 0
+                });
+                totalProcessed++;
+              }
+            });
+            
+            tx.oncomplete = resolve;
+            tx.onerror = reject;
           });
           
-          tx.oncomplete = resolve;
-          tx.onerror = reject;
-        });
+          await new Promise(r => setTimeout(r, 1));
+        }
         
         termsArray = null;
-        await new Promise(r => setTimeout(r, 30));
       }
     }
 
     if (metaFiles.length > 0) {
       const totalMetaFiles = metaFiles.length;
-      for (let i = 0; i < metaFiles.length; i++) {
+      for (let i = 0; i < totalMetaFiles; i++) {
         const filename = metaFiles[i];
-        onProgress(`Procesando frecuencias ${i+1}/${totalMetaFiles}...`, 50 + Math.round((i / totalMetaFiles) * 40));
         
         let content = await zip.file(filename).async('string');
         let metaArray = JSON.parse(content);
         content = null;
         
-        await new Promise((resolve, reject) => {
-          const tx = db.transaction(STORE_FREQS, 'readwrite');
-          const store = tx.objectStore(STORE_FREQS);
+        const totalMeta = metaArray.length;
+        for (let j = 0; j < totalMeta; j += BATCH_SIZE) {
+          const chunk = metaArray.slice(j, j + BATCH_SIZE);
           
-          metaArray.forEach(metaData => {
-            if (Array.isArray(metaData) && metaData[1] === 'freq') {
-              const term = metaData[0];
-              let value = 0;
-              let displayValue = '';
-              
-              if (metaData.length === 3) {
-                const freqVal = metaData[2];
-                if (typeof freqVal === 'object' && freqVal !== null) {
-                  value = freqVal.value || 0;
-                  displayValue = freqVal.displayValue || String(value);
-                } else {
-                  value = Number(freqVal) || 0;
-                  displayValue = String(freqVal);
+          const currentPercent = 50 + Math.round((i / totalMetaFiles) * 40) + Math.round((j / totalMeta) * (40 / totalMetaFiles));
+          const metaProgressMsg = totalMetaFiles > 1 
+            ? `Procesando frecuencias ${i+1}/${totalMetaFiles} (${Math.round((j / totalMeta) * 100)}%)...` 
+            : `Procesando frecuencias (${Math.round((j / totalMeta) * 100)}%)...`;
+          onProgress(metaProgressMsg, currentPercent);
+          
+          await new Promise((resolve, reject) => {
+            const tx = db.transaction(STORE_FREQS, 'readwrite');
+            const store = tx.objectStore(STORE_FREQS);
+            
+            chunk.forEach(metaData => {
+              if (Array.isArray(metaData) && metaData[1] === 'freq') {
+                const term = metaData[0];
+                let value = 0;
+                let displayValue = '';
+                
+                if (metaData.length === 3) {
+                  const freqVal = metaData[2];
+                  if (typeof freqVal === 'object' && freqVal !== null) {
+                    value = freqVal.value || 0;
+                    displayValue = freqVal.displayValue || String(value);
+                  } else {
+                    value = Number(freqVal) || 0;
+                    displayValue = String(freqVal);
+                  }
+                } else if (metaData.length === 4) {
+                  const freqVal = metaData[3];
+                  if (typeof freqVal === 'object' && freqVal !== null) {
+                    value = freqVal.value || 0;
+                    displayValue = freqVal.displayValue || String(value);
+                  } else {
+                    value = Number(freqVal) || 0;
+                    displayValue = String(freqVal);
+                  }
                 }
-              } else if (metaData.length === 4) {
-                const freqVal = metaData[3];
-                if (typeof freqVal === 'object' && freqVal !== null) {
-                  value = freqVal.value || 0;
-                  displayValue = freqVal.displayValue || String(value);
-                } else {
-                  value = Number(freqVal) || 0;
-                  displayValue = String(freqVal);
-                }
+                
+                store.add({
+                  dictionary: dictTitle,
+                  term,
+                  value,
+                  displayValue
+                });
+                totalProcessed++;
               }
-              
-              store.add({
-                dictionary: dictTitle,
-                term,
-                value,
-                displayValue
-              });
-              totalProcessed++;
-            }
+            });
+            
+            tx.oncomplete = resolve;
+            tx.onerror = reject;
           });
           
-          tx.oncomplete = resolve;
-          tx.onerror = reject;
-        });
+          await new Promise(r => setTimeout(r, 1));
+        }
         
         metaArray = null;
-        await new Promise(r => setTimeout(r, 30));
       }
     }
     
     onProgress('¡Instalación completada!', 100);
     return { success: true, title: dictTitle, termsCount: totalProcessed };
-  } catch (error) {
-    console.error('Error importando Yomitan ZIP:', error);
-    throw error;
   } finally {
     zip = null;
-    await closeDB();
   }
 }
 
@@ -414,56 +420,52 @@ export async function getFrequenciesForWord(word) {
     console.warn("Could not read settings for filtering:", errSettings);
   }
 
-  try {
-    // Get the set of actually installed dictionary titles to filter out orphaned entries
-    const installedTitles = await new Promise((resolve) => {
-      const tx = db.transaction(STORE_DICTS, 'readonly');
-      const req = tx.objectStore(STORE_DICTS).getAllKeys();
-      req.onsuccess = () => resolve(new Set(req.result));
-      req.onerror = () => resolve(new Set());
-    });
+  // Get the set of actually installed dictionary titles to filter out orphaned entries
+  const installedTitles = await new Promise((resolve) => {
+    const tx = db.transaction(STORE_DICTS, 'readonly');
+    const req = tx.objectStore(STORE_DICTS).getAllKeys();
+    req.onsuccess = () => resolve(new Set(req.result));
+    req.onerror = () => resolve(new Set());
+  });
 
-    await new Promise((resolve) => {
-      const tx = db.transaction(STORE_FREQS, 'readonly');
-      const store = tx.objectStore(STORE_FREQS);
-      const index = store.index('term');
-      const request = index.openCursor(IDBKeyRange.only(word));
-      
-      request.onsuccess = (e) => {
-        const cursor = e.target.result;
-        if (cursor) {
-          const val = cursor.value;
-          // Only include if the dictionary is installed AND not disabled
-          if (installedTitles.has(val.dictionary) && !disabledDicts.includes(val.dictionary)) {
-            freqs.push({
-              dictionary: val.dictionary,
-              value: val.value,
-              displayValue: val.displayValue
-            });
-          }
-          cursor.continue();
-        } else {
-          resolve();
+  await new Promise((resolve) => {
+    const tx = db.transaction(STORE_FREQS, 'readonly');
+    const store = tx.objectStore(STORE_FREQS);
+    const index = store.index('term');
+    const request = index.openCursor(IDBKeyRange.only(word));
+    
+    request.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        const val = cursor.value;
+        // Only include if the dictionary is installed AND not disabled
+        if (installedTitles.has(val.dictionary) && !disabledDicts.includes(val.dictionary)) {
+          freqs.push({
+            dictionary: val.dictionary,
+            value: val.value,
+            displayValue: val.displayValue
+          });
         }
-      };
-      request.onerror = () => resolve();
+        cursor.continue();
+      } else {
+        resolve();
+      }
+    };
+    request.onerror = () => resolve();
+  });
+  
+  if (dictOrder.length > 0) {
+    freqs.sort((a, b) => {
+      const idxA = dictOrder.indexOf(a.dictionary);
+      const idxB = dictOrder.indexOf(b.dictionary);
+      if (idxA === -1 && idxB === -1) return 0;
+      if (idxA === -1) return 1;
+      if (idxB === -1) return -1;
+      return idxA - idxB;
     });
-    
-    if (dictOrder.length > 0) {
-      freqs.sort((a, b) => {
-        const idxA = dictOrder.indexOf(a.dictionary);
-        const idxB = dictOrder.indexOf(b.dictionary);
-        if (idxA === -1 && idxB === -1) return 0;
-        if (idxA === -1) return 1;
-        if (idxB === -1) return -1;
-        return idxA - idxB;
-      });
-    }
-    
-    return freqs;
-  } finally {
-    await closeDB();
   }
+  
+  return freqs;
 }
 
 function cleanDefinition(def) {
@@ -651,9 +653,9 @@ export async function searchYomitanDB(word, reading = '') {
     results.length = 0;
     results = null;
     return null;
-  } finally {
-    // Cerramos la conexión de forma inmediata para forzar la liberación de memoria en Chromium
-    await closeDB();
+  } catch (err) {
+    console.error('Error in searchYomitanDB:', err);
+    throw err;
   }
 }
 
@@ -749,8 +751,9 @@ export async function exportDictionaryDataToZip(zip, onProgress) {
     zip.file('frequencies_info.json', JSON.stringify({ chunkCount: freqChunkCount, totalCount: totalFreqsExported }));
     
     return dictionaries;
-  } finally {
-    await closeDB();
+  } catch (err) {
+    console.error('Error exporting dictionary to zip:', err);
+    throw err;
   }
 }
 
@@ -802,8 +805,9 @@ export async function importAllDictionaryData({ dictionaries, terms, frequencies
         await new Promise(r => setTimeout(r, 15));
       }
     }
-  } finally {
-    await closeDB();
+  } catch (err) {
+    console.error('Error importing all dictionary data:', err);
+    throw err;
   }
 }
 
@@ -813,14 +817,12 @@ export async function importAllDictionaryData({ dictionaries, terms, frequencies
 export async function migrateEnglishDictName() {
   const db = await getDB();
   try {
-    const tx = db.transaction([STORE_DICTS, STORE_TERMS, STORE_FREQS], 'readwrite');
-    const dictStore = tx.objectStore(STORE_DICTS);
-    const termStore = tx.objectStore(STORE_TERMS);
-    const freqStore = tx.objectStore(STORE_FREQS);
-    
+    // 1. Read dictionaries using a short-lived readonly transaction
     const dicts = await new Promise((resolve) => {
-      const req = dictStore.getAll();
+      const tx = db.transaction(STORE_DICTS, 'readonly');
+      const req = tx.objectStore(STORE_DICTS).getAll();
       req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
     });
     
     const targetDict = dicts.find(d => d.title.startsWith('JMdict') && !d.title.includes('Spanish') && !d.title.includes('English') && !d.title.includes('Frecuencia'));
@@ -828,6 +830,12 @@ export async function migrateEnglishDictName() {
     
     const oldTitle = targetDict.title;
     const newTitle = oldTitle.replace('JMdict', 'JMdict (English)');
+    
+    // 2. Open readwrite transaction only when we actually need to migrate!
+    const tx = db.transaction([STORE_DICTS, STORE_TERMS, STORE_FREQS], 'readwrite');
+    const dictStore = tx.objectStore(STORE_DICTS);
+    const termStore = tx.objectStore(STORE_TERMS);
+    const freqStore = tx.objectStore(STORE_FREQS);
     
     // Save new dictionary metadata
     dictStore.put({
@@ -861,9 +869,13 @@ export async function migrateEnglishDictName() {
         cursor.continue();
       }
     };
+
+    // Await completion of migration transaction
+    await new Promise((resolve, reject) => {
+      tx.oncomplete = resolve;
+      tx.onerror = reject;
+    });
   } catch (err) {
     console.warn("Migration of English dictionary name failed:", err);
-  } finally {
-    await closeDB();
   }
 }

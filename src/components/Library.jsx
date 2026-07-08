@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Info, Trash2, ListChecks, Check, BarChart3, HelpCircle, Pencil, X, ArrowUpDown, Settings, SlidersHorizontal, Calendar, BookOpen, Clock, Flame, Download, Upload, MoreVertical, Search, EyeOff, User, Tag, RotateCcw, CircleSlash, Play, Pause, ChevronDown, Database, Palette, Cloud, FolderOpen } from 'lucide-react';
+import { Plus, Info, Trash2, ListChecks, Check, BarChart3, HelpCircle, Pencil, X, ArrowUpDown, Settings, SlidersHorizontal, Calendar, BookOpen, Clock, Flame, Download, Upload, MoreVertical, Search, EyeOff, User, Tag, RotateCcw, CircleSlash, Play, Pause, ChevronDown, Database, Palette, Cloud, FolderOpen, Globe, Type, Plug, Layers, AlertTriangle, Keyboard, Bug, Megaphone, Maximize, Menu } from 'lucide-react';
 import SettingsModal from './SettingsModal';
 import JSZip from 'jszip';
 import { importBookFile } from '../utils/fileImport';
@@ -9,6 +9,8 @@ const AnkiConfigModal = React.lazy(() => import('./AnkiConfigModal'));
 import { tokenizeText } from '../utils/japanese';
 import { t } from '../utils/i18n';
 import { googleDriveService } from '../utils/googleDriveService';
+import { Browser } from '@capacitor/browser';
+import { App as CapacitorApp } from '@capacitor/app';
 
 const resizeImage = (file, maxDimension = 128) => {
   return new Promise((resolve, reject) => {
@@ -90,6 +92,52 @@ export default function Library({
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [previewBook, setPreviewBook] = useState(null);
   
+  // Mobile responsive layout states
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [mobileSettingsSectionOpen, setMobileSettingsSectionOpen] = useState(false);
+  const touchStartX = useRef(0);
+  const touchEndX = useRef(0);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth <= 768;
+      setIsMobile(mobile);
+      if (!mobile) setIsSidebarOpen(false);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const handleTouchStart = (e) => {
+    touchStartX.current = e.changedTouches[0].screenX;
+    touchEndX.current = e.changedTouches[0].screenX;
+  };
+
+  const handleTouchMove = (e) => {
+    touchEndX.current = e.changedTouches[0].screenX;
+  };
+
+  const handleTouchEnd = () => {
+    const diffX = touchEndX.current - touchStartX.current;
+    
+    // 1. Left Sidebar Navigation Drawer
+    if (diffX > 70 && touchStartX.current < 60 && !isSidebarOpen) {
+      setIsSidebarOpen(true);
+    }
+    if (diffX < -70 && isSidebarOpen) {
+      setIsSidebarOpen(false);
+    }
+    
+    // 2. Right Display Settings Drawer (Option Q)
+    if (diffX < -70 && touchStartX.current > window.innerWidth - 60 && !isDisplaySettingsOpen) {
+      setIsDisplaySettingsOpen(true);
+    }
+    if (diffX > 70 && isDisplaySettingsOpen) {
+      setIsDisplaySettingsOpen(false);
+    }
+  };
+
   // Sidebar Navigation states
   const [activeFilter, setActiveFilter] = useState({ type: 'all', value: null });
   const [searchQuery, setSearchQuery] = useState('');
@@ -355,7 +403,7 @@ export default function Library({
   };
 
   const handleDeleteDict = async (title) => {
-    if (window.confirm(`¿Seguro que quieres borrar el diccionario "${title}"?`)) {
+    if (window.confirm(lang === 'es' ? `¿Seguro que quieres borrar el diccionario "${title}"?` : `Are you sure you want to delete the dictionary "${title}"?`)) {
       // Immediately remove from state so the UI updates instantly
       setInstalledDicts(prev => prev.filter(d => d.title !== title));
       try {
@@ -465,29 +513,69 @@ export default function Library({
           removeListener();
         }
       } else {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        let response = null;
+        let lastError = null;
+        const isNative = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
         
-        const reader = response.body.getReader();
-        const contentLength = +response.headers.get('Content-Length');
-        let receivedLength = 0;
-        let chunks = [];
-        
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          chunks.push(value);
-          receivedLength += value.length;
-          if (contentLength) {
-            const percent = Math.round((receivedLength / contentLength) * 100);
-            setDownloadProgress(percent);
-            setMsg(`Descargando: ${percent}%`);
-          } else {
-            setMsg(`Descargado ${Math.round(receivedLength / 1024)} KB`);
+        if (url.includes('drive.google.com') && !isNative) {
+          // List of public CORS proxies to try sequentially for Google Drive downloads (Web only)
+          const proxies = [
+            (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+            (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
+            (u) => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(u)}`
+          ];
+          
+          for (let i = 0; i < proxies.length; i++) {
+            const fetchUrl = proxies[i](url);
+            try {
+              console.log(`Trying proxy ${i + 1} for download: ${fetchUrl}`);
+              response = await fetch(fetchUrl);
+              if (response.ok) {
+                console.log(`Proxy ${i + 1} downloaded file successfully!`);
+                break;
+              } else {
+                lastError = new Error(`Proxy ${i + 1} returned status ${response.status}`);
+              }
+            } catch (err) {
+              lastError = err;
+            }
           }
+          if (!response || !response.ok) {
+            throw lastError || new Error('All CORS proxies failed to download the file.');
+          }
+        } else {
+          // Direct fetch for native apps (CapacitorHttp bypasses CORS) or non-GDrive links
+          console.log(`Direct fetching URL: ${url}`);
+          response = await fetch(url);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
         }
-        const blob = new Blob(chunks);
-        arrayBuffer = await blob.arrayBuffer();
+        
+        if (response.body && typeof response.body.getReader === 'function') {
+          const reader = response.body.getReader();
+          const contentLength = +response.headers.get('Content-Length');
+          let receivedLength = 0;
+          let chunks = [];
+          
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            receivedLength += value.length;
+            if (contentLength) {
+              const percent = Math.round((receivedLength / contentLength) * 100);
+              setDownloadProgress(percent);
+              setMsg(`Descargando: ${percent}%`);
+            } else {
+              setMsg(`Descargado ${Math.round(receivedLength / 1024)} KB`);
+            }
+          }
+          const blob = new Blob(chunks);
+          arrayBuffer = await blob.arrayBuffer();
+        } else {
+          setMsg(lang === 'es' ? 'Descargando diccionario...' : 'Downloading dictionary...');
+          const blob = await response.blob();
+          arrayBuffer = await blob.arrayBuffer();
+        }
       }
       
       setMsg('Procesando base de datos...');
@@ -520,18 +608,19 @@ export default function Library({
         console.warn("Preset dict metadata update failed:", errInspect);
       }
       
-      // Show success, then hide bar and reload dicts in background
+      // Show success, then hide bar and reload dicts
       setSuccess(true);
       setMsg('¡Instalado correctamente!');
       setProg(100);
       setIsLibraryModalOpen(false);
+      // Reload dicts immediately so they appear in the list right away
+      await loadInstalledDicts();
       setTimeout(() => {
         setIsImporting(false);
         setSuccess(false);
         setProg(0);
         setMsg('');
         setDownloadingDictUrl(null);
-        loadInstalledDicts();
       }, 1500);
     } catch (err) {
       alert('Error instalando diccionario: ' + err.message);
@@ -724,11 +813,17 @@ export default function Library({
     const showDicts = isLibraryModalOpen === 'dict';
     const showFreqs = isLibraryModalOpen === 'freq';
 
-    const presetDicts = [
+    const presetDicts = lang === 'es' ? [
       {
         title: 'JMdict (Spanish)',
         desc: 'Diccionario de japonés a español (multilingüe). Recomendado para hispanohablantes.',
-        url: 'https://drive.google.com/uc?export=download&id=1EX6Ofpl-BMblKRoao3fPZMxLkEuDKv8K'
+        url: 'https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMdict_spanish.zip'
+      }
+    ] : [
+      {
+        title: 'JMdict (English)',
+        desc: 'Japanese to English dictionary. Recommended for English speakers.',
+        url: 'https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMdict_english.zip'
       }
     ];
 
@@ -832,6 +927,15 @@ export default function Library({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {presetDicts.map(d => {
                     const isDownloading = downloadingDictUrl === d.url;
+                    
+                    const cleanPresetTitle = d.title.replace(/\s*(?:Frecuencias|Frecuencia)\b/i, '').trim().toLowerCase();
+                    const isInstalled = installedDicts.some(installed => {
+                      const installedTitleClean = installed.title.toLowerCase();
+                      return installedTitleClean === cleanPresetTitle || 
+                             installedTitleClean.includes(cleanPresetTitle) || 
+                             cleanPresetTitle.includes(installedTitleClean);
+                    });
+
                     return (
                       <div key={d.title} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
                         <div style={{ flex: 1 }}>
@@ -839,22 +943,34 @@ export default function Library({
                           <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '3px' }}>{d.desc}</div>
                         </div>
                         <button
-                          disabled={isImportingDict}
+                          disabled={isImportingDict || isInstalled}
                           onClick={() => handleInstallPresetDict(d.title, d.url, false)}
                           style={{
-                            background: isDownloading ? 'rgba(255,255,255,0.1)' : 'var(--primary)',
-                            color: '#fff',
-                            border: 'none',
+                            background: isDownloading 
+                              ? 'rgba(255,255,255,0.1)' 
+                              : isInstalled 
+                                ? 'rgba(52, 211, 153, 0.15)' 
+                                : 'var(--primary)',
+                            color: isInstalled ? '#34d399' : '#fff',
+                            border: isInstalled ? '1px solid rgba(52, 211, 153, 0.3)' : 'none',
                             borderRadius: '6px',
                             padding: '6px 12px',
                             fontSize: '0.78rem',
                             fontWeight: 600,
-                            cursor: isImportingDict ? 'not-allowed' : 'pointer',
+                            cursor: isInstalled 
+                              ? 'default' 
+                              : isImportingDict 
+                                ? 'not-allowed' 
+                                : 'pointer',
                             whiteSpace: 'nowrap',
                             transition: 'all 0.2s'
                           }}
                         >
-                          {isDownloading ? `${downloadProgress}%` : (lang === 'es' ? 'Instalar' : 'Install')}
+                          {isDownloading 
+                            ? `${downloadProgress}%` 
+                            : isInstalled 
+                              ? (lang === 'es' ? '✓ Instalado' : '✓ Installed') 
+                              : (lang === 'es' ? 'Instalar' : 'Install')}
                         </button>
                       </div>
                     );
@@ -877,6 +993,15 @@ export default function Library({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {presetFreqs.map(d => {
                     const isDownloading = downloadingDictUrl === d.url;
+                    
+                    const cleanPresetTitle = d.title.replace(/\s*(?:Frecuencias|Frecuencia)\b/i, '').trim().toLowerCase();
+                    const isInstalled = installedDicts.some(installed => {
+                      const installedTitleClean = installed.title.toLowerCase();
+                      return installedTitleClean === cleanPresetTitle || 
+                             installedTitleClean.includes(cleanPresetTitle) || 
+                             cleanPresetTitle.includes(installedTitleClean);
+                    });
+
                     return (
                       <div key={d.title} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
                         <div style={{ flex: 1 }}>
@@ -884,22 +1009,34 @@ export default function Library({
                           <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '3px' }}>{d.desc}</div>
                         </div>
                         <button
-                          disabled={isImportingFreq}
+                          disabled={isImportingFreq || isInstalled}
                           onClick={() => handleInstallPresetDict(d.title, d.url, true)}
                           style={{
-                            background: isDownloading ? 'rgba(255,255,255,0.1)' : 'var(--primary)',
-                            color: '#fff',
-                            border: 'none',
+                            background: isDownloading 
+                              ? 'rgba(255,255,255,0.1)' 
+                              : isInstalled 
+                                ? 'rgba(52, 211, 153, 0.15)' 
+                                : 'var(--primary)',
+                            color: isInstalled ? '#34d399' : '#fff',
+                            border: isInstalled ? '1px solid rgba(52, 211, 153, 0.3)' : 'none',
                             borderRadius: '6px',
                             padding: '6px 12px',
                             fontSize: '0.78rem',
                             fontWeight: 600,
-                            cursor: isImportingFreq ? 'not-allowed' : 'pointer',
+                            cursor: isInstalled 
+                              ? 'default' 
+                              : isImportingFreq 
+                                ? 'not-allowed' 
+                                : 'pointer',
                             whiteSpace: 'nowrap',
                             transition: 'all 0.2s'
                           }}
                         >
-                          {isDownloading ? `${downloadProgress}%` : (lang === 'es' ? 'Instalar' : 'Install')}
+                          {isDownloading 
+                            ? `${downloadProgress}%` 
+                            : isInstalled 
+                              ? (lang === 'es' ? '✓ Instalado' : '✓ Installed') 
+                              : (lang === 'es' ? 'Instalar' : 'Install')}
                         </button>
                       </div>
                     );
@@ -977,6 +1114,18 @@ export default function Library({
         e.preventDefault();
         setIsDisplaySettingsOpen(prev => !prev);
       }
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(err => {
+            console.error(`Error enabling full-screen mode: ${err.message}`);
+          });
+        } else {
+          if (document.exitFullscreen) {
+            document.exitFullscreen();
+          }
+        }
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -1035,6 +1184,75 @@ export default function Library({
     initGDriveSync();
   }, []);
 
+  // Chrome Custom Tabs OAuth callback — fires when Google redirects back via Android reverse-domain scheme
+  useEffect(() => {
+    // Android OAuth client redirect URI: reverse of client ID + :/oauth2redirect
+    const ANDROID_CLIENT_ID = '658624509601-fbje3dvug1pkle2a4c5fc49ssr0numf2.apps.googleusercontent.com';
+    const REDIRECT_URI = 'com.googleusercontent.apps.658624509601-fbje3dvug1pkle2a4c5fc49ssr0numf2:/oauth2redirect';
+
+    const handleAppUrlOpen = async (event) => {
+      const url = event.url || '';
+      if (!url.startsWith('com.googleusercontent.apps.658624509601-fbje3dvug1pkle2a4c5fc49ssr0numf2')) return;
+
+      // Extract code and state
+      const parsed = new URL(url.replace('com.googleusercontent.apps.658624509601-fbje3dvug1pkle2a4c5fc49ssr0numf2:/oauth2redirect', 'https://placeholder.com/oauth2redirect'));
+      const code = parsed.searchParams.get('code');
+      const state = parsed.searchParams.get('state');
+
+      if (!code || state !== 'gdrive_auth') return;
+
+      // Close the Chrome Custom Tab
+      try { await Browser.close(); } catch (_) {}
+
+      const clientId = (localStorage.getItem('gdrive_client_id') || ANDROID_CLIENT_ID).trim();
+      // Android clients are public — no client_secret needed
+      const clientSecret = localStorage.getItem('gdrive_client_secret') || '';
+
+      setGDriveSyncStatus('syncing');
+      try {
+        const tokens = await googleDriveService.exchangeCodeForTokens(
+          code,
+          REDIRECT_URI,
+          clientId,
+          clientSecret
+        );
+        if (tokens) {
+          localStorage.setItem('gdrive_tokens', JSON.stringify(tokens));
+          setGDriveTokens(tokens);
+          setGDriveSyncStatus('authorized');
+          const info = await googleDriveService.getUserInfo(tokens, clientId, clientSecret);
+          setGDriveUserEmail(info.email);
+          localStorage.setItem('gdrive_user_email', info.email);
+          alert(lang === 'es' ? '¡Conectado exitosamente a Google Drive!' : 'Successfully connected to Google Drive!');
+          await performCloudSync(tokens, 'bidirectional');
+        }
+      } catch (err) {
+        console.error('OAuth token exchange failed:', err);
+        alert((lang === 'es' ? 'Error de conexión: ' : 'Connection failed: ') + err.message);
+        setGDriveSyncStatus('disconnected');
+      }
+    };
+
+    // Register native app URL listener
+    let listenerHandle = null;
+    CapacitorApp.addListener('appUrlOpen', handleAppUrlOpen).then(handle => {
+      listenerHandle = handle;
+    }).catch(() => {
+      // Fallback for web/desktop — check URL params
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get('code');
+      const state = urlParams.get('state');
+      if (code && state === 'gdrive_auth') {
+        window.history.replaceState({}, document.title, window.location.pathname);
+        handleAppUrlOpen({ url: `com.googleusercontent.apps.658624509601-fbje3dvug1pkle2a4c5fc49ssr0numf2:/oauth2redirect?code=${code}&state=${state}` });
+      }
+    });
+
+    return () => {
+      if (listenerHandle) listenerHandle.remove();
+    };
+  }, []);
+
   // Connect Google Drive Folder via loopback OAuth Flow
   const handleConnectGDrive = async () => {
     try {
@@ -1045,8 +1263,30 @@ export default function Library({
       setGDriveSyncStatus('syncing');
 
       if (!window.electronAPI || !window.electronAPI.startGoogleOauth) {
-        alert(lang === 'es' ? 'El puente nativo de Electron no está disponible.' : 'The Electron native bridge is not available.');
-        setGDriveSyncStatus(gDriveTokens ? 'authorized' : 'disconnected');
+        const ANDROID_CLIENT_ID = '658624509601-fbje3dvug1pkle2a4c5fc49ssr0numf2.apps.googleusercontent.com';
+        const REDIRECT_URI = 'com.googleusercontent.apps.658624509601-fbje3dvug1pkle2a4c5fc49ssr0numf2:/oauth2redirect';
+        
+        // Store the Android client ID (no client secret for Android clients)
+        localStorage.setItem('gdrive_client_id', ANDROID_CLIENT_ID);
+        localStorage.removeItem('gdrive_client_secret'); // Android clients are public
+        
+        const oauthUrl = "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({
+          client_id: ANDROID_CLIENT_ID,
+          redirect_uri: REDIRECT_URI,
+          response_type: "code",
+          scope: "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email",
+          state: "gdrive_auth",
+          access_type: "offline",
+          prompt: "consent"
+        });
+        
+        // Open in Chrome Custom Tabs
+        try {
+          await Browser.open({ url: oauthUrl });
+        } catch {
+          window.open(oauthUrl, '_blank');
+        }
+        setGDriveSyncStatus('disconnected');
         return;
       }
 
@@ -1351,7 +1591,7 @@ export default function Library({
       setCustomAvatarUrl(dataUrl);
     } catch (err) {
       console.error(err);
-      alert('Error al procesar la imagen de perfil.');
+      alert(lang === 'es' ? 'Error al procesar la imagen de perfil.' : 'Error processing profile image.');
     }
   };
 
@@ -1363,7 +1603,7 @@ export default function Library({
       setEditProfileAvatar(dataUrl);
     } catch (err) {
       console.error(err);
-      alert('Error al procesar la imagen de perfil.');
+      alert(lang === 'es' ? 'Error al procesar la imagen de perfil.' : 'Error processing profile image.');
     }
   };
 
@@ -1461,7 +1701,7 @@ export default function Library({
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error(e);
-      alert('Error al exportar la biblioteca: ' + e.message);
+      alert((lang === 'es' ? 'Error al exportar la biblioteca: ' : 'Error exporting library: ') + e.message);
     } finally {
       document.body.style.cursor = 'default';
     }
@@ -1481,7 +1721,7 @@ export default function Library({
         zip = await JSZip.loadAsync(file);
         const metaFile = zip.file('metadata.json');
         if (!metaFile) {
-          alert('El archivo zip no contiene metadatos válidos de Yoru Reader.');
+          alert(lang === 'es' ? 'El archivo zip no contiene metadatos válidos de Yoru Reader.' : 'The zip file does not contain valid Yoru Reader metadata.');
           return;
         }
         const metaStr = await metaFile.async('text');
@@ -1498,11 +1738,11 @@ export default function Library({
       }
 
       if (!importData.books && !importData.profiles) {
-        alert('El archivo no tiene un formato de respaldo válido de Yoru Reader.');
+        alert(lang === 'es' ? 'El archivo no tiene un formato de respaldo válido de Yoru Reader.' : 'The file does not have a valid Yoru Reader backup format.');
         return;
       }
 
-      if (confirm('Al restaurar, se combinarán los libros, historiales, configuraciones y diccionarios con los actuales. ¿Deseas continuar?')) {
+      if (confirm(lang === 'es' ? 'Al restaurar, se combinarán los libros, historiales, configuraciones y diccionarios con los actuales. ¿Deseas continuar?' : 'Restoring the backup will merge books, histories, settings, and dictionaries. Do you want to continue?')) {
         
         // 1. Restore active profile ID
         if (importData.activeProfileId) {
@@ -1603,12 +1843,12 @@ export default function Library({
           }
         }
         
-        alert('¡Respaldo importado con éxito! Reiniciaremos la aplicación para aplicar los cambios.');
+        alert(lang === 'es' ? '¡Respaldo importado con éxito! Reiniciaremos la aplicación para aplicar los cambios.' : 'Backup imported successfully! Restarting the app to apply changes.');
         window.location.reload();
       }
     } catch (err) {
       console.error(err);
-      alert('Error al restaurar el respaldo: ' + err.message);
+      alert((lang === 'es' ? 'Error al restaurar el respaldo: ' : 'Error restoring backup: ') + err.message);
     } finally {
       document.body.style.cursor = 'default';
     }
@@ -2145,7 +2385,7 @@ export default function Library({
             style={{
               position: 'absolute',
               top: '32px',
-              ...(menuOpenLeft ? { right: '0' } : { left: '0' }),
+              ...(menuOpenLeft ? { left: '0' } : { right: '0' }),
               width: '190px',
               maxHeight: '420px',
               overflowY: 'auto',
@@ -2181,15 +2421,17 @@ export default function Library({
               className="context-menu-item-btn"
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Info size={14} style={{ color: 'rgba(255, 255, 255, 0.7)' }} /> Ver detalles
+                <Info size={14} style={{ color: 'rgba(255, 255, 255, 0.7)' }} /> {lang === 'es' ? 'Ver detalles' : 'Show details'}
               </div>
             </button>
             
             <button 
               onClick={() => {
                 setActiveMenuBookId(null);
-                const newTitle = prompt("Nuevo título del libro:", book.title);
-                if (newTitle) onUpdateBookDetails(book.id, { title: newTitle });
+                setEditingBook(book);
+                setEditTitle(book.title);
+                setEditHideCover(book.hideCover === true);
+                setEditDescription(book.description || '');
               }}
               style={{
                 display: 'flex',
@@ -2208,20 +2450,20 @@ export default function Library({
               className="context-menu-item-btn"
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Pencil size={14} style={{ color: 'rgba(255, 255, 255, 0.7)' }} /> Editar título
+                <Pencil size={14} style={{ color: 'rgba(255, 255, 255, 0.7)' }} /> {lang === 'es' ? 'Editar título' : 'Edit title'}
               </div>
             </button>
 
             <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '4px 0' }} />
             <div style={{ padding: '2px 0' }}>
-              <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', padding: '4px 12px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Estado</div>
+              <div style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', padding: '4px 12px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>{lang === 'es' ? 'Estado' : 'Status'}</div>
               {[
-                { key: 'reading', label: 'En progreso', color: '#3b82f6', icon: <Play size={12} fill="currentColor" /> },
-                { key: 'completed', label: 'Completado', color: '#10b981', icon: <Check size={12} strokeWidth={3} /> },
-                { key: 'paused', label: 'Pausado', color: '#f59e0b', icon: <Pause size={12} fill="currentColor" /> },
-                { key: 'planning', label: 'Planeado', color: '#a855f7', icon: <Clock size={12} /> },
-                { key: 'dropped', label: 'Dropeado', color: '#9ca3af', icon: <X size={12} strokeWidth={3} /> },
-                { key: 'unread', label: 'Sin iniciar', color: '#ef4444', icon: <RotateCcw size={12} /> }
+                { key: 'reading', label: lang === 'es' ? 'En progreso' : 'In progress', color: '#3b82f6', icon: <Play size={12} fill="currentColor" /> },
+                { key: 'completed', label: lang === 'es' ? 'Completado' : 'Completed', color: '#10b981', icon: <Check size={12} strokeWidth={3} /> },
+                { key: 'paused', label: lang === 'es' ? 'Pausado' : 'Paused', color: '#f59e0b', icon: <Pause size={12} fill="currentColor" /> },
+                { key: 'planning', label: lang === 'es' ? 'Planeado' : 'Planned', color: '#a855f7', icon: <Clock size={12} /> },
+                { key: 'dropped', label: lang === 'es' ? 'Dropeado' : 'Dropped', color: '#9ca3af', icon: <X size={12} strokeWidth={3} /> },
+                { key: 'unread', label: lang === 'es' ? 'Sin iniciar' : 'Not started', color: '#ef4444', icon: <RotateCcw size={12} /> }
               ].map(opt => {
                 const isCurrent = book.status === opt.key || (opt.key === 'unread' && !book.status);
                 return (
@@ -2273,7 +2515,7 @@ export default function Library({
               }}
               className="context-menu-item-btn"
             >
-              <Search size={14} style={{ color: 'rgba(255, 255, 255, 0.7)' }} /> Buscar en Jiten
+              <Search size={14} style={{ color: 'rgba(255, 255, 255, 0.7)' }} /> {lang === 'es' ? 'Buscar en Jiten' : 'Search in Jiten'}
             </button>
 
             <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '4px 0' }} />
@@ -2281,7 +2523,7 @@ export default function Library({
             <button 
               onClick={() => {
                 setActiveMenuBookId(null);
-                if (confirm(`¿Estás seguro de que quieres eliminar "${book.title}"?`)) {
+                if (confirm(lang === 'es' ? `¿Estás seguro de que quieres eliminar "${book.title}"?` : `Are you sure you want to delete "${book.title}"?`)) {
                   onDeleteBook(book.id);
                 }
               }}
@@ -2301,7 +2543,7 @@ export default function Library({
               }}
               className="context-menu-item-btn"
             >
-              <Trash2 size={14} /> Eliminar
+              <Trash2 size={14} /> {lang === 'es' ? 'Eliminar' : 'Delete'}
             </button>
           </div>
         )}
@@ -2810,10 +3052,6 @@ export default function Library({
                 <h2 className="tab-view-title" style={{ marginBottom: 4 }}>{lang === 'es' ? 'Resumen' : 'Overview'}</h2>
                 <span className="tab-view-subtitle">{lang === 'es' ? 'Estadísticas filtradas. Los filtros actuales incluyen todos los datos registrados.' : 'Filtered stats. Current filters include all recorded data.'}</span>
               </div>
-              <div className="stats-toggle-group">
-                <button type="button" className="stats-toggle-btn active">{lang === 'es' ? 'Filtrado' : 'Filtered'}</button>
-                <button type="button" className="stats-toggle-btn">{lang === 'es' ? 'Todo' : 'All'}</button>
-              </div>
             </div>
 
             <div className="stats-overview-grid">
@@ -3203,7 +3441,7 @@ export default function Library({
       return terms.every(term => tagsStr.toLowerCase().includes(term));
     };
 
-    const renderSidebarBtn = (sectionId, label, searchKeywords) => {
+    const renderSidebarBtn = (sectionId, label, IconComponent, searchKeywords) => {
       if (!matchesSearch(searchKeywords)) return null;
       const isActive = activeSettingsSection === sectionId;
       return (
@@ -3211,112 +3449,180 @@ export default function Library({
           onClick={() => {
             setActiveSettingsSection(sectionId);
             setSettingsSearchQuery('');
+            if (isMobile) {
+              setMobileSettingsSectionOpen(true);
+            } else {
+              scrollToSection(sectionId);
+            }
           }}
           style={{
-            background: isActive ? 'rgba(255, 255, 255, 0.08)' : 'none',
+            background: isActive ? 'rgba(255, 224, 0, 0.08)' : 'none',
             border: 'none',
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
-            padding: '6px 8px',
-            borderRadius: '5px',
-            fontSize: '0.88rem',
-            color: isActive ? '#ffffff' : 'rgba(255,255,255,0.7)',
+            gap: '10px',
+            padding: '8px 10px',
+            borderRadius: '6px',
+            fontSize: '0.86rem',
+            color: isActive ? 'var(--primary)' : 'rgba(255,255,255,0.65)',
             width: '100%',
             textAlign: 'left',
             cursor: 'pointer',
-            fontWeight: isActive ? '600' : 'normal'
+            fontWeight: isActive ? '600' : '500',
+            transition: 'all 0.15s ease'
           }}
         >
-          {label}
+          {IconComponent && <IconComponent size={15} style={{ color: isActive ? 'var(--primary)' : 'rgba(255,255,255,0.4)', flexShrink: 0 }} />}
+          <span>{label}</span>
         </button>
       );
     };
 
+    const showSidebar = !isMobile || !mobileSettingsSectionOpen;
+    const showContent = !isMobile || mobileSettingsSectionOpen;
+
     return (
-      <div className="tab-view-container settings-view-panel yomitan-settings-layout" style={{ display: 'flex', gap: '24px', alignItems: 'stretch', height: '100%', width: '100%', margin: '0' }}>
+      <div className="tab-view-container settings-view-panel yomitan-settings-layout" style={{ display: 'flex', gap: isMobile ? '0' : '24px', alignItems: 'stretch', height: '100%', width: '100%', margin: '0' }}>
         {/* Left Sidebar */}
-        <div className="yomitan-settings-sidebar" style={{ width: '250px', borderRight: '1px solid rgba(255,255,255,0.08)', paddingRight: '20px', display: 'flex', flexDirection: 'column', gap: '20px', flexShrink: 0, overflowY: 'auto', height: '100%' }}>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#fff', margin: '10px 0 0 0' }}>{lang === 'es' ? 'Configuración' : 'Settings'}</h2>
-          
-          <div className="yomitan-search-wrapper" style={{ position: 'relative', width: '100%' }}>
-            <input 
-              type="text" 
-              placeholder={lang === 'es' ? 'Buscar...' : 'Search...'} 
-              value={settingsSearchQuery}
-              onChange={(e) => setSettingsSearchQuery(e.target.value)}
-              style={{ width: '100%', background: '#1c1c20', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', padding: '8px 12px 8px 32px', fontSize: '0.85rem', color: '#fff', outline: 'none' }}
-            />
-            <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.9rem', color: 'rgba(255,255,255,0.3)' }}>🔍</span>
-            <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', background: '#2d2d34', padding: '2px 5px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)', fontWeight: 'bold' }}>CTRL F</span>
+        {showSidebar && (
+          <div className="yomitan-settings-sidebar" style={{ width: isMobile ? '100%' : '250px', borderRight: isMobile ? 'none' : '1px solid rgba(255,255,255,0.08)', paddingRight: isMobile ? '0' : '20px', display: 'flex', flexDirection: 'column', gap: '20px', flexShrink: 0, overflowY: 'auto', height: '100%' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#fff', margin: '10px 0 0 0' }}>{lang === 'es' ? 'Configuración' : 'Settings'}</h2>
+            
+            <div className="yomitan-search-wrapper" style={{ position: 'relative', width: '100%' }}>
+              <input 
+                type="text" 
+                placeholder={lang === 'es' ? 'Buscar...' : 'Search...'} 
+                value={settingsSearchQuery}
+                onChange={(e) => setSettingsSearchQuery(e.target.value)}
+                style={{ width: '100%', background: '#1c1c20', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', padding: '8px 12px 8px 32px', fontSize: '0.85rem', color: '#fff', outline: 'none' }}
+              />
+              <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}>
+                <Search size={14} style={{ color: 'rgba(255,255,255,0.3)' }} />
+              </span>
+              {!isMobile && <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', background: '#2d2d34', padding: '2px 5px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)', fontWeight: 'bold' }}>CTRL F</span>}
+            </div>
+  
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
+              {/* General Section */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+                  <Settings size={13} style={{ color: 'rgba(255,255,255,0.4)' }} /> <span>{lang === 'es' ? 'General' : 'General'}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
+                  {renderSidebarBtn('sec-theme', lang === 'es' ? 'Tema' : 'Theme', Palette, 'tema theme active dark light sepia')}
+                  {renderSidebarBtn('sec-language-interface', lang === 'es' ? 'Idioma e Interfaz' : 'Language & Interface', Globe, 'idioma lang language interface interfaceLanguage')}
+                  {renderSidebarBtn('sec-dicts', lang === 'es' ? 'Diccionarios' : 'Dictionaries', BookOpen, 'diccionario dictionary offline jmdict frecuencia meta meta_bank zip')}
+                </div>
+              </div>
+  
+              {/* Reader Section */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+                  <BookOpen size={13} style={{ color: 'rgba(255,255,255,0.4)' }} /> <span>{lang === 'es' ? 'Lector' : 'Reader'}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
+                  {renderSidebarBtn('sec-text-style', lang === 'es' ? 'Estilo de texto' : 'Text Style', Type, 'size texto text style font voz audio speed velocidad genero furigana traduccion translation learning status display highlight oracion cursor hover highlights')}
+                </div>
+              </div>
+  
+              {/* Integration Section */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+                  <Plug size={13} style={{ color: 'rgba(255,255,255,0.4)' }} /> <span>{lang === 'es' ? 'Integración' : 'Integration'}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
+                  {renderSidebarBtn('sec-anki', lang === 'es' ? 'Integración con Anki' : 'Anki Integration', Layers, 'anki integration connect card mapping local')}
+                  {renderSidebarBtn('sec-cloud-sync', lang === 'es' ? 'Sincronización Cloud' : 'Cloud Sync', Cloud, 'sync merge sincronizar combinar conflicto storage sync settings gdrive drive cloud cloud-sync')}
+                </div>
+              </div>
+  
+              {/* Tracking Section */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+                  <BarChart3 size={13} style={{ color: 'rgba(255,255,255,0.4)' }} /> <span>{lang === 'es' ? 'Seguimiento' : 'Tracking'}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
+                  {renderSidebarBtn('sec-stats', lang === 'es' ? 'Estadísticas' : 'Statistics', BarChart3, 'stats config estadisticas tracking delete books annotations enabled')}
+                  {renderSidebarBtn('sec-reading-day', lang === 'es' ? 'Día de lectura' : 'Reading Day', Calendar, 'reading day dia lectura start hours limites horas nocturno')}
+                </div>
+              </div>
+  
+              {/* Data Section */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+                  <Database size={13} style={{ color: 'rgba(255,255,255,0.4)' }} /> <span>{lang === 'es' ? 'Datos' : 'Data'}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
+                  {renderSidebarBtn('sec-backup', lang === 'es' ? 'Copias de seguridad' : 'Backups', FolderOpen, 'backup import export catalogo perfil copia seguridad')}
+                  {renderSidebarBtn('sec-danger', lang === 'es' ? 'Zona de peligro' : 'Danger Zone', AlertTriangle, 'danger zone eliminar borrar todos datos irreversible reset clear storage')}
+                </div>
+              </div>
+            </div>
+            
+            {/* Dashboard de Estado */}
+            <div style={{ marginTop: '20px', padding: '14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '8px', boxSizing: 'border-box' }}>
+              <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {lang === 'es' ? 'Estado del Lector' : 'Reader Status'}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{lang === 'es' ? 'Perfil:' : 'Profile:'}</span>
+                  <span style={{ color: '#fff', fontWeight: 600 }}>{settings.profileName || 'Zams'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{lang === 'es' ? 'Diccionarios:' : 'Dictionaries:'}</span>
+                  <span style={{ color: '#fff', fontWeight: 600 }}>{installedDicts.length}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{lang === 'es' ? 'Libros:' : 'Books:'}</span>
+                  <span style={{ color: '#fff', fontWeight: 600 }}>{books.length}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{lang === 'es' ? 'Google Drive:' : 'Google Drive:'}</span>
+                  <span style={{ color: gDriveTokens ? '#34d399' : 'rgba(255,255,255,0.3)', fontWeight: 600 }}>
+                    {gDriveTokens ? (lang === 'es' ? 'Conectado' : 'Connected') : (lang === 'es' ? 'Desconectado' : 'Disconnected')}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
-            {/* General Section */}
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
-                <span>🔧</span> {lang === 'es' ? 'General' : 'General'}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
-                {renderSidebarBtn('sec-theme', lang === 'es' ? '🎨 Tema' : '🎨 Theme', 'tema theme active dark light sepia')}
-                {renderSidebarBtn('sec-display', lang === 'es' ? '🕒 Pantalla' : '🕒 Screen', 'furigana traduccion translation learning status display pitch accent acento tono')}
-              </div>
-            </div>
-
-            {/* Reader Section */}
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
-                <span>📖</span> {lang === 'es' ? 'Lector' : 'Reader'}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
-                {renderSidebarBtn('sec-text-style', lang === 'es' ? '🎨 Estilo de texto' : '🎨 Text Style', 'size texto text style font voz audio speed velocidad genero')}
-                {renderSidebarBtn('sec-highlights', lang === 'es' ? '🎯 Resaltado' : '🎯 Highlights', 'highlight oracion cursor hover highlights')}
-              </div>
-            </div>
-
-            {/* Integration Section */}
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
-                <span>🔌</span> {lang === 'es' ? 'Integración' : 'Integration'}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
-                {renderSidebarBtn('sec-anki', lang === 'es' ? '🃏 Integración con Anki' : '🃏 Anki Integration', 'anki integration connect card mapping local')}
-              </div>
-            </div>
-
-            {/* Seguimiento Section */}
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
-                <span>📊</span> {lang === 'es' ? 'Seguimiento' : 'Tracking'}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
-                {renderSidebarBtn('sec-stats', lang === 'es' ? '📈 Estadísticas' : '📈 Statistics', 'stats config estadisticas tracking delete books annotations enabled')}
-                {renderSidebarBtn('sec-reading-day', lang === 'es' ? '🕒 Día de lectura' : '🕒 Reading Day', 'reading day dia lectura start hours limites horas nocturno')}
-                {renderSidebarBtn('sec-sync-merge', lang === 'es' ? '☁️ Sincronizar y combinar' : '☁️ Sync & Merge', 'sync merge sincronizar combinar conflicto storage sync settings gdrive drive cloud')}
-              </div>
-            </div>
-
-            {/* Data Section */}
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#888899', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
-                <span>🗄️</span> {lang === 'es' ? 'Datos' : 'Data'}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
-                {renderSidebarBtn('sec-backup', lang === 'es' ? '💾 Copias de seguridad' : '💾 Backups', 'backup import export catalogo perfil copia seguridad')}
-                {renderSidebarBtn('sec-dicts', lang === 'es' ? '🗄️ Diccionarios' : '🗄️ Dictionaries', 'diccionario dictionary offline jmdict frecuencia meta meta_bank zip')}
-                {renderSidebarBtn('sec-danger', lang === 'es' ? '🔧 Zona de peligro' : '🔧 Danger Zone', 'danger zone eliminar borrar todos datos irreversible reset clear storage')}
-              </div>
-            </div>
-          </div>
-        </div>
-
+        )}
+  
         {/* Right Content Pane */}
-        <div className="yomitan-settings-pane" style={{ flex: 1, overflowY: 'auto', paddingRight: '10px', display: 'flex', flexDirection: 'column', gap: '24px', scrollBehavior: 'smooth', height: '100%', paddingBottom: '100px' }}>
+        {showContent && (
+          <div className="yomitan-settings-pane" style={{ flex: 1, overflowY: 'auto', paddingRight: '10px', display: 'flex', flexDirection: 'column', gap: '24px', scrollBehavior: 'smooth', height: '100%', paddingBottom: '100px' }}>
+            {isMobile && (
+              <button 
+                type="button"
+                className="settings-back-btn" 
+                onClick={() => setMobileSettingsSectionOpen(false)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: '8px',
+                  color: '#fff',
+                  padding: '8px 16px',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  marginBottom: '16px',
+                  alignSelf: 'flex-start',
+                  fontWeight: 600
+                }}
+              >
+                ← {lang === 'es' ? 'Volver' : 'Back'}
+              </button>
+            )}
           
           {/* Card: Theme */}
           {matchesSearch('tema theme active dark light sepia') && (settingsSearchQuery || activeSettingsSection === 'sec-theme') && (
             <div id="sec-theme" className="settings-section-card">
-              <h3 className="settings-card-title">{lang === 'es' ? '🎨 Tema' : '🎨 Theme'}</h3>
+              <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Palette size={18} style={{ color: 'var(--primary)' }} />
+                <span>{lang === 'es' ? 'Tema' : 'Theme'}</span>
+              </h3>
               <p className="settings-card-desc">{lang === 'es' ? 'Elige la apariencia visual del lector para reducir la fatiga ocular.' : 'Choose the reader appearance to reduce eye strain.'}</p>
               
               <div className="settings-row-control">
@@ -3334,49 +3640,15 @@ export default function Library({
             </div>
           )}
 
-          {/* Card: Display */}
-          {matchesSearch('furigana traduccion translation learning status display pitch accent acento tono') && (settingsSearchQuery || activeSettingsSection === 'sec-display') && (
-            <div id="sec-display" className="settings-section-card">
-              <h3 className="settings-card-title">{lang === 'es' ? '🕒 Pantalla' : '🕒 Screen'}</h3>
-              <p className="settings-card-desc">{lang === 'es' ? 'Configura la visibilidad del furigana, traducciones y estados de aprendizaje.' : 'Configure furigana visibility, translations, and learning statuses.'}</p>
+          {/* Card: Idioma e Interfaz */}
+          {matchesSearch('idioma lang language interface interfaceLanguage') && (settingsSearchQuery || activeSettingsSection === 'sec-language-interface') && (
+            <div id="sec-language-interface" className="settings-section-card">
+              <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Globe size={18} style={{ color: 'var(--primary)' }} />
+                <span>{lang === 'es' ? 'Idioma e Interfaz' : 'Language & Interface'}</span>
+              </h3>
+              <p className="settings-card-desc">{lang === 'es' ? 'Cambia el idioma de la interfaz del lector.' : 'Change the language of the reader interface.'}</p>
               
-              <div className="settings-row-control">
-                <span className="settings-label-text">Furigana</span>
-                <select 
-                  value={settings.showFurigana || 'unknown-only'}
-                  onChange={(e) => onSaveSettings({ ...settings, showFurigana: e.target.value })}
-                  className="migaku-select"
-                >
-                  <option value="unknown-only">{lang === 'es' ? 'Palabras desconocidas' : 'Unknown words only'}</option>
-                  <option value="all">{lang === 'es' ? 'Todo' : 'All'}</option>
-                  <option value="none">{lang === 'es' ? 'Ninguno' : 'None'}</option>
-                </select>
-              </div>
-
-              <div className="settings-row-control">
-                <span className="settings-label-text">{lang === 'es' ? 'Mostrar traducción' : 'Show translation'}</span>
-                <label className="migaku-switch">
-                  <input 
-                    type="checkbox" 
-                    checked={settings.showTranslation !== false}
-                    onChange={(e) => onSaveSettings({ ...settings, showTranslation: e.target.checked })}
-                  />
-                  <span className="migaku-switch-slider"></span>
-                </label>
-              </div>
-
-              <div className="settings-row-control">
-                <span className="settings-label-text">{lang === 'es' ? 'Mostrar estado de aprendizaje' : 'Show learning status'}</span>
-                <label className="migaku-switch">
-                  <input 
-                    type="checkbox" 
-                    checked={settings.showLearningStatus !== false}
-                    onChange={(e) => onSaveSettings({ ...settings, showLearningStatus: e.target.checked })}
-                  />
-                  <span className="migaku-switch-slider"></span>
-                </label>
-              </div>
-
               <div className="settings-row-control">
                 <span className="settings-label-text">{t('interfaceLanguage', lang)}</span>
                 <select 
@@ -3388,42 +3660,34 @@ export default function Library({
                   <option value="en">English 🇺🇸</option>
                 </select>
               </div>
-
-              <div className="settings-row-control">
-                <span className="settings-label-text">{t('pitchAccent', lang)}</span>
-                <select 
-                  value={settings.pitchAccent || 'none'}
-                  onChange={(e) => onSaveSettings({ ...settings, pitchAccent: e.target.value })}
-                  className="migaku-select"
-                >
-                  <option value="none">{t('pitchNone', lang)}</option>
-                  <option value="pitch-color">{t('pitchColor', lang)}</option>
-                </select>
-              </div>
             </div>
           )}
 
           {/* Card: Text Style */}
           {matchesSearch('size texto text style font voz audio speed velocidad genero') && (settingsSearchQuery || activeSettingsSection === 'sec-text-style') && (
             <div id="sec-text-style" className="settings-section-card">
-              <h3 className="settings-card-title">{lang === 'es' ? '🎨 Estilos & Audio' : '🎨 Style & Audio'}</h3>
-              <p className="settings-card-desc">{lang === 'es' ? 'Modifica el tamaño de la tipografía y los parámetros del reproductor de voz.' : 'Modify typography size and text-to-speech voice settings.'}</p>
+              <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Type size={18} style={{ color: 'var(--primary)' }} />
+                <span>{lang === 'es' ? 'Estilo de texto' : 'Text Style'}</span>
+              </h3>
+              <p className="settings-card-desc">{lang === 'es' ? 'Modifica el tamaño de la tipografía y los parámetros de audio.' : 'Modify typography size and audio settings.'}</p>
               
               <div className="settings-row-control">
-                <span className="settings-label-text">{t('readerFontSize', lang)}</span>
-                <div className="migaku-slider-container" style={{ flex: 1, maxWidth: '300px' }}>
-                  <span className="slider-icon-small">A</span>
-                  <input 
-                    type="range" 
-                    min="18" 
-                    max="48" 
-                    step="2"
-                    value={settings.fontSize || 36} 
-                    onChange={(e) => handleSliderChange(parseInt(e.target.value))}
-                    className="migaku-slider"
-                  />
-                  <span className="slider-icon-large">A</span>
-                </div>
+                <span className="settings-label-text">{lang === 'es' ? 'Zoom de texto del lector' : 'Reader text zoom'}</span>
+                <select
+                  value={settings.fontSize || 36}
+                  onChange={(e) => handleSliderChange(parseInt(e.target.value))}
+                  className="migaku-select"
+                >
+                  <option value="18">75%</option>
+                  <option value="22">85%</option>
+                  <option value="26">90%</option>
+                  <option value="30">95%</option>
+                  <option value="36">100% ({lang === 'es' ? 'Por defecto' : 'Default'})</option>
+                  <option value="40">110%</option>
+                  <option value="44">120%</option>
+                  <option value="48">130%</option>
+                </select>
               </div>
 
               <div className="settings-row-control">
@@ -3464,67 +3728,25 @@ export default function Library({
                   <option value="Keita">Keita (Masculina)</option>
                 </select>
               </div>
-
-              <div className="settings-row-control" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '4px' }}>
-                <span className="settings-label-text" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Azure TTS API Key</span>
-                <input 
-                  type="password"
-                  placeholder="Azure Key (dejar vacío para usar voz gratis local)"
-                  value={settings.azureApiKey || ''}
-                  onChange={(e) => onSaveSettings({ ...settings, azureApiKey: e.target.value })}
-                  className="migaku-select"
-                  style={{ width: '100%', padding: '6px 12px', boxSizing: 'border-box' }}
-                />
-              </div>
-
-              <div className="settings-row-control" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '4px' }}>
-                <span className="settings-label-text" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Azure TTS Region</span>
-                <input 
-                  type="text"
-                  placeholder="eastus"
-                  value={settings.azureRegion || ''}
-                  onChange={(e) => onSaveSettings({ ...settings, azureRegion: e.target.value })}
-                  className="migaku-select"
-                  style={{ width: '100%', padding: '6px 12px', boxSizing: 'border-box' }}
-                />
-              </div>
-
-            </div>
-          )}
-
-          {/* Card: Highlights */}
-          {matchesSearch('highlight oracion cursor hover highlights') && (settingsSearchQuery || activeSettingsSection === 'sec-highlights') && (
-            <div id="sec-highlights" className="settings-section-card">
-              <h3 className="settings-card-title">{lang === 'es' ? '🎯 Resaltados' : '🎯 Highlights'}</h3>
-              <p className="settings-card-desc">{lang === 'es' ? 'Controla la interacción visual al pasar el cursor sobre las oraciones.' : 'Controls visual interaction when hovering over sentences.'}</p>
-              
-              <div className="settings-row-control">
-                <span className="settings-label-text">{lang === 'es' ? 'Oración al pasar el cursor (Highlight)' : 'Sentence hover highlight'}</span>
-                <label className="migaku-switch">
-                  <input 
-                    type="checkbox" 
-                    checked={settings.sentenceHover === true}
-                    onChange={(e) => onSaveSettings({ ...settings, sentenceHover: e.target.checked })}
-                  />
-                  <span className="migaku-switch-slider"></span>
-                </label>
-              </div>
             </div>
           )}
 
           {/* Card: Anki Integration */}
           {matchesSearch('anki integration connect card mapping local') && (settingsSearchQuery || activeSettingsSection === 'sec-anki') && (
             <div id="sec-anki" className="settings-section-card">
-              <h3 className="settings-card-title">{lang === 'es' ? '🃏 Integración con Anki' : '🃏 Anki Integration'}</h3>
+              <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Layers size={18} style={{ color: 'var(--primary)' }} />
+                <span>{lang === 'es' ? 'Integración con Anki' : 'Anki Integration'}</span>
+              </h3>
               <p className="settings-card-desc">{lang === 'es' ? 'Conéctate a tu Anki local para añadir tarjetas directamente desde las oraciones y palabras buscadas.' : 'Connect to your local Anki instance to mine flashcards directly from sentences and dictionary words.'}</p>
               
               <button 
                 type="button"
                 className="reset-filter-btn"
-                style={{ marginTop: '12px' }}
+                style={{ marginTop: '12px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
                 onClick={() => setIsAnkiConfigOpen(true)}
               >
-                ⚙️ {lang === 'es' ? 'Abrir Configuración de Anki' : 'Open Anki Settings'}
+                <Settings size={14} /> <span>{lang === 'es' ? 'Abrir Configuración de Anki' : 'Open Anki Settings'}</span>
               </button>
             </div>
           )}
@@ -3532,7 +3754,10 @@ export default function Library({
           {/* Card: Estadísticas (Yatsu style) */}
           {matchesSearch('stats config estadisticas tracking delete books annotations enabled') && (settingsSearchQuery || activeSettingsSection === 'sec-stats') && (
             <div id="sec-stats" className="settings-section-card">
-              <h3 className="settings-card-title">📈 {lang === 'es' ? 'Estadísticas' : 'Statistics'}</h3>
+              <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <BarChart3 size={18} style={{ color: 'var(--primary)' }} />
+                <span>{lang === 'es' ? 'Estadísticas' : 'Statistics'}</span>
+              </h3>
               <p className="settings-card-desc">{lang === 'es' ? 'Configura el almacenamiento del historial de lectura y las acciones de limpieza.' : 'Configure the storage of reading history and cleanup actions.'}</p>
               
               <div className="settings-row-control">
@@ -3571,9 +3796,9 @@ export default function Library({
                       alert(lang === 'es' ? 'Limpieza completada.' : 'Cleanup done.');
                     }
                   }}
-                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}
+                  style={{ width: '100%', padding: '8px 10px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
                 >
-                  🧹 {lang === 'es' ? 'Estadísticas de libros eliminados' : 'Deleted-book statistics'}
+                  <Trash2 size={14} /> <span>{lang === 'es' ? 'Estadísticas de libros eliminados' : 'Deleted-book statistics'}</span>
                 </button>
               </div>
             </div>
@@ -3582,7 +3807,10 @@ export default function Library({
           {/* Card: Día de lectura */}
           {matchesSearch('reading day dia lectura start hours limites horas nocturno') && (settingsSearchQuery || activeSettingsSection === 'sec-reading-day') && (
             <div id="sec-reading-day" className="settings-section-card">
-              <h3 className="settings-card-title">🕒 {lang === 'es' ? 'Día de lectura' : 'Reading Day'}</h3>
+              <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Calendar size={18} style={{ color: 'var(--primary)' }} />
+                <span>{lang === 'es' ? 'Día de lectura' : 'Reading Day'}</span>
+              </h3>
               <p className="settings-card-desc">{lang === 'es' ? 'Establece los límites horarios para el cálculo del historial de lectura diario.' : 'Sets calendar hour boundaries for daily reading history calculations.'}</p>
               
               <div style={{ marginTop: '12px' }}>
@@ -3610,10 +3838,13 @@ export default function Library({
             </div>
           )}
 
-          {/* Card: Sincronizar y combinar */}
-          {matchesSearch('sync merge sincronizar combinar conflicto storage sync settings gdrive drive cloud') && (settingsSearchQuery || activeSettingsSection === 'sec-sync-merge') && (
-            <div id="sec-sync-merge" className="settings-section-card">
-              <h3 className="settings-card-title">☁️ {lang === 'es' ? 'Sincronizar y combinar' : 'Sync & Merge'}</h3>
+          {/* Card: Sincronización Cloud */}
+          {matchesSearch('sync merge sincronizar combinar conflicto storage sync settings gdrive drive cloud cloud-sync') && (settingsSearchQuery || activeSettingsSection === 'sec-cloud-sync') && (
+            <div id="sec-cloud-sync" className="settings-section-card">
+              <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Cloud size={18} style={{ color: 'var(--primary)' }} />
+                <span>{lang === 'es' ? 'Sincronización Cloud' : 'Cloud Sync'}</span>
+              </h3>
               <p className="settings-card-desc">{lang === 'es' ? 'Configura la sincronización con almacenamiento en la nube y cómo se resuelven los conflictos.' : 'Configure cloud storage synchronization and how metadata conflicts are resolved.'}</p>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.03)', borderRadius: '8px', padding: '12px', marginBottom: '14px' }}>
@@ -3691,9 +3922,9 @@ export default function Library({
                   onClick={handleConnectGDrive}
                   disabled={gDriveSyncStatus === 'syncing'}
                   className="reset-filter-btn"
-                  style={{ width: '100%', justifyContent: 'center' }}
+                  style={{ width: '100%', justifyContent: 'center', display: 'flex', alignItems: 'center', gap: '8px' }}
                 >
-                  🔑 {gDriveTokens ? (lang === 'es' ? 'Re-conectar cuenta' : 'Re-connect account') : (lang === 'es' ? 'Vincular Google Drive' : 'Link Google Drive')}
+                  <Settings size={14} /> <span>{gDriveTokens ? (lang === 'es' ? 'Re-conectar cuenta' : 'Re-connect account') : (lang === 'es' ? 'Vincular Google Drive' : 'Link Google Drive')}</span>
                 </button>
 
                 {gDriveTokens && (
@@ -3704,18 +3935,18 @@ export default function Library({
                         onClick={handleUploadGDrive}
                         disabled={gDriveSyncStatus === 'syncing'}
                         className="reset-filter-btn"
-                        style={{ flex: 1, justifyContent: 'center', background: 'rgba(52, 211, 153, 0.05)', borderColor: '#34d399', color: '#34d399' }}
+                        style={{ flex: 1, justifyContent: 'center', background: 'rgba(52, 211, 153, 0.05)', borderColor: '#34d399', color: '#34d399', display: 'flex', alignItems: 'center', gap: '8px' }}
                       >
-                        📤 {lang === 'es' ? 'Subir copia completa' : 'Upload backup'}
+                        <Upload size={14} /> <span>{lang === 'es' ? 'Subir copia completa' : 'Upload backup'}</span>
                       </button>
                       <button 
                         type="button"
                         onClick={handleDownloadGDrive}
                         disabled={gDriveSyncStatus === 'syncing'}
                         className="reset-filter-btn"
-                        style={{ flex: 1, justifyContent: 'center', background: 'rgba(251, 191, 36, 0.05)', borderColor: '#fbbf24', color: '#fbbf24' }}
+                        style={{ flex: 1, justifyContent: 'center', background: 'rgba(251, 191, 36, 0.05)', borderColor: '#fbbf24', color: '#fbbf24', display: 'flex', alignItems: 'center', gap: '8px' }}
                       >
-                        📥 {lang === 'es' ? 'Descargar' : 'Download'}
+                        <Download size={14} /> <span>{lang === 'es' ? 'Descargar' : 'Download'}</span>
                       </button>
                     </div>
                     {lastSyncTime && (
@@ -3732,7 +3963,10 @@ export default function Library({
           {/* Card: Backup */}
           {matchesSearch('backup import export catalogo perfil copia seguridad') && (settingsSearchQuery || activeSettingsSection === 'sec-backup') && (
             <div id="sec-backup" className="settings-section-card">
-              <h3 className="settings-card-title">{lang === 'es' ? '💾 Copias de seguridad' : '💾 Backups'}</h3>
+              <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <FolderOpen size={18} style={{ color: 'var(--primary)' }} />
+                <span>{lang === 'es' ? 'Copias de seguridad' : 'Backups'}</span>
+              </h3>
               <p className="settings-card-desc">{lang === 'es' ? 'Guarda todo tu catálogo, historial de lectura, perfiles y configuraciones de Anki en un archivo local (se excluyen los diccionarios para mantener el archivo ligero).' : 'Export all your library books, reading statistics, profiles, and configurations to a local backup file.'}</p>
               
               <div style={{ display: 'flex', gap: '16px', marginTop: '12px' }}>
@@ -3764,7 +3998,10 @@ export default function Library({
               
               {/* Card 1: Dictionaries */}
               <div className="settings-section-card">
-                <h3 className="settings-card-title">{lang === 'es' ? 'Diccionarios' : 'Dictionaries'}</h3>
+                <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <BookOpen size={18} style={{ color: 'var(--primary)' }} />
+                  <span>{lang === 'es' ? 'Diccionarios' : 'Dictionaries'}</span>
+                </h3>
                 <p className="settings-card-desc">
                   {lang === 'es' 
                     ? 'Los diccionarios son útiles para buscar el significado de las palabras y añadirlas a tus tarjetas de estudio. Arrastra y suelta los elementos de la siguiente lista para cambiar el orden de aparición de tus diccionarios en los resultados de búsqueda.'
@@ -3780,6 +4017,13 @@ export default function Library({
                     <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
                       <div style={{ width: `${dictImportProgress}%`, height: '100%', background: dictImportSuccess ? '#4ade80' : 'var(--primary)', transition: 'width 0.2s, background 0.3s' }}></div>
                     </div>
+                    {!dictImportSuccess && (
+                      <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', marginTop: '8px', textAlign: 'center', lineHeight: '1.3' }}>
+                        {lang === 'es' 
+                          ? '⏳ Esto puede tardar de 1 a 2 minutos para diccionarios grandes. Por favor, no cierres la aplicación.' 
+                          : '⏳ This may take 1-2 minutes for large dictionaries. Please do not close the application.'}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -3792,7 +4036,10 @@ export default function Library({
 
               {/* Card 2: Frequencies */}
               <div className="settings-section-card">
-                <h3 className="settings-card-title">{lang === 'es' ? 'Listas de palabras frecuentes' : 'Frequency Word Lists'}</h3>
+                <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <ListChecks size={18} style={{ color: 'var(--primary)' }} />
+                  <span>{lang === 'es' ? 'Listas de palabras frecuentes' : 'Frequency Word Lists'}</span>
+                </h3>
                 <p className="settings-card-desc">
                   {lang === 'es'
                     ? 'Asignamos a las palabras puntuaciones de 1 a 5 estrellas para mostrar con qué frecuencia se utilizan en diferentes contextos.'
@@ -3813,6 +4060,13 @@ export default function Library({
                     <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden' }}>
                       <div style={{ width: `${freqImportProgress}%`, height: '100%', background: freqImportSuccess ? '#4ade80' : 'var(--primary)', transition: 'width 0.2s, background 0.3s' }}></div>
                     </div>
+                    {!freqImportSuccess && (
+                      <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', marginTop: '8px', textAlign: 'center', lineHeight: '1.3' }}>
+                        {lang === 'es' 
+                          ? '⏳ Esto puede tardar un momento. Por favor, no cierres la aplicación.' 
+                          : '⏳ This may take a moment. Please do not close the application.'}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -3829,7 +4083,10 @@ export default function Library({
           {/* Card: Danger Zone */}
           {matchesSearch('danger zone eliminar borrar todos datos irreversible reset clear storage') && (settingsSearchQuery || activeSettingsSection === 'sec-danger') && (
             <div id="sec-danger" className="settings-section-card" style={{ borderColor: 'rgba(239, 68, 68, 0.3)', background: 'rgba(239, 68, 68, 0.02)' }}>
-              <h3 className="settings-card-title" style={{ color: '#f87171' }}>🔧 {lang === 'es' ? 'Zona de peligro' : 'Danger Zone'}</h3>
+              <h3 className="settings-card-title" style={{ color: '#f87171', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertTriangle size={18} style={{ color: '#ef4444' }} />
+                <span>{lang === 'es' ? 'Zona de peligro' : 'Danger Zone'}</span>
+              </h3>
               <p className="settings-card-desc">{lang === 'es' ? 'Acciones destructivas e irreversibles sobre los datos almacenados en la aplicación.' : 'Irreversible destructive actions on stored application data.'}</p>
               
               <div style={{ marginTop: '16px' }}>
@@ -3839,7 +4096,7 @@ export default function Library({
                   onClick={handleDeleteAllData}
                   style={{ background: 'rgba(239, 68, 68, 0.1)', borderColor: '#ef4444', color: '#f87171', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
                 >
-                  ⚠️ {lang === 'es' ? 'Eliminar todos los datos' : 'Delete all data'}
+                  <AlertTriangle size={14} /> <span>{lang === 'es' ? 'Eliminar todos los datos' : 'Delete all data'}</span>
                 </button>
               </div>
             </div>
@@ -3847,9 +4104,10 @@ export default function Library({
 
           {isLibraryModalOpen && renderLibraryModal()}
         </div>
-      </div>
-    );
-  };
+      )}
+    </div>
+  );
+};
 
   const renderNotesTab = () => {
     // 1. Calculate status counts based on wordStatuses keys/values
@@ -3916,23 +4174,6 @@ export default function Library({
       <div className="tab-view-container notes-view-panel" style={{ maxWidth: '800px', margin: '0 auto', padding: '2rem 1rem 6rem 1rem' }}>
         {/* Premium Dashboard Summary Card (Image 1 style) */}
         <div className="vocab-dashboard-card">
-          {/* Japanese flag circle emblem */}
-          <div 
-            style={{
-              width: '56px',
-              height: '56px',
-              borderRadius: '50%',
-              background: '#fff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 16px auto',
-              boxShadow: '0 4px 14px rgba(0, 0, 0, 0.4)'
-            }}
-          >
-            <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: '#bc002d' }}></div>
-          </div>
-
           {/* Main Counter */}
           <h2 style={{ margin: '0 0 10px 0', fontSize: '1.75rem', fontWeight: 800, color: '#fff', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
             <span style={{ color: 'var(--status-known)' }}>{totalKnown.toLocaleString()}</span>
@@ -4110,11 +4351,36 @@ export default function Library({
   };
 
   return (
-    <div className={`library-container ${activeTab !== 'library' ? 'fixed-layout' : ''}`}>
+    <div 
+      className="library-container"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
       {/* 1. Sticky Header — Yoru Cafe style */}
       <header className="library-header">
-        {/* Left: brand name in neon yellow like Yoru Cafe */}
-        <span className="library-brand-name">YORU READER</span>
+        {/* Left: brand name in neon yellow like Yoru Cafe + mobile menu button */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {isMobile && activeTab === 'library' && (
+            <button 
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              type="button"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#fff',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '4px'
+              }}
+            >
+              <Menu size={20} />
+            </button>
+          )}
+          {!isMobile && <span className="library-brand-name">YORU READER</span>}
+        </div>
 
         {/* Center: Navigation Tabs */}
         <nav className="header-navigation-tabs">
@@ -4122,29 +4388,33 @@ export default function Library({
             className={`nav-tab-btn ${activeTab === 'library' ? 'active' : ''}`}
             onClick={() => setActiveTab('library')}
             type="button"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
-            📚 {t('library', lang)}
+            <BookOpen size={15} /> <span>{t('library', lang)}</span>
           </button>
           <button 
             className={`nav-tab-btn ${activeTab === 'statistics' ? 'active' : ''}`}
             onClick={() => setActiveTab('statistics')}
             type="button"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
-            📈 {t('statistics', lang)}
+            <BarChart3 size={15} /> <span>{t('statistics', lang)}</span>
           </button>
           <button 
             className={`nav-tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
             onClick={() => setActiveTab('settings')}
             type="button"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
-            ⚙️ {t('settings', lang)}
+            <Settings size={15} /> <span>{t('settings', lang)}</span>
           </button>
           <button 
             className={`nav-tab-btn ${activeTab === 'notes' ? 'active' : ''}`}
             onClick={() => setActiveTab('notes')}
             type="button"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
-            📝 {t('vocabulary', lang)}
+            <ListChecks size={15} /> <span>{t('vocabulary', lang)}</span>
           </button>
         </nav>
 
@@ -4274,8 +4544,7 @@ export default function Library({
             <SlidersHorizontal size={18} />
           </button>
 
-          {/* 5. More / Three-dots Dropdown */}
-          <div className="header-action-dropdown-container">
+          <div className="header-action-dropdown-container" style={{ position: 'relative', display: 'inline-block' }}>
             <button 
               className={`header-display-settings-btn ${activeHeaderDropdown === 'more' ? 'active' : ''}`}
               onClick={(e) => {
@@ -4288,7 +4557,36 @@ export default function Library({
               <MoreVertical size={18} />
             </button>
             {activeHeaderDropdown === 'more' && (
-              <div className="header-action-dropdown-menu" style={{ minWidth: '220px' }}>
+              <div 
+                className="header-action-dropdown-menu" 
+                style={isMobile ? {
+                  minWidth: '200px', 
+                  position: 'fixed', 
+                  right: '12px', 
+                  left: 'auto', 
+                  top: '56px', 
+                  zIndex: 2500 
+                } : {
+                  minWidth: '220px',
+                  position: 'absolute',
+                  right: 0,
+                  left: 'auto',
+                  top: '42px'
+                }}
+              >
+                <button 
+                  className="header-action-dropdown-item"
+                  onClick={() => {
+                    setActiveHeaderDropdown(null);
+                    toggleSelectMode();
+                  }}
+                  type="button"
+                >
+                  <div className="header-action-dropdown-item-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <ListChecks size={14} style={{ color: selectMode ? 'var(--primary)' : 'rgba(255,255,255,0.5)' }} />
+                    <span>{lang === 'es' ? 'Seleccionar libros' : 'Select books'}</span>
+                  </div>
+                </button>
                 <button 
                   className="header-action-dropdown-item"
                   onClick={() => {
@@ -4297,41 +4595,50 @@ export default function Library({
                   }}
                   type="button"
                 >
-                  <div className="header-action-dropdown-item-header">
-                    <span>{lang === 'es' ? '💾 Obtener copia de seguridad' : '💾 Get complete local backup'}</span>
+                  <div className="header-action-dropdown-item-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Download size={14} style={{ color: 'rgba(255,255,255,0.5)' }} />
+                    <span>{lang === 'es' ? 'Obtener copia de seguridad' : 'Get complete local backup'}</span>
                   </div>
                 </button>
-                <button 
-                  className="header-action-dropdown-item"
-                  onClick={() => {
-                    setActiveHeaderDropdown(null);
-                    if (!document.fullscreenElement) {
-                      document.documentElement.requestFullscreen().catch(err => {
-                        console.error(`Error enabling full-screen mode: ${err.message}`);
-                      });
-                    } else {
-                      document.exitFullscreen();
-                    }
-                  }}
-                  type="button"
-                >
-                  <div className="header-action-dropdown-item-header">
-                    <span>{lang === 'es' ? '📺 Alternar pantalla completa' : '📺 Toggle fullscreen'}</span>
-                    <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '4px' }}>F</span>
-                  </div>
-                </button>
-                <button 
-                  className="header-action-dropdown-item"
-                  onClick={() => {
-                    setActiveHeaderDropdown(null);
-                    alert(lang === 'es' ? "Atajos:\n- Q: Abrir ajustes de visualización\n- Esc: Cerrar modales/popups\n- Flechas: Navegar páginas" : "Shortcuts:\n- Q: Open display settings\n- Esc: Close modals/popups\n- Arrows: Navigate pages");
-                  }}
-                  type="button"
-                >
-                  <div className="header-action-dropdown-item-header">
-                    <span>{lang === 'es' ? '⌨️ Atajos de teclado' : '⌨️ Keyboard shortcuts'}</span>
-                  </div>
-                </button>
+                {!isMobile && (
+                  <button 
+                    className="header-action-dropdown-item"
+                    onClick={() => {
+                      setActiveHeaderDropdown(null);
+                      if (!document.fullscreenElement) {
+                        document.documentElement.requestFullscreen().catch(err => {
+                          console.error(`Error enabling full-screen mode: ${err.message}`);
+                        });
+                      } else {
+                        if (document.exitFullscreen) {
+                          document.exitFullscreen();
+                        }
+                      }
+                    }}
+                    type="button"
+                  >
+                    <div className="header-action-dropdown-item-header" style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
+                      <Maximize size={14} style={{ color: 'rgba(255,255,255,0.5)' }} />
+                      <span>{lang === 'es' ? 'Alternar pantalla completa' : 'Toggle fullscreen'}</span>
+                      <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '4px' }}>F</span>
+                    </div>
+                  </button>
+                )}
+                {!isMobile && (
+                  <button 
+                    className="header-action-dropdown-item"
+                    onClick={() => {
+                      setActiveHeaderDropdown(null);
+                      alert(lang === 'es' ? "Atajos:\n- Q: Abrir ajustes de visualización\n- Esc: Cerrar modales/popups\n- Flechas: Navegar páginas" : "Shortcuts:\n- Q: Open display settings\n- Esc: Close modals/popups\n- Arrows: Navigate pages");
+                    }}
+                    type="button"
+                  >
+                    <div className="header-action-dropdown-item-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Keyboard size={14} style={{ color: 'rgba(255,255,255,0.5)' }} />
+                      <span>{lang === 'es' ? 'Atajos de teclado' : 'Keyboard shortcuts'}</span>
+                    </div>
+                  </button>
+                )}
                 <button 
                   className="header-action-dropdown-item"
                   onClick={() => {
@@ -4340,44 +4647,9 @@ export default function Library({
                   }}
                   type="button"
                 >
-                  <div className="header-action-dropdown-item-header">
-                    <span>{lang === 'es' ? '🐛 Reportar un error' : '🐛 Report a bug'}</span>
-                  </div>
-                </button>
-                <button 
-                  className="header-action-dropdown-item"
-                  onClick={() => {
-                    setActiveHeaderDropdown(null);
-                    alert(lang === 'es' ? "Documentación de Yoru Reader disponible en yoru.cafe" : "Yoru Reader documentation available at yoru.cafe");
-                  }}
-                  type="button"
-                >
-                  <div className="header-action-dropdown-item-header">
-                    <span>{lang === 'es' ? '📖 Documentación' : '📖 Docs'}</span>
-                  </div>
-                </button>
-                <button 
-                  className="header-action-dropdown-item"
-                  onClick={() => {
-                    setActiveHeaderDropdown(null);
-                    alert(lang === 'es' ? "Explora más temas de la comunidad próximamente." : "Explore community themes coming soon.");
-                  }}
-                  type="button"
-                >
-                  <div className="header-action-dropdown-item-header">
-                    <span>{lang === 'es' ? '🎨 Repositorio de temas' : '🎨 Theme repository'}</span>
-                  </div>
-                </button>
-                <button 
-                  className="header-action-dropdown-item"
-                  onClick={() => {
-                    setActiveHeaderDropdown(null);
-                    alert(lang === 'es' ? "Última actualización: Añadido menú de importación y barra de herramientas premium." : "Last update: Added import dropdown menu and premium toolbar.");
-                  }}
-                  type="button"
-                >
-                  <div className="header-action-dropdown-item-header">
-                    <span>{lang === 'es' ? '📢 Ver novedades' : '📢 Show read news'}</span>
+                  <div className="header-action-dropdown-item-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Bug size={14} style={{ color: 'rgba(255,255,255,0.5)' }} />
+                    <span>{lang === 'es' ? 'Reportar un error' : 'Report a bug'}</span>
                   </div>
                 </button>
                 <button 
@@ -4388,8 +4660,9 @@ export default function Library({
                   }}
                   type="button"
                 >
-                  <div className="header-action-dropdown-item-header">
-                    <span>{lang === 'es' ? 'ℹ️ Acerca de' : 'ℹ️ About'}</span>
+                  <div className="header-action-dropdown-item-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Info size={14} style={{ color: 'rgba(255,255,255,0.5)' }} />
+                    <span>{lang === 'es' ? 'Acerca de' : 'About'}</span>
                   </div>
                 </button>
               </div>
@@ -4558,41 +4831,7 @@ export default function Library({
         </div>
       </header>
 
-      {/* Floating Buttons Group — bottom-left corner */}
-      {activeTab === 'library' && (
-        <div className="library-fab-group">
-          {/* Sort Toggle FAB */}
-          <button
-            className="library-fab-sort"
-            onClick={() => {
-              if (sortBy === 'default') setSortBy('title');
-              else if (sortBy === 'title') setSortBy('date');
-              else setSortBy('default');
-            }}
-            title={
-              sortBy === 'default' ? "Ordenar: Secciones (Haz clic para ordenar A-Z)" : 
-              (sortBy === 'title' ? "Ordenar: Título A-Z (Haz clic para ordenar por Recientes)" : 
-              "Ordenar: Recientes (Haz clic para volver a Vista de Secciones)")
-            }
-          >
-            <ArrowUpDown size={20} />
-            <span className="fab-sort-badge">
-              {sortBy === 'default' ? '🗂️' : (sortBy === 'title' ? 'AZ' : '🕒')}
-            </span>
-          </button>
 
-          <button
-            className={`library-fab-select ${selectMode ? 'active' : ''}`}
-            onClick={toggleSelectMode}
-            title="Seleccionar libros"
-          >
-            <ListChecks size={20} />
-            {selectMode && selectedBookIds.length > 0 && (
-              <span className="fab-badge">{selectedBookIds.length}</span>
-            )}
-          </button>
-        </div>
-      )}
 
       {/* Yomitan style Select Mode Panel */}
       {activeTab === 'library' && selectMode && (
@@ -4760,7 +4999,20 @@ export default function Library({
       {/* 2. Two-column Sidebar + Main Content Layout */}
       {activeTab === 'library' && (
         <div className="library-layout-wrapper">
-          <aside className="library-sidebar">
+          {isMobile && (
+            <div 
+              className={`sidebar-overlay ${isSidebarOpen ? 'active' : ''}`}
+              onClick={() => setIsSidebarOpen(false)}
+            />
+          )}
+          <aside 
+            className={`library-sidebar ${isSidebarOpen ? 'open' : ''}`}
+            onClick={(e) => {
+              if (isMobile && e.target.closest('.sidebar-item')) {
+                setIsSidebarOpen(false);
+              }
+            }}
+          >
               {/* Search Input */}
               <div className="sidebar-search-container">
                 <input
@@ -5039,6 +5291,44 @@ export default function Library({
       {activeTab === 'statistics' && renderStatisticsTab()}
       {activeTab === 'settings' && renderSettingsTab()}
       {activeTab === 'notes' && renderNotesTab()}
+
+      {/* Bottom Navigation Bar for Mobile */}
+      {isMobile && (
+        <div className="bottom-navigation-bar">
+          <button 
+            className={`bottom-tab-btn ${activeTab === 'library' ? 'active' : ''}`}
+            onClick={() => setActiveTab('library')}
+            type="button"
+          >
+            <BookOpen size={18} />
+            <span>{t('library', lang)}</span>
+          </button>
+          <button 
+            className={`bottom-tab-btn ${activeTab === 'statistics' ? 'active' : ''}`}
+            onClick={() => setActiveTab('statistics')}
+            type="button"
+          >
+            <BarChart3 size={18} />
+            <span>{t('statistics', lang)}</span>
+          </button>
+          <button 
+            className={`bottom-tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('settings')}
+            type="button"
+          >
+            <Settings size={18} />
+            <span>{t('settings', lang)}</span>
+          </button>
+          <button 
+            className={`bottom-tab-btn ${activeTab === 'notes' ? 'active' : ''}`}
+            onClick={() => setActiveTab('notes')}
+            type="button"
+          >
+            <ListChecks size={18} />
+            <span>{t('vocabulary', lang)}</span>
+          </button>
+        </div>
+      )}
 
       {/* Display Settings Drawer (Yatsu style) */}
       <aside className={`display-settings-drawer ${isDisplaySettingsOpen ? 'open' : ''}`} style={{ width: '310px' }}>
@@ -5409,18 +5699,6 @@ export default function Library({
       {previewBook && (
         <div className="modal-overlay" onClick={() => setPreviewBook(null)} style={{ zIndex: 1150 }}>
           <div className="book-preview-modal" onClick={(e) => e.stopPropagation()}>
-            <button 
-              className="edit-book-title-btn" 
-              onClick={() => {
-                setEditingBook(previewBook);
-                setEditTitle(previewBook.title);
-                setEditHideCover(previewBook.hideCover === true);
-                setEditDescription(previewBook.description || '');
-              }}
-              title="Editar detalles del libro"
-            >
-              <Pencil size={16} />
-            </button>
 
             <div className="preview-cover-container">
               {previewBook.cover && !previewBook.hideCover && !previewBook.cover.startsWith('linear-gradient') ? (
@@ -5447,13 +5725,13 @@ export default function Library({
             <h3 className="preview-book-title">{previewBook.title}</h3>
 
             <div className="preview-coverage-badge">
-              ⚡ {dynamicCoverage !== null ? `${dynamicCoverage}% de comprensión` : 'Calculando comprensión...'}
+              ⚡ {dynamicCoverage !== null ? (lang === 'es' ? `${dynamicCoverage}% de comprensión` : `${dynamicCoverage}% comprehension`) : (lang === 'es' ? 'Calculando comprensión...' : 'Calculating comprehension...')}
             </div>
 
             <p className="preview-book-description">
               {previewBook.description || (previewBook.author && previewBook.author !== 'Desconocido' 
-                ? `Novela de ${previewBook.author}.` 
-                : 'Sin descripción')}
+                ? (lang === 'es' ? `Novela de ${previewBook.author}.` : `Novel by ${previewBook.author}.`)
+                : (lang === 'es' ? 'Sin descripción' : 'No description'))}
             </p>
 
             <div className="preview-modal-actions">
@@ -5464,20 +5742,20 @@ export default function Library({
                   setPreviewBook(null);
                 }}
               >
-                Comenzar a leer
+                {lang === 'es' ? 'Comenzar a leer' : 'Start Reading'}
               </button>
               
               <button 
                 className="preview-delete-btn"
                 onClick={() => {
-                  if (confirm(`¿Estás seguro de que quieres eliminar "${previewBook.title}" de la biblioteca?`)) {
+                  if (confirm(lang === 'es' ? `¿Estás seguro de que quieres eliminar "${previewBook.title}" de la biblioteca?` : `Are you sure you want to delete "${previewBook.title}" from the library?`)) {
                     onDeleteBook(previewBook.id);
                     setPreviewBook(null);
                   }
                 }}
               >
                 <Trash2 size={16} style={{ marginRight: '6px' }} />
-                Eliminar de la biblioteca ({Math.round(((previewBook.chapters || []).reduce((sum, ch) => sum + (ch.content || '').length, 0) * 2) / 1024) || 2048}kb)
+                {lang === 'es' ? 'Eliminar de la biblioteca' : 'Delete from library'} ({Math.round(((previewBook.chapters || []).reduce((sum, ch) => sum + (ch.content || '').length, 0) * 2) / 1024) || 2048}kb)
               </button>
             </div>
           </div>
@@ -5510,19 +5788,19 @@ export default function Library({
             <div className="edit-form-content">
               {/* Título */}
               <div className="edit-form-row">
-                <label className="edit-form-label">Título</label>
+                <label className="edit-form-label">{lang === 'es' ? 'Título' : 'Title'}</label>
                 <input 
                   type="text" 
                   value={editTitle} 
                   onChange={(e) => setEditTitle(e.target.value)} 
                   className="edit-form-input"
-                  placeholder="Introducir título"
+                  placeholder={lang === 'es' ? 'Introducir título' : 'Enter title...'}
                 />
               </div>
 
               {/* Ocultar imagen de portada */}
               <div className="edit-form-row inline-row">
-                <label className="edit-form-label">Ocultar imagen de portada</label>
+                <label className="edit-form-label">{lang === 'es' ? 'Ocultar imagen de portada' : 'Hide cover image'}</label>
                 <label className="migaku-switch">
                   <input 
                     type="checkbox" 
@@ -5535,12 +5813,12 @@ export default function Library({
 
               {/* Descripción */}
               <div className="edit-form-row">
-                <label className="edit-form-label">Descripción (opcional)</label>
+                <label className="edit-form-label">{lang === 'es' ? 'Descripción (opcional)' : 'Description (optional)'}</label>
                 <textarea 
                   value={editDescription} 
                   onChange={(e) => setEditDescription(e.target.value)} 
                   className="edit-form-textarea"
-                  placeholder="Introducir descripción"
+                  placeholder={lang === 'es' ? 'Introducir descripción' : 'Enter description...'}
                   rows={4}
                 />
               </div>
@@ -5566,7 +5844,7 @@ export default function Library({
                   }
                 }}
               >
-                Guardar detalles
+                {lang === 'es' ? 'Guardar detalles' : 'Save details'}
               </button>
             </div>
           </div>
@@ -5830,6 +6108,8 @@ export default function Library({
           onClose={() => setIsSettingsOpen(false)}
           settings={settings}
           onSaveSettings={onSaveSettings}
+          onExportLibrary={handleExportLibrary}
+          onTriggerImportBackup={() => backupInputRef.current.click()}
           libraryViewProps={{
             showCardTitle, setShowCardTitle,
             showCardSeries, setShowCardSeries,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Search } from 'lucide-react';
+import { X, Search, Palette, Clock, Type, Target, Layers, FolderOpen, BookOpen, AlertTriangle } from 'lucide-react';
 import { t } from '../utils/i18n';
 const AnkiConfigModal = React.lazy(() => import('./AnkiConfigModal'));
 
@@ -11,12 +11,15 @@ export default function SettingsModal({
   mode = 'settings', 
   book, 
   onUpdateBookDetails,
-  libraryViewProps // Opcional, para controlar las tarjetas de la biblioteca
+  libraryViewProps, // Opcional, para controlar las tarjetas de la biblioteca
+  onExportLibrary,
+  onTriggerImportBackup
 }) {
   if (!isOpen) return null;
   const [isAnkiConfigOpen, setIsAnkiConfigOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('text-style');
   const [searchQuery, setSearchQuery] = useState('');
+  const [mobileSubView, setMobileSubView] = useState('menu'); // 'menu' o 'content'
   
   const lang = settings.appLanguage || 'es';
 
@@ -145,29 +148,29 @@ export default function SettingsModal({
     {
       category: 'GENERAL',
       items: [
-        { id: 'theme', label: 'Tema', icon: <span>🎨</span> },
-        { id: 'display', label: 'Pantalla', icon: <span>🕒</span> }
+        { id: 'theme', label: lang === 'es' ? 'Tema' : 'Theme', icon: <Palette size={16} /> },
+        { id: 'display', label: lang === 'es' ? 'Pantalla' : 'Display', icon: <Clock size={16} /> }
       ]
     },
     {
-      category: 'LECTOR',
+      category: lang === 'es' ? 'LECTOR' : 'READER',
       items: [
-        { id: 'text-style', label: 'Estilo de texto', icon: <span>🎨</span> },
-        { id: 'rendering', label: 'Resaltado', icon: <span>🎯</span> }
+        { id: 'text-style', label: lang === 'es' ? 'Estilo de texto' : 'Text Style', icon: <Type size={16} /> },
+        { id: 'rendering', label: lang === 'es' ? 'Resaltado' : 'Highlighting', icon: <Target size={16} /> }
       ]
     },
     {
-      category: 'INTEGRACIÓN',
+      category: lang === 'es' ? 'INTEGRACIÓN' : 'INTEGRATION',
       items: [
-        { id: 'sources', label: 'Integración con Anki', icon: <span>🃏</span> }
+        { id: 'sources', label: lang === 'es' ? 'Integración con Anki' : 'Anki Integration', icon: <Layers size={16} /> }
       ]
     },
     {
-      category: 'DATOS',
+      category: lang === 'es' ? 'DATOS' : 'DATA',
       items: [
-        { id: 'backups', label: 'Copias de seguridad', icon: <span>💾</span> },
-        { id: 'dictionaries', label: 'Diccionarios', icon: <span>🗄️</span> },
-        { id: 'danger-zone', label: 'Zona de peligro', icon: <span>🔧</span>, color: '#f87171' }
+        { id: 'backups', label: lang === 'es' ? 'Copias de seguridad' : 'Backups', icon: <FolderOpen size={16} /> },
+        { id: 'dictionaries', label: lang === 'es' ? 'Diccionarios' : 'Dictionaries', icon: <BookOpen size={16} /> },
+        { id: 'danger-zone', label: lang === 'es' ? 'Zona de peligro' : 'Danger Zone', icon: <AlertTriangle size={16} />, color: '#f87171' }
       ]
     }
   ];
@@ -175,7 +178,7 @@ export default function SettingsModal({
   // 1. GENERAL / Tema
   const renderThemeContent = () => (
     <div className="settings-panel-section">
-      <h4 className="settings-panel-title">Tema</h4>
+      <h4 className="settings-panel-title">{lang === 'es' ? 'Tema' : 'Theme'}</h4>
       <div className="migaku-row">
         <span className="migaku-label">{lang === 'es' ? 'Tema del lector' : 'Reader Theme'}</span>
         <select 
@@ -194,7 +197,7 @@ export default function SettingsModal({
   // 2. GENERAL / Pantalla
   const renderDisplayContent = () => (
     <div className="settings-panel-section">
-      <h4 className="settings-panel-title">Pantalla</h4>
+      <h4 className="settings-panel-title">{lang === 'es' ? 'Pantalla' : 'Display'}</h4>
       <div className="migaku-row">
         <span className="migaku-label">{t('interfaceLanguage', lang)}</span>
         <select 
@@ -212,32 +215,23 @@ export default function SettingsModal({
   // 3. LECTOR / Estilo de texto
   const renderTextStyleContent = () => (
     <div className="settings-panel-section">
-      <h4 className="settings-panel-title">Estilo de texto</h4>
+      <h4 className="settings-panel-title">{lang === 'es' ? 'Estilo de texto' : 'Text Style'}</h4>
       
-      {/* Tamaño del texto */}
-      <div className="migaku-slider-row" style={{ marginBottom: '14px' }}>
-        <span className="slider-label">{t('readerFontSize', lang)}</span>
-        <div className="migaku-slider-container">
-          <span className="slider-icon-small">A</span>
-          <div className="slider-wrapper">
-            <input 
-              type="range" 
-              min="18" 
-              max="48" 
-              step="2"
-              value={getSliderVal()} 
-              onChange={(e) => updateSetting('fontSize', parseInt(e.target.value))}
-              className="migaku-slider"
-            />
-            <div className="slider-ticks">
-              <span className={getSliderVal() >= 18 ? 'active' : ''}></span>
-              <span className={getSliderVal() >= 28 ? 'active' : ''}></span>
-              <span className={getSliderVal() >= 38 ? 'active' : ''}></span>
-              <span className={getSliderVal() >= 48 ? 'active' : ''}></span>
-            </div>
-          </div>
-          <span className="slider-icon-large">A</span>
-        </div>
+      {/* Tamaño del texto (Zoom de lectura) */}
+      <div className="migaku-row" style={{ marginBottom: '14px' }}>
+        <span className="migaku-label">{lang === 'es' ? 'Zoom de lectura' : 'Reading Zoom'}</span>
+        <select 
+          value={getSliderVal()}
+          onChange={(e) => updateSetting('fontSize', parseInt(e.target.value))}
+          className="migaku-select"
+        >
+          <option value="18">75%</option>
+          <option value="24">100%</option>
+          <option value="30">125%</option>
+          <option value="36">150%</option>
+          <option value="42">175%</option>
+          <option value="48">200%</option>
+        </select>
       </div>
 
       {/* Furigana */}
@@ -323,7 +317,7 @@ export default function SettingsModal({
   // 4. LECTOR / Resaltado
   const renderRenderingContent = () => (
     <div className="settings-panel-section">
-      <h4 className="settings-panel-title">Resaltado</h4>
+      <h4 className="settings-panel-title">{lang === 'es' ? 'Resaltado' : 'Highlighting'}</h4>
       
       <div className="migaku-row">
         <span className="migaku-label">{lang === 'es' ? 'Acento por color' : 'Pitch accent by color'}</span>
@@ -366,7 +360,7 @@ export default function SettingsModal({
   // 5. INTEGRACIÓN / Integración con Anki
   const renderSourcesContent = () => (
     <div className="settings-panel-section">
-      <h4 className="settings-panel-title">Integración con Anki</h4>
+      <h4 className="settings-panel-title">{lang === 'es' ? 'Integración con Anki' : 'Anki Integration'}</h4>
       <div className="migaku-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '8px' }}>
         <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
           {lang === 'es' ? 'Configura la conexión con tu cliente de AnkiConnect para minar vocabulario instantáneamente.' : 'Configure connection to AnkiConnect client for mining vocabulary on the fly.'}
@@ -390,7 +384,7 @@ export default function SettingsModal({
     const gDriveActive = localStorage.getItem('yoru_gdrive_tokens') !== null;
     return (
       <div className="settings-panel-section">
-        <h4 className="settings-panel-title">Copias de seguridad</h4>
+        <h4 className="settings-panel-title">{lang === 'es' ? 'Copias de seguridad' : 'Backups'}</h4>
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {/* Resumen Google Drive */}
@@ -406,7 +400,7 @@ export default function SettingsModal({
             </p>
           </div>
 
-          {/* Exportación Local */}
+          {/* Exportación/Importación Local */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
             <span className="migaku-label" style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>
               {lang === 'es' ? 'Copias Locales (Archivo ZIP)' : 'Local Backups (ZIP File)'}
@@ -415,17 +409,32 @@ export default function SettingsModal({
               <button
                 type="button"
                 onClick={() => {
-                  if (window.electronAPI && window.electronAPI.exportLibrary) {
+                  if (onExportLibrary) {
+                    onExportLibrary();
+                  } else if (window.electronAPI && window.electronAPI.exportLibrary) {
                     window.electronAPI.exportLibrary().then(res => {
                       if (res) alert(lang === 'es' ? 'Copia de seguridad guardada con éxito.' : 'Backup saved successfully.');
                     }).catch(e => alert(e.message));
                   } else {
-                    alert(lang === 'es' ? 'La copia local solo está disponible en la versión de escritorio.' : 'Local backup is only available on desktop.');
+                    alert(lang === 'es' ? 'La copia local no está disponible.' : 'Local backup is not available.');
                   }
                 }}
                 style={{ flex: 1, padding: '8px 10px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}
               >
                 💾 {lang === 'es' ? 'Exportar copia' : 'Export backup'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onTriggerImportBackup) {
+                    onTriggerImportBackup();
+                  } else {
+                    alert(lang === 'es' ? 'La importación local no está disponible.' : 'Local import is not available.');
+                  }
+                }}
+                style={{ flex: 1, padding: '8px 10px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}
+              >
+                📂 {lang === 'es' ? 'Importar copia' : 'Import backup'}
               </button>
             </div>
           </div>
@@ -437,11 +446,11 @@ export default function SettingsModal({
   // 7. DATOS / Diccionarios
   const renderDictionariesContent = () => (
     <div className="settings-panel-section">
-      <h4 className="settings-panel-title">Diccionarios</h4>
+      <h4 className="settings-panel-title">{lang === 'es' ? 'Diccionarios' : 'Dictionaries'}</h4>
       <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '12px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-          <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Japonés - Español</span>
-          <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(255,224,0,0.1)', color: 'var(--primary)' }}>ACTIVO</span>
+          <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{lang === 'es' ? 'Japonés - Español' : 'Japanese - English'}</span>
+          <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(255,224,0,0.1)', color: 'var(--primary)' }}>{lang === 'es' ? 'ACTIVO' : 'ACTIVE'}</span>
         </div>
         <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', margin: 0 }}>
           {lang === 'es' ? 'Base de datos Yomitan de diccionario integrada correctamente.' : 'Integrated Yomitan dictionary database loaded.'}
@@ -453,7 +462,7 @@ export default function SettingsModal({
   // 8. DATOS / Zona de peligro
   const renderDangerZoneContent = () => (
     <div className="settings-panel-section">
-      <h4 className="settings-panel-title" style={{ color: '#f87171', borderLeftColor: '#f87171' }}>Zona de peligro</h4>
+      <h4 className="settings-panel-title" style={{ color: '#f87171', borderLeftColor: '#f87171' }}>{lang === 'es' ? 'Zona de peligro' : 'Danger Zone'}</h4>
       <div style={{ background: 'rgba(239, 68, 68, 0.03)', border: '1px solid rgba(239, 68, 68, 0.15)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <p style={{ fontSize: '0.78rem', color: 'rgba(255, 255, 255, 0.6)', margin: 0, lineHeight: 1.4 }}>
           {lang === 'es' ? 'Estas acciones son destructivas y no se pueden deshacer. Se borrarán tus estadísticas, libros importados y configuraciones.' : 'These actions are destructive and cannot be undone. Your stats, imported books, and settings will be permanently deleted.'}
@@ -525,12 +534,12 @@ export default function SettingsModal({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="settings-sidebar-modal" onClick={(e) => e.stopPropagation()}>
+      <div className={`settings-sidebar-modal mobile-subview-${mobileSubView}`} onClick={(e) => e.stopPropagation()}>
         
         {/* Panel Izquierdo: Sidebar Navigation */}
         <div className="settings-sidebar-left">
           <div className="settings-sidebar-title">
-            <span>Configuración</span>
+            <span>{lang === 'es' ? 'Configuración' : 'Settings'}</span>
             <button className="settings-close-btn-mobile" onClick={onClose}>
               <X size={16} />
             </button>
@@ -561,7 +570,10 @@ export default function SettingsModal({
                     {group.items.map((item) => (
                       <button
                         key={item.id}
-                        onClick={() => setActiveSection(item.id)}
+                        onClick={() => {
+                          setActiveSection(item.id);
+                          setMobileSubView('content');
+                        }}
                         className={`settings-menu-item-btn ${activeSection === item.id ? 'active' : ''}`}
                         style={{ color: item.color || 'rgba(255, 255, 255, 0.65)' }}
                       >
@@ -587,7 +599,7 @@ export default function SettingsModal({
                     return (
                       <button
                         key={item.id}
-                        onClick={() => { setActiveSection(item.id); setSearchQuery(''); }}
+                        onClick={() => { setActiveSection(item.id); setSearchQuery(''); setMobileSubView('content'); }}
                         className="settings-menu-item-btn"
                       >
                         <span>🔍</span>
@@ -609,6 +621,13 @@ export default function SettingsModal({
         {/* Panel Derecho: Contenido de Ajustes */}
         <div className="settings-sidebar-right">
           <div className="settings-right-header">
+            <button 
+              className="settings-back-btn-mobile" 
+              onClick={() => setMobileSubView('menu')}
+              type="button"
+            >
+              ← {lang === 'es' ? 'Atrás' : 'Back'}
+            </button>
             <span className="settings-header-label">
               {lang === 'es' ? 'Ajustes Generales' : 'General Settings'}
             </span>

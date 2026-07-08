@@ -29,3 +29,7 @@ scratch/
 *.wav
 bin/
 voices/
+
+# Build outputs
+dist-electron-installer
+dist-android

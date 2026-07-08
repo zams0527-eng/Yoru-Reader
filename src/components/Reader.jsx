@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { ArrowLeft, ArrowRight, Settings, Volume2, ExternalLink, BookOpen, Play, Plus, X, Square } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Settings, Volume2, ExternalLink, BookOpen, Play, Plus, X, Square, Sliders } from 'lucide-react';
 import { tokenizeText } from '../utils/japanese';
 import { lookupWord } from '../utils/dictionary';
 import SettingsModal from './SettingsModal';
@@ -128,6 +128,7 @@ export default function Reader({
   const [jumpPageInput, setJumpPageInput] = useState(1);
   const [hoveredSentenceIdx, setHoveredSentenceIdx] = useState(null);
   const [isTtsPlaying, setIsTtsPlaying] = useState(false);
+  const [isReaderSidebarOpen, setIsReaderSidebarOpen] = useState(false);
 
   const containerRef = useRef(null);
   const readerContentRef = useRef(null);
@@ -148,6 +149,31 @@ export default function Reader({
 
 
 
+
+  // Shortcut Q to toggle reader settings sidebar
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.key === 'q' || e.key === 'Q') {
+        e.preventDefault();
+        setIsReaderSidebarOpen(prev => !prev);
+      }
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(err => {
+            console.error(`Error enabling full-screen mode: ${err.message}`);
+          });
+        } else {
+          if (document.exitFullscreen) {
+            document.exitFullscreen();
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Silenciar reproducción si el lector se desmonta
   useEffect(() => {
@@ -617,10 +643,10 @@ export default function Reader({
         if (selectedWord && selectedWord.basicForm) {
           onSetWordStatus(selectedWord.basicForm, 'learning');
         }
-        alert('¡Tarjeta de Anki creada con éxito! La palabra fue marcada como "Estudiando".');
+        alert(lang === 'es' ? '¡Tarjeta de Anki creada con éxito! La palabra fue marcada como "Estudiando".' : 'Anki card created successfully! The word was marked as "Learning".');
       }
     } catch (e) {
-      alert('Error de conexión con AnkiConnect. Asegúrate de tener Anki abierto.');
+      alert(lang === 'es' ? 'Error de conexión con AnkiConnect. Asegúrate de tener Anki abierto.' : 'Connection error with AnkiConnect. Make sure Anki is open.');
     }
   };
 
@@ -642,6 +668,35 @@ export default function Reader({
 
     const vozId = vozSeleccionada || settings.audioVoiceOption || 'Nanami';
     const speed = parseFloat(settings.audioSpeed || '1.0');
+
+    // 1. Método Edge TTS (si estamos en Electron)
+    if (window.electronAPI && window.electronAPI.speakText) {
+      try {
+        const azureVoiceName = 
+          vozId === 'Mayu' ? 'ja-JP-MayuNeural' : 
+          vozId === 'Keita' ? 'ja-JP-KeitaNeural' : 
+          'ja-JP-NanamiNeural';
+
+        const audioBuffer = await window.electronAPI.speakText({
+          text: texto,
+          voice: azureVoiceName,
+          rate: speed
+        });
+
+        if (audioBuffer) {
+          const blob = new Blob([audioBuffer], { type: 'audio/mp3' });
+          const audioUrl = URL.createObjectURL(blob);
+          const audio = new Audio(audioUrl);
+          ttsAudioRef.current = audio;
+          audio.onended = () => { setIsTtsPlaying(false); ttsAudioRef.current = null; };
+          audio.onerror = (e) => { console.error('Edge TTS audio error:', e); setIsTtsPlaying(false); ttsAudioRef.current = null; };
+          await audio.play();
+          return;
+        }
+      } catch (err) {
+        console.warn('Edge TTS falló. Intentando con Azure u otros métodos:', err);
+      }
+    }
 
     // 2. Método Azure Neural TTS (si hay API Key configurada)
     if (settings.azureApiKey && settings.azureApiKey.trim()) {
@@ -824,10 +879,10 @@ export default function Reader({
         </h3>
         <button 
           className="reader-header-btn" 
-          onClick={() => { setModalMode('settings'); setIsSettingsOpen(true); }}
-          title={lang === 'es' ? 'Ajustes de lectura' : 'Reading Settings'}
+          onClick={() => setIsReaderSidebarOpen(prev => !prev)}
+          title={lang === 'es' ? 'Ajustes de visualización (Q)' : 'Display Settings (Q)'}
         >
-          <Settings size={20} />
+          <Sliders size={20} />
         </button>
       </header>
 
@@ -1289,6 +1344,88 @@ export default function Reader({
           </div>
         </div>
       )}
+
+      {/* Reader Display Settings Drawer (triggered by Q or Sliders button) */}
+      <aside className={`display-settings-drawer ${isReaderSidebarOpen ? 'open' : ''}`} style={{ width: '310px' }}>
+        <div className="drawer-header">
+          <span className="drawer-title" style={{ color: '#fff', fontSize: '0.9rem', textTransform: 'none', fontWeight: 650, letterSpacing: 'normal', textShadow: 'none' }}>
+            {lang === 'es' ? 'Ajustes de visualización' : 'Display settings'}
+          </span>
+          <button 
+            className="drawer-close-btn" 
+            onClick={() => setIsReaderSidebarOpen(false)}
+            title={lang === 'es' ? 'Cerrar (Q)' : 'Close (Q)'}
+            type="button"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="drawer-content" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '14px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '6px' }}>
+              {lang === 'es' ? 'Visualización' : 'Display'}
+            </div>
+            
+            <div className="settings-row-control" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span className="settings-label-text" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', fontWeight: 600 }}>
+                {lang === 'es' ? 'Oración al pasar el cursor (Highlight)' : 'Sentence hover highlight'}
+              </span>
+              <label className="migaku-switch">
+                <input 
+                  type="checkbox" 
+                  checked={settings.sentenceHover === true}
+                  onChange={(e) => onSaveSettings({ ...settings, sentenceHover: e.target.checked })}
+                />
+                <span className="migaku-switch-slider"></span>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '14px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '6px' }}>
+              {lang === 'es' ? 'Estilo de texto y Audio' : 'Text Style & Audio'}
+            </div>
+            
+            {/* Tamaño de fuente del lector (Zoom de lectura) */}
+            <div className="drawer-section" style={{ marginBottom: '14px' }}>
+              <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600 }}>
+                {lang === 'es' ? 'Zoom de lectura' : 'Reading Zoom'}
+              </span>
+              <select 
+                value={settings.fontSize || 36}
+                onChange={(e) => onSaveSettings({ ...settings, fontSize: parseInt(e.target.value) })}
+                className="drawer-select"
+                style={{ width: '100%', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff', outline: 'none' }}
+              >
+                <option value="18">75%</option>
+                <option value="24">100%</option>
+                <option value="30">125%</option>
+                <option value="36">150%</option>
+                <option value="42">175%</option>
+                <option value="48">200%</option>
+              </select>
+            </div>
+
+            {/* Velocidad de reproducción */}
+            <div className="drawer-section" style={{ marginBottom: '14px' }}>
+              <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600 }}>
+                {lang === 'es' ? 'Velocidad de reproducción' : 'Playback Speed'}
+              </span>
+              <select 
+                value={settings.audioSpeed || '1.0'}
+                onChange={(e) => onSaveSettings({ ...settings, audioSpeed: e.target.value })}
+                className="drawer-select"
+              >
+                <option value="1.0">Normal (1.0x)</option>
+                <option value="0.75">{lang === 'es' ? 'Lento (0.75x)' : 'Slow (0.75x)'}</option>
+                <option value="1.25">{lang === 'es' ? 'Rápido (1.25x)' : 'Fast (1.25x)'}</option>
+                <option value="1.5">{lang === 'es' ? 'Rápido (1.5x)' : 'Fast (1.5x)'}</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </aside>
     </div>
   );
 }

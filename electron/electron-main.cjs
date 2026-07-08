@@ -5,6 +5,37 @@ const url = require('url');
 const { spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
+const { synthesizeEdgeTts } = require('./edgeTts.cjs');
+
+// Override console.log and console.error to write to a log file
+let logPath;
+try {
+  logPath = app.isPackaged 
+    ? path.join(app.getPath('userData'), 'electron_debug.log') 
+    : path.join(__dirname, '../electron_debug.log');
+  fs.writeFileSync(logPath, '--- Electron Debug Log Start ---\n');
+} catch (e) {
+  console.warn("Could not initialize log file path:", e);
+}
+
+const originalLog = console.log;
+const originalError = console.error;
+console.log = function(...args) {
+  originalLog.apply(console, args);
+  if (logPath) {
+    try {
+      fs.appendFileSync(logPath, args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ') + '\n');
+    } catch (e) {}
+  }
+};
+console.error = function(...args) {
+  originalError.apply(console, args);
+  if (logPath) {
+    try {
+      fs.appendFileSync(logPath, '[ERROR] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ') + '\n');
+    } catch (e) {}
+  }
+};
 
 let oauthServer = null;
 
@@ -126,6 +157,7 @@ ipcMain.handle('start-google-oauth', async (event, clientId) => {
 const https = require('https');
 
 ipcMain.handle('download-google-drive', async (event, { urlString, id }) => {
+  console.log('[download-google-drive] Requested download URL:', urlString);
   return new Promise((resolve, reject) => {
     const options = {
       headers: {
@@ -133,9 +165,54 @@ ipcMain.handle('download-google-drive', async (event, { urlString, id }) => {
       }
     };
 
-    function download(url) {
-      https.get(url, options, (res) => {
+    function downloadFileDirect(urlStringDirect) {
+      console.log('[download-google-drive] Downloading direct file from:', urlStringDirect);
+      https.get(urlStringDirect, options, (res) => {
+        console.log('[download-google-drive] Direct response status:', res.statusCode);
+        
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          console.log('[download-google-drive] Redirecting direct download to:', res.headers.location);
+          downloadFileDirect(res.headers.location);
+          return;
+        }
+        if (res.statusCode !== 200) {
+          reject(new Error(`HTTP status code ${res.statusCode}`));
+          return;
+        }
+
+        const totalLength = parseInt(res.headers['content-length'], 10) || 0;
+        let downloadedLength = 0;
+        const chunks = [];
+        
+        res.on('data', (chunk) => {
+          chunks.push(chunk);
+          downloadedLength += chunk.length;
+          if (totalLength > 0) {
+            const percent = Math.round((downloadedLength / totalLength) * 100);
+            event.sender.send('download-progress-event', { id, percent, downloadedBytes: downloadedLength });
+          } else {
+            event.sender.send('download-progress-event', { id, percent: -1, downloadedBytes: downloadedLength });
+          }
+        });
+        
+        res.on('end', () => {
+          const buffer = Buffer.concat(chunks);
+          console.log('[download-google-drive] Bypassed download completed. Total bytes:', buffer.length);
+          resolve(buffer);
+        });
+      }).on('error', (err) => {
+        console.error('[download-google-drive] Direct request error:', err);
+        reject(err);
+      });
+    }
+
+    function download(url) {
+      console.log('[download-google-drive] Fetching URL:', url);
+      https.get(url, options, (res) => {
+        console.log('[download-google-drive] Response status:', res.statusCode);
+        
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          console.log('[download-google-drive] Redirecting to:', res.headers.location);
           download(res.headers.location);
           return;
         }
@@ -161,15 +238,72 @@ ipcMain.handle('download-google-drive', async (event, { urlString, id }) => {
         
         res.on('end', () => {
           const buffer = Buffer.concat(chunks);
-          resolve(buffer);
+          const firstBytesStr = buffer.toString('utf8', 0, Math.min(buffer.length, 500));
+          
+          if (firstBytesStr.includes('Google Drive - Virus scan warning') || firstBytesStr.includes('can\'t scan this file for viruses')) {
+            console.log('[download-google-drive] Virus scan warning page detected. Bypassing...');
+            
+            const html = buffer.toString('utf8');
+            
+            // Extract form action URL
+            const formActionMatch = html.match(/<form[^>]+action="([^"]+)"/);
+            if (!formActionMatch) {
+              reject(new Error('Failed to parse download form from warning page'));
+              return;
+            }
+            const actionUrl = formActionMatch[1];
+            
+            // Extract hidden inputs
+            const inputRegex = /<input[^>]+type="hidden"[^>]*>/g;
+            const inputs = html.match(inputRegex);
+            if (!inputs) {
+              reject(new Error('Failed to parse form inputs from warning page'));
+              return;
+            }
+            
+            const params = [];
+            inputs.forEach(input => {
+              const nameMatch = input.match(/name="([^"]+)"/);
+              const valueMatch = input.match(/value="([^"]+)"/);
+              if (nameMatch && valueMatch) {
+                params.push(`${encodeURIComponent(nameMatch[1])}=${encodeURIComponent(valueMatch[1])}`);
+              }
+            });
+            
+            if (params.length === 0) {
+              reject(new Error('No parameters extracted from warning page form'));
+              return;
+            }
+            
+            const bypassUrl = `${actionUrl}?${params.join('&')}`;
+            console.log('[download-google-drive] Bypassing with URL:', bypassUrl);
+            
+            // Download the actual file now
+            downloadFileDirect(bypassUrl);
+          } else {
+            console.log('[download-google-drive] Downloaded file directly. Total bytes:', buffer.length);
+            resolve(buffer);
+          }
         });
       }).on('error', (err) => {
+        console.error('[download-google-drive] Request error:', err);
         reject(err);
       });
     }
     
     download(urlString);
   });
+});
+
+ipcMain.handle('speak-text', async (event, { text, voice, rate }) => {
+  console.log('[speak-text] Requesting Edge TTS. Voice:', voice, 'Rate:', rate);
+  try {
+    const audioBuffer = await synthesizeEdgeTts(text, voice, rate);
+    return audioBuffer;
+  } catch (error) {
+    console.error('[speak-text] Edge TTS error:', error);
+    throw error;
+  }
 });
 
 app.whenReady().then(createWindow);
