@@ -862,12 +862,6 @@ export default function Reader({
         }
       }
 
-      // 6. General Settings: S
-      else if (key === 's') {
-        e.preventDefault();
-        setModalMode('settings');
-        setIsSettingsOpen(true);
-      }
 
       // 7. Sidebar Settings: Q
       else if (key === 'q') {
