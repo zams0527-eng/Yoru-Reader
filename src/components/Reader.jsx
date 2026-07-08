@@ -100,6 +100,51 @@ export function chunkTokensIntoPages(tokenizedParagraphs, fontSize = 24) {
   return pages.length > 0 ? pages : [[]];
 }
 
+function PitchAccent({ reading, position }) {
+  const morae = reading.match(/[ぁ-んァ-ン][ゃゅょャュョ]*/g) || [];
+  if (morae.length === 0) return <span>{reading} [{position}]</span>;
+
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px', fontFamily: 'var(--font-japanese)', fontSize: '0.95rem' }}>
+      <span style={{ display: 'inline-flex', padding: '2px 0' }}>
+        {morae.map((mora, idx) => {
+          const m = idx + 1; // 1-based mora index
+          let isHigh = false;
+          let hasDrop = false;
+
+          if (position === 0) {
+            isHigh = m > 1;
+          } else if (position === 1) {
+            isHigh = m === 1;
+            hasDrop = m === 1;
+          } else if (position > 1) {
+            isHigh = m >= 2 && m <= position;
+            hasDrop = m === position;
+          }
+
+          return (
+            <span
+              key={idx}
+              style={{
+                borderTop: isHigh ? '2px solid currentColor' : '2px solid transparent',
+                borderRight: hasDrop ? '2px solid currentColor' : '2px solid transparent',
+                paddingRight: hasDrop ? '2px' : '0px',
+                lineHeight: '1.2',
+                display: 'inline-block'
+              }}
+            >
+              {mora}
+            </span>
+          );
+        })}
+      </span>
+      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '3px' }}>
+        [{position}]
+      </span>
+    </span>
+  );
+}
+
 export default function Reader({ 
   book, 
   onBack, 
@@ -120,6 +165,65 @@ export default function Reader({
   const [selectedWord, setSelectedWord] = useState(null);
   const [dictEntry, setDictEntry] = useState(null);
   const [dictLoading, setDictLoading] = useState(false);
+  const [ankiCardExists, setAnkiCardExists] = useState(false);
+
+  const checkAnkiCardExists = async (word) => {
+    setAnkiCardExists(false);
+    if (!word) return;
+
+    const savedV2 = localStorage.getItem('anki_settings_v2');
+    const ankiSettingsV2 = savedV2 ? JSON.parse(savedV2) : null;
+    let host = 'http://127.0.0.1:8765';
+    let noteType = 'Lapis';
+    let fieldsConfig = { Expression: '{expression}' };
+
+    if (ankiSettingsV2) {
+      host = ankiSettingsV2.host || host;
+      const config = ankiSettingsV2.expression || {};
+      noteType = config.noteType || noteType;
+      if (config.fields && Object.keys(config.fields).length > 0) {
+        fieldsConfig = config.fields;
+      }
+    } else {
+      const saved = localStorage.getItem('anki_settings');
+      if (saved) {
+        const legacy = JSON.parse(saved);
+        host = legacy.host || host;
+        noteType = legacy.noteType || noteType;
+        fieldsConfig = { [legacy.wordField || 'Expression']: '{expression}' };
+      }
+    }
+
+    const expressionField = Object.keys(fieldsConfig).find(k => fieldsConfig[k] === '{expression}') || 'Expression';
+
+    try {
+      const res = await fetch(host, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'findNotes',
+          version: 6,
+          params: {
+            query: `note:"${noteType}" "${expressionField}:${word}"`
+          }
+        })
+      });
+      const data = await res.json();
+      if (data && data.result && data.result.length > 0) {
+        setAnkiCardExists(true);
+      }
+    } catch (e) {
+      console.warn('Could not check card existence in Anki:', e);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedWord) {
+      checkAnkiCardExists(selectedWord.basicForm);
+    } else {
+      setAnkiCardExists(false);
+    }
+  }, [selectedWord]);
   const [popupPos, setPopupPos] = useState({ x: 0, y: 0 });
   const [isJumpModalOpen, setIsJumpModalOpen] = useState(false);
   const [isComprehensionOpen, setIsComprehensionOpen] = useState(false);
@@ -382,6 +486,39 @@ export default function Reader({
   };
 
 
+  const handleOpenInAnki = async () => {
+    if (!selectedWord) return;
+
+    const savedV2 = localStorage.getItem('anki_settings_v2');
+    const ankiSettingsV2 = savedV2 ? JSON.parse(savedV2) : null;
+    let host = 'http://127.0.0.1:8765';
+    if (ankiSettingsV2) {
+      host = ankiSettingsV2.host || host;
+    } else {
+      const saved = localStorage.getItem('anki_settings');
+      if (saved) {
+        host = JSON.parse(saved).host || host;
+      }
+    }
+
+    try {
+      await fetch(host, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'guiBrowse',
+          version: 6,
+          params: {
+            query: `"${selectedWord.basicForm}"`
+          }
+        })
+      });
+    } catch (e) {
+      console.error('Error opening Anki browser:', e);
+      alert(lang === 'es' ? 'No se pudo conectar con Anki. Asegúrate de que Anki esté abierto y AnkiConnect configurado.' : 'Could not connect to Anki. Make sure Anki is open and AnkiConnect is configured.');
+    }
+  };
+
   const handleMineToAnki = async () => {
     if (!selectedWord) return;
 
@@ -574,17 +711,53 @@ export default function Reader({
         fields[fieldName] = '';
         continue;
       }
+      
+      let pitchPositions = '';
+      let pitchCategories = '';
+      if (dictEntry && dictEntry.pitches && dictEntry.pitches.length > 0) {
+        pitchPositions = dictEntry.pitches
+          .flatMap(pEntry => pEntry.pitches.map(p => p.position))
+          .join(', ');
+          
+        const getPitchCategoryName = (pos, r) => {
+          const morae = (r || '').match(/[ぁ-んァ-ン][ゃゅょャュョ]*/g) || [];
+          const count = morae.length;
+          if (pos === 0) return '平板';
+          if (pos === 1) return '頭高';
+          if (pos > 1) {
+            if (pos === count) return '尾高';
+            return '中高';
+          }
+          return '';
+        };
+        
+        pitchCategories = dictEntry.pitches
+          .flatMap(pEntry => pEntry.pitches.map(p => getPitchCategoryName(p.position, pEntry.reading || selectedWord.reading)))
+          .filter(Boolean)
+          .join(', ');
+      }
+
+      let frequencyRank = '';
+      if (dictEntry && dictEntry.frequencies && dictEntry.frequencies.length > 0) {
+        frequencyRank = dictEntry.frequencies
+          .map(f => f.displayValue || String(f.value))
+          .join(', ');
+      }
+
       let val = tokenTemplate
-        .replace('{expression}', selectedWord.basicForm || selectedWord.surface)
-        .replace('{furigana}', wordFurigana)
-        .replace('{reading}', selectedWord.reading || '')
-        .replace('{audio}', audioHTML)
-        .replace('{popup-selection-text}', selectedWord.surface)
-        .replace('{sentence}', sentenceText)
-        .replace('{sentence-furigana}', sentenceFurigana)
-        .replace('{screenshot}', screenshotHTML)
-        .replace('{meaning}', meaning)
-        .replace('{tags}', rawTags);
+        .replaceAll('{expression}', selectedWord.basicForm || selectedWord.surface)
+        .replaceAll('{furigana}', wordFurigana)
+        .replaceAll('{reading}', selectedWord.reading || '')
+        .replaceAll('{audio}', audioHTML)
+        .replaceAll('{popup-selection-text}', selectedWord.surface)
+        .replaceAll('{sentence}', sentenceText)
+        .replaceAll('{sentence-furigana}', sentenceFurigana)
+        .replaceAll('{screenshot}', screenshotHTML)
+        .replaceAll('{meaning}', meaning)
+        .replaceAll('{tags}', rawTags)
+        .replaceAll('{pitch-accent-positions}', pitchPositions)
+        .replaceAll('{pitch-accent-categories}', pitchCategories)
+        .replaceAll('{frequency-harmonic-rank}', frequencyRank);
       fields[fieldName] = val;
     }
 
@@ -599,7 +772,7 @@ export default function Reader({
       deckName: deck,
       modelName: noteType,
       fields: fields,
-      options: { allowDuplicate: false, duplicateScope: "deck" },
+      options: { allowDuplicate: true, duplicateScope: "deck" },
       tags: tagsList
     };
 
@@ -617,6 +790,7 @@ export default function Reader({
         if (selectedWord && selectedWord.basicForm) {
           onSetWordStatus(selectedWord.basicForm, 'learning');
         }
+        setAnkiCardExists(true);
         alert(lang === 'es' ? '¡Tarjeta de Anki creada con éxito! La palabra fue marcada como "Estudiando".' : 'Anki card created successfully! The word was marked as "Learning".');
       }
     } catch (e) {
@@ -1031,17 +1205,70 @@ export default function Reader({
                   <div className="yomitan-actions">
                     <button 
                       className="yomitan-action-btn yomitan-book-btn"
-                      onClick={() => window.open(`https://jisho.org/search/${encodeURIComponent(selectedWord.basicForm)}`, '_blank')}
-                      title={lang === 'es' ? 'Buscar en Jisho' : 'Search in Jisho'}
+                      onClick={handleOpenInAnki}
+                      title={lang === 'es' ? 'Ver en Anki' : 'View in Anki'}
+                      style={{ position: 'relative' }}
                     >
                       <BookOpen size={20} />
+                      {ankiCardExists && (
+                        <span style={{
+                          position: 'absolute',
+                          top: '-1px',
+                          right: '-1px',
+                          background: '#34d399',
+                          color: '#000000',
+                          borderRadius: '50%',
+                          width: '10px',
+                          height: '10px',
+                          fontSize: '8px',
+                          fontWeight: 'bold',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          lineHeight: '1',
+                          border: '1px solid var(--border-light, rgba(255,255,255,0.1))'
+                        }}>
+                          +
+                        </span>
+                      )}
                     </button>
                     <button 
                       className="yomitan-action-btn yomitan-add-btn"
                       onClick={handleMineToAnki}
-                      title={t('mineToAnki', lang)}
+                      title={ankiCardExists ? (lang === 'es' ? 'Agregar duplicado a Anki' : 'Add duplicate to Anki') : t('mineToAnki', lang)}
                     >
-                      <Plus size={20} />
+                      {ankiCardExists ? (
+                        <div style={{ position: 'relative', width: '20px', height: '20px' }}>
+                          <div style={{
+                            position: 'absolute',
+                            left: '1px',
+                            bottom: '1px',
+                            width: '12px',
+                            height: '12px',
+                            border: '2px solid currentColor',
+                            borderRadius: '50%',
+                            boxSizing: 'border-box'
+                          }} />
+                          <div style={{
+                            position: 'absolute',
+                            right: '1px',
+                            top: '1px',
+                            width: '12px',
+                            height: '12px',
+                            border: '2px solid currentColor',
+                            borderRadius: '50%',
+                            background: '#1e1e1e',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxSizing: 'border-box'
+                          }}>
+                            <span style={{ fontSize: '9px', fontWeight: 'bold', lineHeight: '1', marginTop: '-2.5px' }}>+</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <Plus size={20} />
+                      )}
                     </button>
                     <button 
                       className="yomitan-action-btn yomitan-audio-btn"
@@ -1050,8 +1277,6 @@ export default function Reader({
                     >
                       <Volume2 size={20} />
                     </button>
-
-
                   </div>
                 </div>
 
@@ -1078,6 +1303,22 @@ export default function Reader({
                     </div>
                   )}
                 </div>
+
+                {/* Pitch Accents */}
+                {dictEntry && dictEntry.pitches && dictEntry.pitches.length > 0 && (
+                  <div className="yomitan-pitches-row" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px', padding: '2px 0' }}>
+                    {dictEntry.pitches.map((pitchEntry, i) => (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span className="yomi-tag" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#c084fc', border: '1px solid rgba(139, 92, 246, 0.3)', fontSize: '0.68rem', padding: '1px 6px', borderRadius: '4px' }}>
+                          {pitchEntry.dictionary}
+                        </span>
+                        {pitchEntry.pitches.map((p, j) => (
+                          <PitchAccent key={j} reading={pitchEntry.reading || selectedWord.reading || selectedWord.surface} position={p.position} />
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <div className="yomi-dict-tag-row">
                   <span className="yomi-pos-tag">{selectedWord.pos || 'Exp'}</span>

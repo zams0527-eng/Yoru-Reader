@@ -1,10 +1,11 @@
 import JSZip from 'jszip';
 
 const DB_NAME = 'yoru_yomitan_db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_DICTS = 'dictionaries';
 const STORE_TERMS = 'terms';
 const STORE_FREQS = 'frequencies';
+const STORE_PITCHES = 'pitches';
 
 let dbInstance = null;
 
@@ -53,6 +54,12 @@ export async function getDB() {
         const freqStore = db.createObjectStore(STORE_FREQS, { keyPath: 'id', autoIncrement: true });
         freqStore.createIndex('term', 'term', { unique: false });
         freqStore.createIndex('dictionary', 'dictionary', { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains(STORE_PITCHES)) {
+        const pitchStore = db.createObjectStore(STORE_PITCHES, { keyPath: 'id', autoIncrement: true });
+        pitchStore.createIndex('term', 'term', { unique: false });
+        pitchStore.createIndex('dictionary', 'dictionary', { unique: false });
       }
     };
   });
@@ -161,6 +168,22 @@ export async function cleanOrphanedEntries() {
       req.onerror = reject;
     });
 
+    // Delete orphaned pitches
+    if (db.objectStoreNames.contains(STORE_PITCHES)) {
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_PITCHES, 'readwrite');
+        const req = tx.objectStore(STORE_PITCHES).openCursor();
+        req.onsuccess = (e) => {
+          const cursor = e.target.result;
+          if (cursor) {
+            if (!knownTitles.has(cursor.value.dictionary)) cursor.delete();
+            cursor.continue();
+          } else resolve();
+        };
+        req.onerror = reject;
+      });
+    }
+
     console.log('[yomitanDB] Orphaned entries cleaned. Active dicts:', [...knownTitles]);
   } catch (err) {
     console.warn('cleanOrphanedEntries failed:', err);
@@ -218,6 +241,27 @@ export async function deleteDictionary(title) {
     };
     request.onerror = reject;
   });
+
+  // 4. Borrar todos los registros de pitch
+  if (db.objectStoreNames.contains(STORE_PITCHES)) {
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_PITCHES, 'readwrite');
+      const store = tx.objectStore(STORE_PITCHES);
+      const index = store.index('dictionary');
+      const request = index.openCursor(IDBKeyRange.only(title));
+      
+      request.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          cursor.delete();
+          cursor.continue();
+        } else {
+          resolve();
+        }
+      };
+      request.onerror = reject;
+    });
+  }
 }
 
 /**
@@ -341,42 +385,58 @@ export async function importYomitanZip(file, onProgress) {
           onProgress(metaProgressMsg, currentPercent);
           
           await new Promise((resolve, reject) => {
-            const tx = db.transaction(STORE_FREQS, 'readwrite');
-            const store = tx.objectStore(STORE_FREQS);
+            const tx = db.transaction([STORE_FREQS, STORE_PITCHES], 'readwrite');
+            const storeFreq = tx.objectStore(STORE_FREQS);
+            const storePitch = tx.objectStore(STORE_PITCHES);
             
             chunk.forEach(metaData => {
-              if (Array.isArray(metaData) && metaData[1] === 'freq') {
+              if (Array.isArray(metaData)) {
                 const term = metaData[0];
-                let value = 0;
-                let displayValue = '';
+                const type = metaData[1];
                 
-                if (metaData.length === 3) {
-                  const freqVal = metaData[2];
-                  if (typeof freqVal === 'object' && freqVal !== null) {
-                    value = freqVal.value || 0;
-                    displayValue = freqVal.displayValue || String(value);
-                  } else {
-                    value = Number(freqVal) || 0;
-                    displayValue = String(freqVal);
+                if (type === 'freq') {
+                  let value = 0;
+                  let displayValue = '';
+                  
+                  if (metaData.length === 3) {
+                    const freqVal = metaData[2];
+                    if (typeof freqVal === 'object' && freqVal !== null) {
+                      value = freqVal.value || 0;
+                      displayValue = freqVal.displayValue || String(value);
+                    } else {
+                      value = Number(freqVal) || 0;
+                      displayValue = String(freqVal);
+                    }
+                  } else if (metaData.length === 4) {
+                    const freqVal = metaData[3];
+                    if (typeof freqVal === 'object' && freqVal !== null) {
+                      value = freqVal.value || 0;
+                      displayValue = freqVal.displayValue || String(value);
+                    } else {
+                      value = Number(freqVal) || 0;
+                      displayValue = String(freqVal);
+                    }
                   }
-                } else if (metaData.length === 4) {
-                  const freqVal = metaData[3];
-                  if (typeof freqVal === 'object' && freqVal !== null) {
-                    value = freqVal.value || 0;
-                    displayValue = freqVal.displayValue || String(value);
-                  } else {
-                    value = Number(freqVal) || 0;
-                    displayValue = String(freqVal);
+                  
+                  storeFreq.add({
+                    dictionary: dictTitle,
+                    term,
+                    value,
+                    displayValue
+                  });
+                  totalProcessed++;
+                } else if (type === 'pitch') {
+                  const pitchData = metaData[2];
+                  if (pitchData && typeof pitchData === 'object') {
+                    storePitch.add({
+                      dictionary: dictTitle,
+                      term,
+                      reading: pitchData.reading || '',
+                      pitches: pitchData.pitches || []
+                    });
+                    totalProcessed++;
                   }
                 }
-                
-                store.add({
-                  dictionary: dictTitle,
-                  term,
-                  value,
-                  displayValue
-                });
-                totalProcessed++;
               }
             });
             
@@ -466,6 +526,62 @@ export async function getFrequenciesForWord(word) {
   }
   
   return freqs;
+}
+
+/**
+ * Obtiene los tonos (pitch accent) de una palabra desde STORE_PITCHES.
+ */
+export async function getPitchesForWord(word) {
+  const db = await getDB();
+  if (!db.objectStoreNames.contains(STORE_PITCHES)) return [];
+  const pitches = [];
+  
+  let disabledDicts = [];
+  try {
+    const activeProfile = localStorage.getItem('migaku_reader_active_profile_id') || 'profile-default';
+    const settingsKey = `migaku_reader_settings_${activeProfile}`;
+    const settingsStr = localStorage.getItem(settingsKey) || localStorage.getItem('migaku_reader_settings');
+    if (settingsStr) {
+      const parsed = JSON.parse(settingsStr);
+      disabledDicts = parsed.disabledDictionaries || [];
+    }
+  } catch (errSettings) {
+    console.warn("Could not read settings for filtering:", errSettings);
+  }
+
+  const installedTitles = await new Promise((resolve) => {
+    const tx = db.transaction(STORE_DICTS, 'readonly');
+    const req = tx.objectStore(STORE_DICTS).getAllKeys();
+    req.onsuccess = () => resolve(new Set(req.result));
+    req.onerror = () => resolve(new Set());
+  });
+
+  await new Promise((resolve) => {
+    const tx = db.transaction(STORE_PITCHES, 'readonly');
+    const store = tx.objectStore(STORE_PITCHES);
+    const index = store.index('term');
+    const request = index.openCursor(IDBKeyRange.only(word));
+    
+    request.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        const val = cursor.value;
+        if (installedTitles.has(val.dictionary) && !disabledDicts.includes(val.dictionary)) {
+          pitches.push({
+            dictionary: val.dictionary,
+            reading: val.reading,
+            pitches: val.pitches
+          });
+        }
+        cursor.continue();
+      } else {
+        resolve();
+      }
+    };
+    request.onerror = () => resolve();
+  });
+  
+  return pitches;
 }
 
 function cleanDefinition(def) {
@@ -573,6 +689,7 @@ export async function searchYomitanDB(word, reading = '') {
     }
     
     const freqs = await getFrequenciesForWord(word);
+    const pitches = await getPitchesForWord(word);
     
     if (results.length > 0) {
       // Sort results by dictionaryOrder
@@ -625,6 +742,7 @@ export async function searchYomitanDB(word, reading = '') {
         definitions: combinedDefs.slice(0, 5), // Limit definitions returned to UI to save RAM
         partsOfSpeech: posTags.length > 0 ? posTags : [],
         frequencies: freqs,
+        pitches: pitches,
         isFromYomitan: true
       };
       
@@ -636,13 +754,14 @@ export async function searchYomitanDB(word, reading = '') {
       return finalResult;
     }
     
-    if (freqs.length > 0) {
+    if (freqs.length > 0 || pitches.length > 0) {
       const finalResult = {
         word,
         reading: reading || '',
         definitions: [],
         partsOfSpeech: [],
         frequencies: freqs,
+        pitches: pitches,
         isFromYomitan: true
       };
       results.length = 0;

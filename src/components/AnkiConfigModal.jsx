@@ -49,13 +49,15 @@ const DEFAULT_ANKI_SETTINGS = {
 const AVAILABLE_TOKENS = [
   '', '{expression}', '{furigana}', '{reading}', '{audio}',
   '{popup-selection-text}', '{sentence}', '{sentence-furigana}',
-  '{screenshot}', '{meaning}', '{tags}'
+  '{screenshot}', '{meaning}', '{tags}',
+  '{pitch-accent-positions}', '{pitch-accent-categories}', '{frequency-harmonic-rank}'
 ];
 
 // ── Anki Cards sub-modal ──────────────────────────────────────────────────────
 function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableModels, lang }) {
   const [activeTab, setActiveTab] = useState('expression');
   const [local, setLocal] = useState(settings);
+  const [modelFields, setModelFields] = useState([]);
 
   const tab = local[activeTab] || { deck: '', noteType: '', fields: {} };
 
@@ -70,6 +72,76 @@ function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableMo
         fields: { ...s[activeTab].fields, [fieldName]: token }
       }
     }));
+
+  useEffect(() => {
+    let active = true;
+    async function fetchFields() {
+      if (!tab.noteType) return;
+      try {
+        const host = local.host || 'http://127.0.0.1:8765';
+        const res = await fetch(host, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'modelFieldNames',
+            version: 6,
+            params: { modelName: tab.noteType }
+          })
+        });
+        const data = await res.json();
+        if (data && data.result && active) {
+          setModelFields(data.result);
+          
+          setLocal(s => {
+            const currentFields = s[activeTab]?.fields || {};
+            const updatedFields = {};
+            let changed = false;
+            
+            data.result.forEach(fName => {
+              if (currentFields[fName] !== undefined) {
+                updatedFields[fName] = currentFields[fName];
+              } else {
+                let defaultVal = '';
+                const lower = fName.toLowerCase();
+                if (lower === 'expression' || lower === 'word' || lower === 'vocablo' || lower === 'palabra') defaultVal = '{expression}';
+                else if (lower.includes('reading') || lower.includes('lectura') || lower === 'yomi') defaultVal = '{reading}';
+                else if (lower.includes('furigana')) defaultVal = '{furigana}';
+                else if (lower.includes('audio')) defaultVal = '{audio}';
+                else if (lower.includes('sentence') || lower.includes('frase') || lower.includes('oracion') || lower.includes('contexto')) defaultVal = '{sentence}';
+                else if (lower.includes('screenshot') || lower.includes('picture') || lower.includes('imagen') || lower === 'pic') defaultVal = '{screenshot}';
+                else if (lower.includes('meaning') || lower.includes('definition') || lower.includes('significado') || lower.includes('definicion')) defaultVal = '{meaning}';
+                else if (lower.includes('pitchposition') || lower.includes('accentposition') || lower === 'pitch' || lower === 'pitchposition') defaultVal = '{pitch-accent-positions}';
+                else if (lower.includes('pitchcategory') || lower.includes('pitchcategories') || lower.includes('tono') || lower === 'pitchcategories') defaultVal = '{pitch-accent-categories}';
+                else if (lower.includes('frequency') || lower.includes('frecuencia') || lower === 'freq' || lower === 'freqsort') defaultVal = '{frequency-harmonic-rank}';
+                
+                updatedFields[fName] = defaultVal;
+                changed = true;
+              }
+            });
+            
+            const oldKeys = Object.keys(currentFields);
+            const keysDifference = oldKeys.filter(x => !data.result.includes(x));
+            if (keysDifference.length > 0) changed = true;
+
+            if (changed || Object.keys(updatedFields).length !== oldKeys.length) {
+              return {
+                ...s,
+                [activeTab]: {
+                  ...s[activeTab],
+                  fields: updatedFields
+                }
+              };
+            }
+            return s;
+          });
+        }
+      } catch (err) {
+        console.warn('Failed to fetch model field names:', err);
+      }
+    }
+    fetchFields();
+    return () => { active = false; };
+  }, [tab.noteType, activeTab]);
 
   return (
     <div className="modal-overlay" onClick={onClose} style={{ zIndex: 1400 }}>
