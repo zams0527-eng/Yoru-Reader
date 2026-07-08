@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { X, Search, Palette, Clock, Type, Target, Layers, FolderOpen, BookOpen, AlertTriangle } from 'lucide-react';
+import { X, Search, Palette, Clock, Type, Target, Layers, FolderOpen, BookOpen, AlertTriangle, Info } from 'lucide-react';
 import { t } from '../utils/i18n';
+import packageJson from '../../package.json';
+import { CHANGELOG } from '../utils/changelog';
 const AnkiConfigModal = React.lazy(() => import('./AnkiConfigModal'));
 
 export default function SettingsModal({ 
@@ -149,7 +151,8 @@ export default function SettingsModal({
       category: 'GENERAL',
       items: [
         { id: 'theme', label: lang === 'es' ? 'Tema' : 'Theme', icon: <Palette size={16} /> },
-        { id: 'display', label: lang === 'es' ? 'Pantalla' : 'Display', icon: <Clock size={16} /> }
+        { id: 'display', label: lang === 'es' ? 'Pantalla' : 'Display', icon: <Clock size={16} /> },
+        { id: 'about', label: lang === 'es' ? 'Acerca de / Versión' : 'About / Version', icon: <Info size={16} /> }
       ]
     },
     {
@@ -492,6 +495,47 @@ export default function SettingsModal({
     </div>
   );
 
+  // 9. GENERAL / Acerca de / Versión
+  const renderAboutContent = () => (
+    <div className="settings-panel-section">
+      <h4 className="settings-panel-title">{lang === 'es' ? 'Acerca de / Versión' : 'About / Version'}</h4>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ background: 'rgba(255, 255, 255, 0.03)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '10px', padding: '16px', textAlign: 'center' }}>
+          <div style={{ fontSize: '1.8rem', fontWeight: 'bold', color: 'var(--primary)', marginBottom: '4px' }}>
+            Yoru Reader
+          </div>
+          <div style={{ fontSize: '0.88rem', color: '#fff', opacity: 0.8, marginBottom: '8px' }}>
+            {lang === 'es' ? `Versión ${packageJson.version}` : `Version ${packageJson.version}`}
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+            {lang === 'es' ? 'Lector de novelas ligeras en japonés enfocado en inmersión' : 'Japanese light novel reader focused on immersion'}
+          </div>
+        </div>
+
+        <div>
+          <h5 style={{ fontSize: '0.9rem', fontWeight: 600, color: '#fff', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '6px' }}>
+            {lang === 'es' ? 'Historial de versiones y cambios' : 'Version History & Changelog'}
+          </h5>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '240px', overflowY: 'auto', paddingRight: '4px' }}>
+            {CHANGELOG.map((item, index) => (
+              <div key={item.version} style={{ borderBottom: index < CHANGELOG.length - 1 ? '1px solid rgba(255, 255, 255, 0.04)' : 'none', paddingBottom: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary)' }}>v{item.version}</span>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{item.date}</span>
+                </div>
+                <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.5 }}>
+                  {(item.changes[lang] || item.changes['en']).map((change, cIdx) => (
+                    <li key={cIdx} style={{ marginBottom: '4px' }}>{change}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   // Muestra el panel según la sección seleccionada
   const renderActiveContent = () => {
     switch (activeSection) {
@@ -499,6 +543,8 @@ export default function SettingsModal({
         return renderThemeContent();
       case 'display':
         return renderDisplayContent();
+      case 'about':
+        return renderAboutContent();
       case 'text-style':
         return renderTextStyleContent();
       case 'rendering':
@@ -520,6 +566,7 @@ export default function SettingsModal({
   const allSettingsItems = [
     { id: 'theme', keywords: 'theme tema dark light sepia fondo background', render: renderThemeContent },
     { id: 'display', keywords: 'display visualizacion interfaz idioma language interfaces spanish english pantalla', render: renderDisplayContent },
+    { id: 'about', keywords: 'about version changelog acerca de info info-version cambios novedades', render: renderAboutContent },
     { id: 'text-style', keywords: 'text style estilo texto fuente font size tamaño slider furigana tarjetas library covers', render: renderTextStyleContent },
     { id: 'rendering', keywords: 'rendering renderizado acento pitch learning status cursor hover resaltado', render: renderRenderingContent },
     { id: 'sources', keywords: 'sources fuentes anki anki-connect deck cards note integracion', render: renderSourcesContent },

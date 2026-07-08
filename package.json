@@ -17,7 +17,8 @@
     "electron:package": "vite build && electron-packager . Yoru-Reader --platform=win32 --arch=x64 --out=dist-electron --overwrite",
     "electron:build": "node build/prepare-nsis.js && vite build && electron-builder",
     "android:sync": "npm run build && npx cap sync",
-    "android:open": "npx cap open android"
+    "android:open": "npx cap open android",
+    "version": "node build/update-android-version.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",
