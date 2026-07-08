@@ -1030,6 +1030,13 @@ export default function Reader({
                   </div>
                   <div className="yomitan-actions">
                     <button 
+                      className="yomitan-action-btn yomitan-book-btn"
+                      onClick={() => window.open(`https://jisho.org/search/${encodeURIComponent(selectedWord.basicForm)}`, '_blank')}
+                      title={lang === 'es' ? 'Buscar en Jisho' : 'Search in Jisho'}
+                    >
+                      <BookOpen size={20} />
+                    </button>
+                    <button 
                       className="yomitan-action-btn yomitan-add-btn"
                       onClick={handleMineToAnki}
                       title={t('mineToAnki', lang)}

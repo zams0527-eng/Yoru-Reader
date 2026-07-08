@@ -735,6 +735,7 @@ rt {
   transform: scale(1.05);
 }
 .yomitan-add-btn:hover { color: #34d399; border-color: rgba(52, 211, 153, 0.3); }
+.yomitan-book-btn:hover { color: #a78bfa; border-color: rgba(167, 139, 250, 0.3); }
 .yomitan-audio-btn:hover { color: #f43f5e; border-color: rgba(244, 63, 94, 0.3); }
 
 .yomitan-tags-row {
