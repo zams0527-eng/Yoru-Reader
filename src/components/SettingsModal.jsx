@@ -4,7 +4,7 @@ import { t } from '../utils/i18n';
 import packageJson from '../../package.json';
 import { CHANGELOG } from '../utils/changelog';
 import { useConfirm } from './ConfirmModal';
-const AnkiConfigModal = React.lazy(() => import('./AnkiConfigModal'));
+const VocabularyModal = React.lazy(() => import('./VocabularyModal'));
 
 const FONT_SIZE_STEPS = [16, 20, 24, 28, 32];
 
@@ -21,7 +21,7 @@ export default function SettingsModal({
   onTriggerImportBackup
 }) {
   if (!isOpen) return null;
-  const [isAnkiConfigOpen, setIsAnkiConfigOpen] = useState(false);
+  const [isVocabModalOpen, setIsVocabModalOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('text-style');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -267,6 +267,19 @@ export default function SettingsModal({
         </select>
       </div>
 
+      {/* Dirección de lectura (Horizontal / Vertical) */}
+      <div className="migaku-row" style={{ marginBottom: '14px' }}>
+        <span className="migaku-label">{lang === 'es' ? 'Dirección de lectura' : 'Reading direction'}</span>
+        <select 
+          value={settings.readingOrientation || 'horizontal'}
+          onChange={(e) => updateSetting('readingOrientation', e.target.value)}
+          className="migaku-select"
+        >
+          <option value="horizontal">Horizontal (Yokogaki)</option>
+          <option value="vertical">{lang === 'es' ? 'Vertical (Tategaki)' : 'Vertical (Tategaki)'}</option>
+        </select>
+      </div>
+
       {/* Si se proveen configuraciones de biblioteca (Library View Settings) */}
       {libraryViewProps && (
         <div style={{ marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -379,18 +392,18 @@ export default function SettingsModal({
   // 5. INTEGRACIÓN / Integración con Anki
   const renderSourcesContent = () => (
     <div className="settings-panel-section">
-      <h4 className="settings-panel-title">{lang === 'es' ? 'Integración con Anki' : 'Anki Integration'}</h4>
+      <h4 className="settings-panel-title">{lang === 'es' ? 'Gestión de Vocabulario y Anki' : 'Vocabulary & Anki Management'}</h4>
       <div className="migaku-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '8px' }}>
         <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-          {lang === 'es' ? 'Configura la conexión con tu cliente de AnkiConnect para minar vocabulario instantáneamente.' : 'Configure connection to AnkiConnect client for mining vocabulary on the fly.'}
+          {lang === 'es' ? 'Configura la conexión con tu cliente de AnkiConnect para minar vocabulario e importar tus palabras desde Anki, JPDB, archivos locales o listas de frecuencia.' : 'Configure connection to AnkiConnect client for mining vocabulary, and import your words from Anki, JPDB, local files, or frequency lists.'}
         </span>
         <button
           className="anki-open-settings-btn"
-          onClick={() => setIsAnkiConfigOpen(true)}
+          onClick={() => setIsVocabModalOpen(true)}
           type="button"
           style={{ width: '100%', display: 'flex', justifyContent: 'space-between', padding: '10px 14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', color: '#fff', cursor: 'pointer' }}
         >
-          <span>🃏 {lang === 'es' ? 'Configurar AnkiConnect' : 'Configure AnkiConnect'}</span>
+          <span>📊 {lang === 'es' ? 'Abrir Panel de Vocabulario y Anki' : 'Open Vocabulary & Anki Panel'}</span>
           <span style={{ fontSize: '0.9rem' }}>→</span>
         </button>
       </div>
@@ -729,8 +742,8 @@ export default function SettingsModal({
       </div>
 
       <React.Suspense fallback={null}>
-        {isAnkiConfigOpen && (
-          <AnkiConfigModal isOpen={isAnkiConfigOpen} onClose={() => setIsAnkiConfigOpen(false)} />
+        {isVocabModalOpen && (
+          <VocabularyModal isOpen={isVocabModalOpen} onClose={() => setIsVocabModalOpen(false)} />
         )}
       </React.Suspense>
       {confirmModal}

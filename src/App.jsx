@@ -471,7 +471,7 @@ export default function App() {
     const deck = ankiOpts.expression?.deck || 'sentence mining';
     const noteType = ankiOpts.expression?.noteType || 'Lapis';
     const fields = ankiOpts.expression?.fields || {};
-    const wordField = Object.keys(fields).find(k => fields[k] === '{expression}') || 'Expression';
+    const wordField = ankiOpts.importWordField || Object.keys(fields).find(k => fields[k] === '{expression}') || 'Expression';
 
     const ankiFetch = async (action, params) => {
       try {

@@ -139,7 +139,7 @@ button {
   overflow: hidden;
   padding: 64px 0 0 0;
   margin: 0;
-  max-width: none;
+  max-width: 100%;
   box-sizing: border-box;
 }
 
@@ -385,6 +385,9 @@ button {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 body.reader-active {
@@ -3481,8 +3484,8 @@ rt {
 .display-settings-drawer {
   position: fixed;
   top: 64px;
-  right: -300px;
-  width: 290px;
+  right: -320px;
+  width: 310px;
   height: calc(100vh - 64px);
   background: #0d0d0f;
   border-left: 1px solid rgba(255, 255, 255, 0.08);

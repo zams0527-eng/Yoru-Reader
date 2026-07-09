@@ -20,7 +20,8 @@ const DEFAULT_SETTINGS = {
   appLanguage: 'en',
   audioSpeed: '1.0',
   audioGender: 'male',
-  audioVoiceOption: 'masaru'
+  audioVoiceOption: 'masaru',
+  readingOrientation: 'horizontal'
 };
 
 const DEFAULT_PROFILES = [];
@@ -393,11 +394,46 @@ export const db = {
     const statuses = this.getWordStatuses();
     if (!status || status === 'unknown') {
       delete statuses[word]; // default is 'unknown' (or 'new' in Migaku term)
+      this.saveSrsCard(word, null);
     } else {
       statuses[word] = status; // 'new' (red underline), 'learning' (yellow), 'known' (none)
     }
     this.saveWordStatuses(statuses);
     return statuses;
+  },
+
+  // --- SRS Spaced Repetition System Management ---
+  getSrsData() {
+    try {
+      const data = localStorage.getItem(this._getKey('yoru_reader_srs_data'));
+      return data ? JSON.parse(data) : {};
+    } catch (e) {
+      console.error('Error loading SRS data:', e);
+      return {};
+    }
+  },
+
+  saveSrsData(srsData) {
+    try {
+      localStorage.setItem(this._getKey('yoru_reader_srs_data'), JSON.stringify(srsData));
+    } catch (e) {
+      console.error('Error saving SRS data:', e);
+    }
+  },
+
+  getSrsCard(word) {
+    const srsData = this.getSrsData();
+    return srsData[word] || null;
+  },
+
+  saveSrsCard(word, cardData) {
+    const srsData = this.getSrsData();
+    if (!cardData) {
+      delete srsData[word];
+    } else {
+      srsData[word] = cardData;
+    }
+    this.saveSrsData(srsData);
   },
 
   // --- Export/Import Database for Cloud/Google Drive Sync ---
@@ -429,10 +465,16 @@ export const db = {
       const statusRaw = localStorage.getItem(statusKey);
       const wordStatuses = statusRaw ? JSON.parse(statusRaw) : null;
 
+      // 4. SRS Data
+      const srsKey = `yoru_reader_srs_data_${p.id}`;
+      const srsRaw = localStorage.getItem(srsKey);
+      const srsData = srsRaw ? JSON.parse(srsRaw) : null;
+
       dbExport.profileData[p.id] = {
         books,
         settings,
-        wordStatuses
+        wordStatuses,
+        srsData
       };
     }
 
@@ -465,6 +507,11 @@ export const db = {
         if (pData.wordStatuses) {
           const statusKey = `migaku_reader_word_status_${p.id}`;
           localStorage.setItem(statusKey, JSON.stringify(pData.wordStatuses));
+        }
+        // 4. SRS data
+        if (pData.srsData) {
+          const srsKey = `yoru_reader_srs_data_${p.id}`;
+          localStorage.setItem(srsKey, JSON.stringify(pData.srsData));
         }
       }
     }

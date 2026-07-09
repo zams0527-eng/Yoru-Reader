@@ -52,7 +52,7 @@
   !define MUI_PAGE_CUSTOMFUNCTION_SHOW PageShow
   !insertmacro MUI_PAGE_INSTFILES
   !ifmacrodef customFinishPage
-    !define MUI_PAGE_CUSTOMFUNCTION_SHOW PageShow
+    !define MUI_PAGE_CUSTOMFUNCTION_SHOW FinishPageShow
     !insertmacro customFinishPage
   !else
     !ifndef HIDE_RUN_AFTER_FINISH
@@ -68,7 +68,7 @@
       !define MUI_FINISHPAGE_RUN
       !define MUI_FINISHPAGE_RUN_FUNCTION "StartApp"
     !endif
-    !define MUI_PAGE_CUSTOMFUNCTION_SHOW PageShow
+    !define MUI_PAGE_CUSTOMFUNCTION_SHOW FinishPageShow
     !insertmacro MUI_PAGE_FINISH
   !endif
 
@@ -93,7 +93,7 @@
     !define MUI_PAGE_CUSTOMFUNCTION_SHOW un.PageShow
     !insertmacro customUninstallPage
   !endif
-  !define MUI_PAGE_CUSTOMFUNCTION_SHOW un.PageShow
+  !define MUI_PAGE_CUSTOMFUNCTION_SHOW un.FinishPageShow
   !insertmacro MUI_UNPAGE_FINISH
 !endif
 

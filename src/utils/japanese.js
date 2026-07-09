@@ -179,6 +179,18 @@ export async function tokenizeText(text) {
       continue;
     }
     
+    // Intercept image tokens
+    if (trimmed.startsWith('{img:') && trimmed.endsWith('}')) {
+      const src = trimmed.substring(5, trimmed.length - 1);
+      resultParagraphs.push([{
+        type: 'image',
+        src: src,
+        isImage: true,
+        surface: ''
+      }]);
+      continue;
+    }
+    
     // 1. Reconstruct plain text and extract original rubies with offsets
     let plainText = "";
     const originalRubies = [];

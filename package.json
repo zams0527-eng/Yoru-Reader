@@ -15,7 +15,7 @@
     "deploy": "gh-pages -d dist",
     "electron:start": "electron .",
     "electron:package": "vite build && electron-packager . Yoru-Reader --platform=win32 --arch=x64 --out=dist-electron --overwrite",
-    "electron:build": "node build/prepare-nsis.js && vite build && electron-builder",
+    "electron:build": "node build/generate-certificate.js && node build/prepare-nsis.js && vite build && electron-builder",
     "android:sync": "npm run build && npx cap sync",
     "android:open": "npx cap open android",
     "version": "node build/update-android-version.js"
@@ -54,7 +54,11 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "build/icon.ico"
+      "icon": "build/icon.ico",
+      "signtoolOptions": {
+        "certificateFile": "build/yoru-reader.pfx",
+        "certificatePassword": "YoruReaderSecret123"
+      }
     },
     "nsis": {
       "oneClick": false,

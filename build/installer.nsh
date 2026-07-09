@@ -38,6 +38,28 @@ Function PageShow
   Call ColorizeActivePage
 FunctionEnd
 
+Function FinishPageShow
+  Call ColorizeActivePage
+
+  ; Ocultar el boton Atras (ID 3) en la pagina final para evitar solapamientos
+  GetDlgItem $0 $HWNDPARENT 3
+  ShowWindow $0 0
+
+  ; Buscar checkbox de ejecutar y readme (IDs 1203 y 1204) y aplicar colores legibles
+  FindWindow $0 "#32770" "" $HWNDPARENT
+  IntCmp $0 0 done
+    GetDlgItem $1 $0 1203
+    IntCmp $1 0 next_check
+      System::Call "uxtheme::SetWindowTheme(p $1, w ' ', w ' ')"
+      SetCtlColors $1 0xE8E8F0 0x0D0D0F
+    next_check:
+    GetDlgItem $1 $0 1204
+    IntCmp $1 0 done
+      System::Call "uxtheme::SetWindowTheme(p $1, w ' ', w ' ')"
+      SetCtlColors $1 0xE8E8F0 0x0D0D0F
+  done:
+FunctionEnd
+
 Function InstallModePre
   ; No-op
 FunctionEnd
@@ -66,6 +88,14 @@ FunctionEnd
 
 Function un.PageShow
   Call un.ColorizeActivePage
+FunctionEnd
+
+Function un.FinishPageShow
+  Call un.ColorizeActivePage
+
+  ; Ocultar el boton Atras (ID 3) en la pagina final del desinstalador
+  GetDlgItem $0 $HWNDPARENT 3
+  ShowWindow $0 0
 FunctionEnd
 
 Function un.InstallModePre

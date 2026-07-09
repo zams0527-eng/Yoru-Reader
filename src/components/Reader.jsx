@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { ArrowLeft, ArrowRight, Settings, Volume2, ExternalLink, BookOpen, Play, Plus, X, Square, Sliders } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Settings, Volume2, ExternalLink, BookOpen, Play, Plus, X, Square, Sliders, Calendar } from 'lucide-react';
 import { tokenizeText } from '../utils/japanese';
 import { lookupWord } from '../utils/dictionary';
 import { searchYomitanDB } from '../utils/yomitanDB';
+import { db } from '../utils/db';
 
 import html2canvas from 'html2canvas';
 import { t } from '../utils/i18n';
@@ -54,12 +55,12 @@ export function getUniqueFrequencies(frequencies) {
 }
 
 export function chunkTokensIntoPages(tokenizedParagraphs, fontSize = 24, containerPixelHeight = null, measuredLineHeight = null, lineShift = 0) {
-  // 1. Asignar índices de oración para soporte de resaltado en hover
+  // 1. Asignar Ã­ndices de oraciÃ³n para soporte de resaltado en hover
   let sentenceCount = 0;
   for (const para of tokenizedParagraphs) {
     for (const token of para) {
       token.sentenceIdx = sentenceCount;
-      if (token.surface === '。' || token.surface === '！' || token.surface === '？' || 
+      if (token.surface === 'ã€‚' || token.surface === 'ï¼' || token.surface === 'ï¼Ÿ' || 
           token.surface === '.' || token.surface === '!' || token.surface === '?') {
         sentenceCount++;
       }
@@ -74,11 +75,11 @@ export function chunkTokensIntoPages(tokenizedParagraphs, fontSize = 24, contain
   // measuredLineHeight is obtained by rendering a hidden ruby test element at the exact font size
   const estimatedLineHeight = measuredLineHeight
     ? Math.ceil(measuredLineHeight) + 2 // Add 2px safety margin
-    : fontSize * 2.4; // Safe fallback — 2.4x accounts for worst-case furigana
+    : fontSize * 2.4; // Safe fallback â€” 2.4x accounts for worst-case furigana
   const availableHeight = containerPixelHeight != null
     ? Math.max(50, containerPixelHeight) // DOM-measured: pixel perfect
     : Math.max(100, window.innerHeight - 210); // Fallback if ref not ready yet
-  // lineShift: auto-corrected by the overflow detector — each unit = 1 fewer line per page
+  // lineShift: auto-corrected by the overflow detector â€” each unit = 1 fewer line per page
   const maxLines = Math.max(1, Math.floor(availableHeight / estimatedLineHeight) - lineShift);
 
   const pages = [];
@@ -90,7 +91,7 @@ export function chunkTokensIntoPages(tokenizedParagraphs, fontSize = 24, contain
     const paragraph = tokenizedParagraphs[pIdx];
     if (paragraph.length === 0) continue;
 
-    // Si no es el primer párrafo de la página, agregamos un salto de párrafo
+    // Si no es el primer pÃ¡rrafo de la pÃ¡gina, agregamos un salto de pÃ¡rrafo
     if (currentPageTokens.length > 0) {
       const paraBreakWeight = 0.5; // Peso visual de .paragraph-break
       if (currentLines + paraBreakWeight > maxLines) {
@@ -124,13 +125,13 @@ export function chunkTokensIntoPages(tokenizedParagraphs, fontSize = 24, contain
       const tokenLen = token.surface ? token.surface.length : 0;
       if (tokenLen === 0) continue;
 
-      // Calcular cuántas líneas ocupa sumando a la línea actual
+      // Calcular cuÃ¡ntas lÃ­neas ocupa sumando a la lÃ­nea actual
       const totalChars = currentLineChars + tokenLen;
       const linesOccupied = Math.floor(totalChars / charsPerLine);
       const remainingChars = totalChars % charsPerLine;
 
       if (currentPageTokens.length > 0 && currentLines + linesOccupied > maxLines) {
-        // Salto de página
+        // Salto de pÃ¡gina
         pages.push(currentPageTokens);
         currentPageTokens = [token];
         currentLineChars = tokenLen % charsPerLine;
@@ -151,7 +152,7 @@ export function chunkTokensIntoPages(tokenizedParagraphs, fontSize = 24, contain
 }
 
 function PitchAccent({ reading, position }) {
-  const morae = reading.match(/[ぁ-んァ-ン][ゃゅょャュョ]*/g) || [];
+  const morae = reading.match(/[ã-ã‚“ã‚¡-ãƒ³][ã‚ƒã‚…ã‚‡ãƒ£ãƒ¥ãƒ§]*/g) || [];
   if (morae.length === 0) return <span>{reading} [{position}]</span>;
 
   return (
@@ -195,6 +196,15 @@ function PitchAccent({ reading, position }) {
   );
 }
 
+export function stripChapterHtml(content) {
+  return (content || '')
+    .replace(/\{([^|{}]+)\|[^{}]*\}/g, '$1')  
+    .replace(/<rt[^>]*>[\s\S]*?<\/rt>/gi, '')  
+    .replace(/<[^>]+>/g, '')                    
+    .replace(/&[a-zA-Z0-9#]+;/g, '')            
+    .replace(/\s+/g, '');                        
+}
+
 export const FONT_SIZE_STEPS = [16, 20, 24, 28, 32];
 
 export default function Reader({ 
@@ -218,11 +228,128 @@ export default function Reader({
   const [dictEntry, setDictEntry] = useState(null);
   const [dictLoading, setDictLoading] = useState(false);
   const [ankiCardExists, setAnkiCardExists] = useState(false);
+  const [srsCard, setSrsCard] = useState(null);
+
+  useEffect(() => {
+    if (selectedWord && selectedWord.basicForm) {
+      setSrsCard(db.getSrsCard(selectedWord.basicForm));
+    } else {
+      setSrsCard(null);
+    }
+  }, [selectedWord]);
+
+  const calculateSrsIntervals = (card) => {
+    const c = card || { interval: 0, ease: 2.5, repetitions: 0, lapses: 0, state: 0 };
+    const rep = c.repetitions || 0;
+    const ease = c.ease || 2.5;
+    const interval = c.interval || 0;
+    
+    // Grade 1 (Again)
+    const intervalAgain = 0; 
+    
+    // Grade 2 (Hard)
+    let intervalHard = 1;
+    if (rep > 0) {
+      intervalHard = Math.ceil(interval * 1.2);
+    }
+    
+    // Grade 3 (Good)
+    let intervalGood = 1;
+    if (rep === 0) {
+      intervalGood = 1;
+    } else if (rep === 1) {
+      intervalGood = 4; 
+    } else {
+      intervalGood = Math.ceil(interval * ease);
+    }
+    
+    // Grade 4 (Easy)
+    let intervalEasy = 1;
+    if (rep === 0) {
+      intervalEasy = 4;
+    } else if (rep === 1) {
+      intervalEasy = 8;
+    } else {
+      intervalEasy = Math.ceil(interval * ease * 1.3);
+    }
+    
+    return {
+      again: '10m',
+      hard: intervalHard >= 1 ? `${intervalHard}d` : '12h',
+      good: `${intervalGood}d`,
+      easy: `${intervalEasy}d`,
+      calculatedDays: {
+        again: 0,
+        hard: intervalHard,
+        good: intervalGood,
+        easy: intervalEasy
+      }
+    };
+  };
+
+  const handleSrsReview = (word, grade) => {
+    const currentCard = db.getSrsCard(word) || { interval: 0, ease: 2.5, repetitions: 0, lapses: 0, state: 0 };
+    const intervals = calculateSrsIntervals(currentCard);
+    const now = new Date();
+    
+    let newRep = currentCard.repetitions || 0;
+    let newEase = currentCard.ease || 2.5;
+    let newInterval = 0;
+    let newState = currentCard.state || 0;
+    let newLapses = currentCard.lapses || 0;
+    
+    if (grade === 1) {
+      newRep = 0;
+      newInterval = 0;
+      newEase = Math.max(1.3, newEase - 0.2);
+      newState = 3; 
+      newLapses += 1;
+    } else {
+      newInterval = intervals.calculatedDays[
+        grade === 2 ? 'hard' : grade === 3 ? 'good' : 'easy'
+      ];
+      if (grade === 2) {
+        newEase = Math.max(1.3, newEase - 0.15);
+      } else if (grade === 4) {
+        newEase = Math.min(3.0, newEase + 0.15);
+      }
+      newRep += 1;
+      newState = 2; 
+    }
+    
+    const dueDate = new Date();
+    if (newInterval > 0) {
+      dueDate.setDate(dueDate.getDate() + newInterval);
+    } else {
+      dueDate.setMinutes(dueDate.getMinutes() + 10);
+    }
+    
+    const updatedCard = {
+      interval: newInterval,
+      ease: newEase,
+      repetitions: newRep,
+      dueDate: dueDate.toISOString(),
+      lastReview: now.toISOString(),
+      lapses: newLapses,
+      state: newState
+    };
+    
+    db.saveSrsCard(word, updatedCard);
+    setSrsCard(updatedCard);
+    
+    if (wordStatuses[word] !== 'learning') {
+      onSetWordStatus(word, 'learning');
+    }
+    
+    const gradeName = grade === 1 ? 'Again' : grade === 2 ? 'Hard' : grade === 3 ? 'Good' : 'Easy';
+    const nextText = grade === 1 ? '10m' : `${newInterval}d`;
+    showToast(`SRS: ${gradeName} (${nextText})`, 'success');
+  };
 
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const toastTimerRef = useRef(null);
 
-  // Densidad calibrada: se establece automáticamente desde la paginación real de capítulos.
+  // Densidad calibrada: se establece automÃ¡ticamente desde la paginaciÃ³n real de capÃ­tulos.
   // Se persiste en localStorage por libro para que sea correcta desde el primer render.
   // v2: stripping corregido que excluye lecturas de furigana (<rt>).
   const densityStorageKey = `yoru_page_density_v2_${book.id || 'default'}`;
@@ -320,7 +447,7 @@ export default function Reader({
   const keyboardStateRef = useRef({});
   // Ref para selectedWord usada por el outside-click handler estable (Fix #6).
   const selectedWordRef = useRef(null);
-  // Ref para el rectángulo de la palabra cliqueada (para posicionamiento reactivo)
+  // Ref para el rectÃ¡ngulo de la palabra cliqueada (para posicionamiento reactivo)
   const clickedWordRectRef = useRef(null);
 
   // Measured pixel height of the text container from the DOM (the ground truth)
@@ -359,7 +486,7 @@ export default function Reader({
       'line-height:1.9',
       'white-space:nowrap',
     ].join(';'));
-    testEl.innerHTML = '<ruby>漢字<rt>かんじ</rt></ruby>'; // Sample kanji+furigana
+    testEl.innerHTML = '<ruby>æ¼¢å­—<rt>ã‹ã‚“ã˜</rt></ruby>'; // Sample kanji+furigana
     document.body.appendChild(testEl);
     const h = testEl.getBoundingClientRect().height;
     document.body.removeChild(testEl);
@@ -375,7 +502,7 @@ export default function Reader({
       setWindowSize({ width: window.innerWidth, height: window.innerHeight });
     };
     window.addEventListener('resize', handleResize);
-    // Fix #5: cleanup was missing — cause de memory leak al desmontar el Reader
+    // Fix #5: cleanup was missing â€” cause de memory leak al desmontar el Reader
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
@@ -385,7 +512,7 @@ export default function Reader({
 
 
 
-  // Silenciar reproducción si el lector se desmonta
+  // Silenciar reproducciÃ³n si el lector se desmonta
   useEffect(() => {
     return () => {
       if ('speechSynthesis' in window) {
@@ -399,7 +526,7 @@ export default function Reader({
     };
   }, []);
 
-  const chapter = book.chapters[currentChapter] || { title: 'Sin título', content: '' };
+  const chapter = book.chapters[currentChapter] || { title: 'Sin tÃ­tulo', content: '' };
   
   // 1. Load and Tokenize Japanese Text
   useEffect(() => {
@@ -430,49 +557,46 @@ export default function Reader({
     return () => { active = false; };
   }, [currentChapter, book.id]);
 
-  // lineShift: number of lines to subtract from maxLines to fix overflow.
-  // Self-corrects: if the rendered page overflows, this increments by 1 until it stops.
-  const [lineShift, setLineShift] = useState(0);
-  const lineShiftRef = useRef(0);
-  const prevLayoutKey = useRef('');
+  const progressTextRef = useRef(null);
+  const exactCharsReadRef = useRef(0);
+  const saveProgressTimerRef = useRef(null);
 
-  // 2. Calculo dinámico de páginas basado en tamaño de fuente y altura REAL del contenedor
-  const pages = useMemo(() => {
-    if (tokenizedParagraphs.length === 0) return [[]];
-    // Both textContainerHeight (container size) and measuredLineHeight (line height with furigana)
-    // come from real DOM measurements — no guesswork, no magic multipliers.
-    // lineShift is auto-corrected by the overflow detector below.
-    return chunkTokensIntoPages(tokenizedParagraphs, settings.fontSize, textContainerHeight, measuredLineHeight, lineShift);
-  }, [tokenizedParagraphs, settings.fontSize, windowSize, textContainerHeight, measuredLineHeight, lineShift]);
-  const totalPages = pages.length;
-  const currentPageTokens = pages[currentPage] || [];
 
-  // Overflow detector: runs after every page render.
-  // If text overflows the container, increment lineShift to fit one fewer line next time.
-  // Resets when layout changes (font size / container height / measured line height).
-  useEffect(() => {
-    const el = textContainerRef.current;
-    if (!el) return;
 
-    // Build a key representing the current layout config
-    const layoutKey = `${settings.fontSize}-${textContainerHeight}-${measuredLineHeight}`;
-    if (layoutKey !== prevLayoutKey.current) {
-      // Layout changed: reset shift and let it re-converge
-      prevLayoutKey.current = layoutKey;
-      lineShiftRef.current = 0;
-      setLineShift(0);
-      return;
-    }
 
-    // Check overflow after a short paint delay
-    const timer = setTimeout(() => {
-      if (el.scrollHeight > el.clientHeight + 2 && lineShiftRef.current < 10) {
-        lineShiftRef.current += 1;
-        setLineShift(lineShiftRef.current);
+
+  // Yatsu Continuous Reading Mode: Render the entire chapter.
+  // Instead of viewport-based artificial paging, we scroll continuously.
+  const currentPageTokens = useMemo(() => {
+    if (tokenizedParagraphs.length === 0) return [];
+    
+    let sentenceCount = 0;
+    const flat = [];
+    for (let pIdx = 0; pIdx < tokenizedParagraphs.length; pIdx++) {
+      const paragraph = tokenizedParagraphs[pIdx];
+      if (paragraph.length === 0) continue;
+      
+      if (flat.length > 0) {
+        flat.push({ isParagraphBreak: true });
       }
-    }, 80);
-    return () => clearTimeout(timer);
-  }, [currentPageTokens, settings.fontSize, textContainerHeight, measuredLineHeight]);
+      
+      for (let tIdx = 0; tIdx < paragraph.length; tIdx++) {
+        const token = { ...paragraph[tIdx] };
+        token.sentenceIdx = sentenceCount;
+        if (token.surface === '。' || token.surface === '！' || token.surface === '？' || 
+            token.surface === '.' || token.surface === '!' || token.surface === '?') {
+          sentenceCount++;
+        }
+        flat.push(token);
+      }
+      sentenceCount++;
+    }
+    return flat;
+  }, [tokenizedParagraphs]);
+
+  // Keep compatibility variables
+  const pages = [currentPageTokens];
+  const totalPages = 1;
 
   const [pagePitches, setPagePitches] = useState({});
 
@@ -531,7 +655,7 @@ export default function Reader({
     
     const position = pitchInfo.position;
     const wordReading = pitchInfo.reading || reading || '';
-    const morae = wordReading.match(/[ぁ-んァ-ン][ゃゅょャュョ]*/g) || [];
+    const morae = wordReading.match(/[ぁ-んァ-ンぃぅぇぉゃゅょィゥェォャュョ]?[っッぁ-んァ-ン]?/g) || [];
     const moraeCount = morae.length;
     
     if (position === 0) return 'var(--pitch-heiban, #3da7f5)'; // Heiban (Blue)
@@ -552,31 +676,10 @@ export default function Reader({
     return count;
   }, [tokenizedParagraphs]);
 
-  // Helper para extraer el texto principal de ch.content.
-  // CRÍTICO: ch.content usa formato {texto|lectura} para furigana (NO es HTML).
-  // Ejemplo: {漢字|かんじ} → "漢字" (2 chars), no "漢字かんじ" (8 chars con braces).
-  // Sin este stripping, {冷蔵庫|れいぞうこ} = 11 chars en vez de 3 → inflación 4x.
-  const stripChapterHtml = useCallback((content) => {
-    return (content || '')
-      .replace(/\{([^|{}]+)\|[^{}]*\}/g, '$1')  // {texto|lectura} → solo el texto principal
-      .replace(/<rt[^>]*>[\s\S]*?<\/rt>/gi, '')  // Por si hay HTML residual: eliminar rt
-      .replace(/<[^>]+>/g, '')                    // Eliminar cualquier tag HTML residual
-      .replace(/&[a-zA-Z0-9#]+;/g, '')            // Eliminar HTML entities
-      .replace(/\s+/g, '');                        // Comprimir espacios (contar solo chars reales)
-  }, []);
-
-  // Densidad Migaku: constante derivada de datos reales del libro.
-  // "また、同じ夢を見ていた": 124,436 chars ÷ 238 páginas Migaku = 523 chars/página.
-  // Al usar esta constante fija (no viewport-based), el total de páginas coincide
-  // con Migaku independientemente del tamaño de pantalla o fuente.
-  // eslint-disable-next-line no-unused-vars
-  const _ = calibratedDensity; // Guardamos la densidad calibrada por compatibilidad
-  const avgCharsPerPage = 523;
-
   // Total de caracteres legibles del libro (sin etiquetas HTML)
   const totalBookCharacters = useMemo(() => {
     return book.chapters.reduce((sum, ch) => sum + stripChapterHtml(ch.content).length, 0);
-  }, [book.chapters, stripChapterHtml]);
+  }, [book.chapters]);
 
   const charactersReadSoFar = useMemo(() => {
     // Caracteres de capítulos anteriores (sin HTML)
@@ -585,28 +688,69 @@ export default function Reader({
       charsBefore += stripChapterHtml(book.chapters[i].content).length;
     }
     
-    // Caracteres de páginas anteriores dentro del capítulo actual (ya tokenizados = texto limpio)
-    let charsInCurrentChapterBefore = 0;
-    for (let p = 0; p < currentPage; p++) {
-      const pageTokens = pages[p] || [];
-      pageTokens.forEach(t => {
-        if (t.surface) charsInCurrentChapterBefore += t.surface.length;
-      });
+    return charsBefore;
+  }, [book.chapters, currentChapter]);
+  // Reset progress when chapter changes
+  useEffect(() => {
+    exactCharsReadRef.current = charactersReadSoFar;
+    if (progressTextRef.current) {
+      progressTextRef.current.textContent = `${charactersReadSoFar.toLocaleString()} / ${totalBookCharacters.toLocaleString()} Ch | ${((charactersReadSoFar / (totalBookCharacters || 1)) * 100).toFixed(2)}%`;
+    }
+  }, [currentChapter, charactersReadSoFar, totalBookCharacters]);
+  const handleTextScroll = useCallback((e) => {
+    const el = e.currentTarget;
+    if (!el) return;
+    
+    let pct = 0;
+    if (settings.readingOrientation === 'vertical') {
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      if (maxScroll > 0) {
+        // En vertical-rl, scrollLeft es negativo.
+        // La distancia recorrida desde el inicio (derecha) hacia la izquierda es Math.abs(el.scrollLeft).
+        const currentScroll = Math.abs(el.scrollLeft);
+        pct = Math.min(1.0, Math.max(0.0, currentScroll / maxScroll));
+      }
+    } else {
+      const maxScroll = el.scrollHeight - el.clientHeight;
+      if (maxScroll > 0) {
+        pct = Math.min(1.0, Math.max(0.0, el.scrollTop / maxScroll));
+      }
     }
     
-    return charsBefore + charsInCurrentChapterBefore;
-  }, [book.chapters, currentChapter, currentPage, pages, stripChapterHtml]);
+    const chapterChars = currentChapterCharCount;
+    const scrollChars = Math.round(pct * chapterChars);
+    const exactRead = Math.min(totalBookCharacters, Math.max(0, charactersReadSoFar + scrollChars));
+    exactCharsReadRef.current = exactRead;
 
-  const globalTotalPages = useMemo(() => {
-    if (totalBookCharacters <= 0) return 1;
-    return Math.max(1, Math.ceil(totalBookCharacters / avgCharsPerPage));
-  }, [totalBookCharacters, avgCharsPerPage]);
+    // Update DOM directly to avoid React re-renders -> absolute smooth 120 FPS
+    if (progressTextRef.current) {
+      const percentStr = `${((exactRead / (totalBookCharacters || 1)) * 100).toFixed(2)}%`;
+      progressTextRef.current.textContent = `${exactRead.toLocaleString()} / ${totalBookCharacters.toLocaleString()} Ch | ${percentStr}`;
+    }
 
-  const globalCurrentPage = useMemo(() => {
-    if (totalBookCharacters <= 0) return 1;
-    const pageEstimation = Math.ceil(charactersReadSoFar / avgCharsPerPage) + 1;
-    return Math.max(1, Math.min(globalTotalPages, pageEstimation));
-  }, [charactersReadSoFar, avgCharsPerPage, globalTotalPages, totalBookCharacters]);
+    // Debounce progress saving to DB to avoid writing on every single scroll event
+    if (saveProgressTimerRef.current) {
+      clearTimeout(saveProgressTimerRef.current);
+    }
+    saveProgressTimerRef.current = setTimeout(() => {
+      if (tokenizedParagraphs.length === 0 || totalBookCharacters === 0) return;
+      const percent = Math.min(100, Math.max(0, Math.round((exactRead / totalBookCharacters) * 100)));
+      onUpdateProgress(book.id, currentChapter, 0, percent);
+    }, 1200);
+  }, [currentChapter, currentChapterCharCount, totalBookCharacters, charactersReadSoFar, book.id, onUpdateProgress, tokenizedParagraphs.length]);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (saveProgressTimerRef.current) {
+        clearTimeout(saveProgressTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Keep compatibility globals
+  const globalTotalPages = book.chapters.length;
+  const globalCurrentPage = currentChapter + 1;
 
   // Refs and hooks to track unique page visits and time spent reading
   const visitedPages = useRef(new Set());
@@ -632,14 +776,14 @@ export default function Reader({
   // Track unique page visits
   useEffect(() => {
     if (currentPageTokens.length === 0) return;
-    const pageKey = `${currentChapter}-${currentPage}`;
+    const pageKey = `chapter-${currentChapter}`;
     if (!visitedPages.current.has(pageKey)) {
       visitedPages.current.add(pageKey);
       const charsOnPage = currentPageTokens.reduce((acc, t) => acc + (t.surface ? t.surface.length : 0), 0);
       pendingChars.current += charsOnPage;
       flushStats();
     }
-  }, [currentChapter, currentPage, currentPageTokens, flushStats]);
+  }, [currentChapter, currentPageTokens, flushStats]);
 
   // Track reading time interval
   useEffect(() => {
@@ -657,48 +801,22 @@ export default function Reader({
     };
   }, []);
 
-  const jumpToGlobalPage = (targetPage) => {
-    const targetCharOffset = (targetPage - 1) * avgCharsPerPage;
-    
-    let accumulatedChars = 0;
-    for (let cIdx = 0; cIdx < book.chapters.length; cIdx++) {
-      const chContent = book.chapters[cIdx].content || "";
-      const chLen = chContent.length;
-      
-      if (targetCharOffset <= accumulatedChars + chLen) {
-        setCurrentChapter(cIdx);
-        const relativeOffset = targetCharOffset - accumulatedChars;
-        const estimatedSubPage = Math.floor(relativeOffset / avgCharsPerPage);
-        setCurrentPage(estimatedSubPage);
-        return;
-      }
-      accumulatedChars += chLen;
+  const jumpToGlobalPage = (targetChapter) => {
+    const idx = targetChapter - 1;
+    if (idx >= 0 && idx < book.chapters.length) {
+      setCurrentChapter(idx);
     }
-    
-    setCurrentChapter(book.chapters.length - 1);
-    setCurrentPage(999);
   };
 
-  // 3. Ajuste de límites de página al recargar texto o cambiar tamaño
+  // 4. Guardar progreso al cambiar de capítulo o avanzar con scroll
   useEffect(() => {
-    if (totalPages > 0) {
-      if (currentPage === 999) {
-        setCurrentPage(totalPages - 1);
-      } else if (currentPage >= totalPages) {
-        setCurrentPage(Math.max(0, totalPages - 1));
-      }
-    }
-  }, [totalPages, currentPage]);
-
-  // 4. Guardar progreso al cambiar de página o capítulo
-  useEffect(() => {
-    if (tokenizedParagraphs.length === 0 || totalPages === 0 || totalBookCharacters === 0) return;
-    const percent = Math.min(100, Math.max(0, Math.round((charactersReadSoFar / totalBookCharacters) * 100)));
+    if (tokenizedParagraphs.length === 0 || totalBookCharacters === 0) return;
+    const percent = Math.min(100, Math.max(0, Math.round((exactCharsRead / totalBookCharacters) * 100)));
     
-    onUpdateProgress(book.id, currentChapter, currentPage, percent);
-  }, [currentPage, currentChapter, totalPages, charactersReadSoFar, totalBookCharacters]);
+    onUpdateProgress(book.id, currentChapter, 0, percent);
+  }, [currentChapter, totalBookCharacters, exactCharsRead]);
 
-  // Fix #6: Outside click handler estable — listener registrado UNA vez, usa ref para selectedWord.
+  // Fix #6: Outside click handler estable â€” listener registrado UNA vez, usa ref para selectedWord.
   useEffect(() => {
     const handleOutsideClick = (e) => {
       if (
@@ -711,16 +829,27 @@ export default function Reader({
     };
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, []); // [] → se registra solo una vez
+  }, []); // [] â†’ se registra solo una vez
 
-  // 6. Lógica de Paginación por Caracteres (135 caracteres promedio)
+  // Reset scroll to start when chapter or reading orientation changes
+  useEffect(() => {
+    const el = textContainerRef.current;
+    if (el) {
+      if (settings.readingOrientation === 'vertical') {
+        // In vertical-rl (Tategaki), the start is on the far right
+        el.scrollLeft = el.scrollWidth;
+      } else {
+        // Yokogaki (Horizontal) starts at top
+        el.scrollTop = 0;
+      }
+    }
+  }, [currentChapter, settings.readingOrientation]);
+
+  // Chapter Navigation
   const handlePrevPage = () => {
     setSelectedWord(null);
-    if (currentPage > 0) {
-      setCurrentPage(currentPage - 1);
-    } else if (currentChapter > 0) {
+    if (currentChapter > 0) {
       setCurrentChapter(currentChapter - 1);
-      setCurrentPage(999); 
     }
   };
 
@@ -761,11 +890,11 @@ export default function Reader({
     const isLowerHalf = rect.top > window.innerHeight / 2;
 
     if (isLowerHalf || (spaceBelow < 240 && spaceAbove > spaceBelow)) {
-      // Place above — anchor its bottom to just 6px above the word
+      // Place above â€” anchor its bottom to just 6px above the word
       y = rect.top - 6;
       setPopupPos({ x, y, anchorBottom: true });
     } else {
-      // Place below — anchor its top to just 6px below the word
+      // Place below â€” anchor its top to just 6px below the word
       y = rect.bottom + 6;
       setPopupPos({ x, y, anchorBottom: false });
     }
@@ -807,7 +936,7 @@ export default function Reader({
       });
     } catch (e) {
       console.error('Error opening Anki browser:', e);
-      showToast(lang === 'es' ? 'No se pudo conectar con Anki. Asegúrate de que Anki esté abierto y AnkiConnect configurado.' : 'Could not connect to Anki. Make sure Anki is open and AnkiConnect is configured.', 'error');
+      showToast(lang === 'es' ? 'No se pudo conectar con Anki. AsegÃºrate de que Anki estÃ© abierto y AnkiConnect configurado.' : 'Could not connect to Anki. Make sure Anki is open and AnkiConnect is configured.', 'error');
     }
   };
 
@@ -877,7 +1006,7 @@ export default function Reader({
 
     const getSentenceAnkiFurigana = (sentenceTokens) => {
       return sentenceTokens.map(tok => {
-        if (tok.isIndentSpace) return '　';
+        if (tok.isIndentSpace) return 'ã€€';
         if (tok.isParagraphBreak || tok.isLineBreak) return ' ';
         if (!tok.isWord) return tok.surface || '';
         return getAnkiFurigana(tok, true);
@@ -944,8 +1073,8 @@ export default function Reader({
     const meaning = dictEntry && dictEntry.definitions ? dictEntry.definitions.join('<br>') : '';
     
     const isBilingual = (defText) => {
-      const SPA_DIACRITICS = /[áéíóúüñÁÉÍÓÚÜÑ¿¡]/u;
-      const SPA_WORDS = /\b(de|del|el|la|los|las|en|un|una|unos|unas|con|por|para|que|es|son|su|sus|se|al|como|más|no|si|lo|le|les|muy|también|pero|cuando|este|esta|estos|estas|fue|ser|hay|ya|porque|aunque|donde|mientras|entre)\b/i;
+      const SPA_DIACRITICS = /[Ã¡Ã©Ã­Ã³ÃºÃ¼Ã±ÃÃ‰ÃÃ“ÃšÃœÃ‘Â¿Â¡]/u;
+      const SPA_WORDS = /\b(de|del|el|la|los|las|en|un|una|unos|unas|con|por|para|que|es|son|su|sus|se|al|como|mÃ¡s|no|si|lo|le|les|muy|tambiÃ©n|pero|cuando|este|esta|estos|estas|fue|ser|hay|ya|porque|aunque|donde|mientras|entre)\b/i;
       const ENG_WORDS = /\b(the|of|to|and|a|in|is|for|on|with|as|by|at|an|be|this|that|from|it|are|or|if|but|after|before|during|while|have|has|had|not|also|can|will|its|was|were|been|one|two|three|four|five|used|made|when|which|who|what|where|how)\b/i;
       return SPA_DIACRITICS.test(defText) || SPA_WORDS.test(defText) || ENG_WORDS.test(defText);
     };
@@ -1048,19 +1177,19 @@ export default function Reader({
           .join(', ');
           
         const getPitchCategoryName = (pos, r) => {
-          const morae = (r || '').match(/[ぁ-んァ-ン][ゃゅょャュョ]*/g) || [];
+          const morae = (r || '').match(/[ã-ã‚“ã‚¡-ãƒ³][ã‚ƒã‚…ã‚‡ãƒ£ãƒ¥ãƒ§]*/g) || [];
           const count = morae.length;
-          if (pos === 0) return '平板';
-          if (pos === 1) return '頭高';
+          if (pos === 0) return 'å¹³æ¿';
+          if (pos === 1) return 'é ­é«˜';
           if (pos > 1) {
-            if (pos === count) return '尾高';
-            return '中高';
+            if (pos === count) return 'å°¾é«˜';
+            return 'ä¸­é«˜';
           }
           return '';
         };
 
         const getPitchGraphHTML = (r, pos) => {
-          const morae = (r || '').match(/[ぁ-んァ-ン][ゃゅょャュョ]*/g) || [];
+          const morae = (r || '').match(/[ã-ã‚“ã‚¡-ãƒ³][ã‚ƒã‚…ã‚‡ãƒ£ãƒ¥ãƒ§]*/g) || [];
           if (morae.length === 0) return r || '';
           
           let html = '<span style="display: inline-flex; padding: 2px 0; font-family: monospace;">';
@@ -1133,7 +1262,7 @@ export default function Reader({
       // Furigana variants
       const furiganaPlain = getAnkiFurigana(selectedWord, false);
       const sentenceFuriganaPlain = sentenceTokens.map(tok => {
-        if (tok.isIndentSpace) return '　';
+        if (tok.isIndentSpace) return 'ã€€';
         if (tok.isParagraphBreak || tok.isLineBreak) return ' ';
         if (!tok.isWord) return tok.surface || '';
         return getAnkiFurigana(tok, false);
@@ -1260,18 +1389,18 @@ export default function Reader({
           onSetWordStatus(selectedWord.basicForm, 'learning');
         }
         setAnkiCardExists(true);
-        showToast(lang === 'es' ? '¡Tarjeta de Anki creada con éxito! La palabra fue marcada como "Estudiando".' : 'Anki card created successfully! The word was marked as "Learning".', 'success');
+        showToast(lang === 'es' ? 'Â¡Tarjeta de Anki creada con Ã©xito! La palabra fue marcada como "Estudiando".' : 'Anki card created successfully! The word was marked as "Learning".', 'success');
       }
     } catch (e) {
-      showToast(lang === 'es' ? 'Error de conexión con AnkiConnect. Asegúrate de tener Anki abierto.' : 'Connection error with AnkiConnect. Make sure Anki is open.', 'error');
+      showToast(lang === 'es' ? 'Error de conexiÃ³n con AnkiConnect. AsegÃºrate de tener Anki abierto.' : 'Connection error with AnkiConnect. Make sure Anki is open.', 'error');
     }
   };
 
-  // 6. Text-to-Speech (TTS) — con prioridad local y soporte de Azure Neural
+  // 6. Text-to-Speech (TTS) â€” con prioridad local y soporte de Azure Neural
   const reproducirTexto = async (texto, vozSeleccionada) => {
     if (!texto || !texto.trim()) return;
 
-    // 1. Detener cualquier reproducción en curso
+    // 1. Detener cualquier reproducciÃ³n en curso
     if (ttsAudioRef.current) {
       ttsAudioRef.current.pause();
       ttsAudioRef.current = null;
@@ -1286,7 +1415,7 @@ export default function Reader({
     const vozId = vozSeleccionada || settings.audioVoiceOption || 'Nanami';
     const speed = parseFloat(settings.audioSpeed || '1.0');
 
-    // 1. Método Edge TTS (si estamos en Electron)
+    // 1. MÃ©todo Edge TTS (si estamos en Electron)
     if (window.electronAPI && window.electronAPI.speakText) {
       try {
         const azureVoiceName = 
@@ -1311,11 +1440,11 @@ export default function Reader({
           return;
         }
       } catch (err) {
-        console.warn('Edge TTS falló. Intentando con Azure u otros métodos:', err);
+        console.warn('Edge TTS fallÃ³. Intentando con Azure u otros mÃ©todos:', err);
       }
     }
 
-    // 2. Método Azure Neural TTS (si hay API Key configurada)
+    // 2. MÃ©todo Azure Neural TTS (si hay API Key configurada)
     if (settings.azureApiKey && settings.azureApiKey.trim()) {
       try {
         const azureVoiceName = 
@@ -1338,11 +1467,11 @@ export default function Reader({
         await audio.play();
         return;
       } catch (err) {
-        console.warn('Azure TTS falló. Intentando con síntesis local:', err);
+        console.warn('Azure TTS fallÃ³. Intentando con sÃ­ntesis local:', err);
       }
     }
 
-    // 3. Método local: Web Speech API (speechSynthesis)
+    // 3. MÃ©todo local: Web Speech API (speechSynthesis)
     if ('speechSynthesis' in window) {
       const getVoicesAsync = () => new Promise((resolve) => {
         const voices = window.speechSynthesis.getVoices();
@@ -1356,7 +1485,7 @@ export default function Reader({
       const voices = await getVoicesAsync();
       let matchedVoice = null;
 
-      // Buscar correspondencia por palabra clave (Nanami, Mayu, Keita, Edge o japonés genérico)
+      // Buscar correspondencia por palabra clave (Nanami, Mayu, Keita, Edge o japonÃ©s genÃ©rico)
       const keyword = vozId.toLowerCase();
       matchedVoice = voices.find(v => {
         const name = v.name.toLowerCase();
@@ -1368,7 +1497,7 @@ export default function Reader({
         matchedVoice = voices.find(v => v.lang.startsWith('ja'));
       }
 
-      // Si definitivamente no hay ninguna voz en japonés instalada en el sistema operativo
+      // Si definitivamente no hay ninguna voz en japonÃ©s instalada en el sistema operativo
       if (!matchedVoice) {
         console.log('No Japanese voices installed on system. Falling back to Google Translate TTS.');
         try {
@@ -1391,7 +1520,7 @@ export default function Reader({
         utterance.rate = speed;
         utterance.voice = matchedVoice;
 
-        // Simular tono masculino para Keita si es la única voz nativa femenina (ej. Haruka)
+        // Simular tono masculino para Keita si es la Ãºnica voz nativa femenina (ej. Haruka)
         if (vozId === 'Keita' && matchedVoice && !matchedVoice.name.toLowerCase().includes('keita') && !matchedVoice.name.toLowerCase().includes('male')) {
           utterance.pitch = 0.72; // Grave
         } else {
@@ -1402,7 +1531,7 @@ export default function Reader({
         utterance.onend = () => { setIsTtsPlaying(false); clearInterval(ttsKeepAliveRef.current); };
         utterance.onerror = () => { setIsTtsPlaying(false); clearInterval(ttsKeepAliveRef.current); };
 
-        // Keep-alive para evitar suspensión en Chromium
+        // Keep-alive para evitar suspensiÃ³n en Chromium
         clearInterval(ttsKeepAliveRef.current);
         ttsKeepAliveRef.current = setInterval(() => {
           if (window.speechSynthesis.speaking) {
@@ -1422,7 +1551,7 @@ export default function Reader({
     }
   };
 
-  // Lectura en voz alta de toda la página actual
+  // Lectura en voz alta de toda la pÃ¡gina actual
   const leerPaginaEnVozAlta = () => {
     if (isTtsPlaying) {
       if (ttsAudioRef.current) {
@@ -1446,8 +1575,8 @@ export default function Reader({
     reproducirTexto(rawText, settings.audioVoiceOption || 'Nanami');
   };
 
-  // Ajustar la posición del popup reactivamente si colisiona con el borde inferior o superior de la pantalla.
-  // Mide el alto real del DOM del popup y lo voltea automáticamente si no cabe.
+  // Ajustar la posiciÃ³n del popup reactivamente si colisiona con el borde inferior o superior de la pantalla.
+  // Mide el alto real del DOM del popup y lo voltea automÃ¡ticamente si no cabe.
   useEffect(() => {
     if (!selectedWord) return;
 
@@ -1462,7 +1591,7 @@ export default function Reader({
       const spaceBelow = window.innerHeight - wordRect.bottom - 10;
       const spaceAbove = wordRect.top - 10;
 
-      // Si está abajo y choca/excede el límite inferior de la pantalla
+      // Si estÃ¡ abajo y choca/excede el lÃ­mite inferior de la pantalla
       if (!popupPos.anchorBottom && wordRect.bottom + 6 + popupHeight > window.innerHeight - 10) {
         if (spaceAbove > popupHeight || spaceAbove > spaceBelow) {
           setPopupPos(prev => ({
@@ -1472,7 +1601,7 @@ export default function Reader({
           }));
         }
       }
-      // Si está arriba y excede el límite superior de la pantalla
+      // Si estÃ¡ arriba y excede el lÃ­mite superior de la pantalla
       else if (popupPos.anchorBottom && wordRect.top - 6 - popupHeight < 10) {
         if (spaceBelow > popupHeight || spaceBelow > spaceAbove) {
           setPopupPos(prev => ({
@@ -1484,7 +1613,7 @@ export default function Reader({
       }
     };
 
-    // Corremos inmediatamente y con pequeños intervalos para reaccionar al cambio de carga/renderizado
+    // Corremos inmediatamente y con pequeÃ±os intervalos para reaccionar al cambio de carga/renderizado
     adjustPosition();
     const timer1 = setTimeout(adjustPosition, 10);
     const timer2 = setTimeout(adjustPosition, 50);
@@ -1500,7 +1629,7 @@ export default function Reader({
 
 
   // Fix #4: Actualizar el ref con todos los valores actuales antes de cada render.
-  // El keyboard handler siempre lee desde aquí, sin necesidad de re-registrarse.
+  // El keyboard handler siempre lee desde aquÃ­, sin necesidad de re-registrarse.
   keyboardStateRef.current = {
     currentPage,
     currentChapter,
@@ -1526,7 +1655,7 @@ export default function Reader({
   // Sincronizar selectedWordRef para el handler estable de outside-click (Fix #6)
   selectedWordRef.current = selectedWord;
 
-  // Keyboard shortcuts — registrado UNA SOLA VEZ. Lee estado desde keyboardStateRef.
+  // Keyboard shortcuts â€” registrado UNA SOLA VEZ. Lee estado desde keyboardStateRef.
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (
@@ -1605,7 +1734,7 @@ export default function Reader({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []); // [] → listener registrado UNA SOLA VEZ en todo el ciclo de vida del Reader
+  }, []); // [] â†’ listener registrado UNA SOLA VEZ en todo el ciclo de vida del Reader
 
   // Get learning status style class
   const getWordStatusClass = (token) => {
@@ -1621,11 +1750,11 @@ export default function Reader({
   };
 
   const getLevelName = (pct) => {
-    if (pct < 20) return lang === 'es' ? '👀 Principiante' : '👀 Beginner';
-    if (pct < 50) return lang === 'es' ? '🧭 Curioso' : '🧭 Curious';
-    if (pct < 70) return lang === 'es' ? '🚀 Ambicioso' : '🚀 Ambitious';
-    if (pct < 90) return lang === 'es' ? '⚡ Fluido' : '⚡ Fluent';
-    return lang === 'es' ? '🏆 Nativo' : '🏆 Native';
+    if (pct < 20) return lang === 'es' ? 'ðŸ‘€ Principiante' : 'ðŸ‘€ Beginner';
+    if (pct < 50) return lang === 'es' ? 'ðŸ§­ Curioso' : 'ðŸ§­ Curious';
+    if (pct < 70) return lang === 'es' ? 'ðŸš€ Ambicioso' : 'ðŸš€ Ambitious';
+    if (pct < 90) return lang === 'es' ? 'âš¡ Fluido' : 'âš¡ Fluent';
+    return lang === 'es' ? 'ðŸ† Nativo' : 'ðŸ† Native';
   };
 
   const getPieChartGradient = (known, unknown, ignored) => {
@@ -1647,6 +1776,33 @@ export default function Reader({
         <h3 className="reader-title">
           {book.title}
         </h3>
+        
+        {/* Toggle Reading Direction (Tategaki / Yokogaki) */}
+        <button 
+          className="reader-header-btn" 
+          onClick={() => {
+            const nextOrientation = settings.readingOrientation === 'vertical' ? 'horizontal' : 'vertical';
+            onSaveSettings({ ...settings, readingOrientation: nextOrientation });
+          }}
+          title={settings.readingOrientation === 'vertical' ? (lang === 'es' ? 'Cambiar a lectura horizontal' : 'Switch to horizontal reading') : (lang === 'es' ? 'Cambiar a lectura vertical (Tategaki)' : 'Switch to vertical reading (Tategaki)')}
+          style={{ marginRight: '6px', color: settings.readingOrientation === 'vertical' ? 'var(--primary)' : '#fff' }}
+        >
+          <BookOpen size={20} />
+        </button>
+
+        {/* Jump to Chapter */}
+        <button 
+          className="reader-header-btn" 
+          onClick={() => {
+            setJumpPageInput(globalCurrentPage);
+            setIsJumpModalOpen(true);
+          }}
+          title={lang === 'es' ? 'Ir al capítulo' : 'Go to chapter'}
+          style={{ marginRight: '6px' }}
+        >
+          <Calendar size={20} />
+        </button>
+
         <button 
           className="reader-header-btn" 
           onClick={() => setIsReaderSidebarOpen(prev => !prev)}
@@ -1663,27 +1819,143 @@ export default function Reader({
           <p style={{ fontFamily: 'var(--font-heading)' }}>{t('processingVocab', lang)}</p>
         </div>
       ) : (
-        <div className="reader-content-wrapper" ref={readerContentRef}>
+        <div 
+          className="reader-content-wrapper" 
+          ref={readerContentRef}
+          style={settings.readingOrientation === 'vertical' ? {
+            flex: 1,
+            overflow: 'hidden',
+            height: 'calc(100vh - 160px)',
+            display: 'flex',
+            flexDirection: 'row-reverse',
+            justifyContent: 'flex-start',
+            background: 'transparent',
+            padding: '24px 40px',
+            direction: 'ltr'
+          } : {
+            flex: 1,
+            overflow: 'hidden',
+            height: 'calc(100vh - 160px)',
+            padding: '24px 20px',
+            display: 'block'
+          }}
+        >
           <div 
             className={`reader-text-container ${settings.showFurigana === 'none' ? 'hide-furigana' : ''}`}
-            style={{ fontSize: `${settings.fontSize}px` }}
             ref={textContainerRef}
+            style={settings.readingOrientation === 'vertical' ? {
+              fontSize: `${settings.fontSize}px`,
+              writingMode: 'vertical-rl',
+              WebkitWritingMode: 'vertical-rl',
+              textOrientation: 'mixed',
+              overflowX: 'auto',
+              overflowY: 'hidden',
+              height: '100%',
+              maxHeight: '100%',
+              whiteSpace: 'nowrap',
+              display: 'inline-block',
+              padding: '0 20px',
+              lineHeight: '2.0',
+              fontFamily: '"Noto Sans JP","Hiragino Kaku Gothic ProN","Meiryo",sans-serif'
+            } : {
+              fontSize: `${settings.fontSize}px`,
+              writingMode: 'horizontal-tb',
+              WebkitWritingMode: 'horizontal-tb',
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              height: '100%',
+              width: '100%',
+              maxWidth: '800px',
+              margin: '0 auto',
+              lineHeight: '1.9',
+              fontFamily: '"Noto Sans JP","Hiragino Kaku Gothic ProN","Meiryo",sans-serif'
+            }}
+            onScroll={handleTextScroll}
+            onWheel={(e) => {
+              if (settings.readingOrientation === 'vertical' && textContainerRef.current) {
+                e.preventDefault();
+                textContainerRef.current.scrollLeft -= e.deltaY;
+              }
+            }}
           >
             {currentPageTokens.length === 0 ? (
               <p style={{ color: 'var(--text-dark)', textAlign: 'center', marginTop: '2rem' }}>
                 {lang === 'es' ? 'Este capítulo no contiene texto legible o es un capítulo de ilustración.' : 'This chapter does not contain readable text or is an illustration chapter.'}
               </p>
             ) : (
-              <div className="reader-text-page">
+              <div className="reader-text-page" style={settings.readingOrientation === 'vertical' ? { height: '100%', display: 'inline-block' } : {}}>
                 {currentPageTokens.map((token, tokIdx) => {
+                  if (token.type === 'image') {
+                    return (
+                      <div 
+                        key={tokIdx} 
+                        style={settings.readingOrientation === 'vertical' ? {
+                          height: '100%',
+                          display: 'inline-block',
+                          margin: '0 20px',
+                          verticalAlign: 'top'
+                        } : {
+                          width: '100%',
+                          textAlign: 'center',
+                          margin: '20px 0'
+                        }}
+                      >
+                        <img 
+                          src={token.src} 
+                          alt="Illustration" 
+                          style={settings.readingOrientation === 'vertical' ? {
+                            height: '100%',
+                            width: 'auto',
+                            maxHeight: 'calc(100vh - 200px)',
+                            borderRadius: '6px',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                            userSelect: 'none'
+                          } : {
+                            maxWidth: '100%',
+                            maxHeight: '75vh',
+                            height: 'auto',
+                            borderRadius: '6px',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                            userSelect: 'none'
+                          }}
+                        />
+                      </div>
+                    );
+                  }
                   if (token.isIndentSpace) {
                     return <span key={tokIdx} style={{ display: 'inline-block', width: '1.5em' }} />;
                   }
                   if (token.isParagraphBreak) {
-                    return <span key={tokIdx} className="paragraph-break" />;
+                    return (
+                      <span 
+                        key={tokIdx} 
+                        className="paragraph-break" 
+                        style={settings.readingOrientation === 'vertical' ? {
+                          display: 'inline-block',
+                          width: '1.6em',
+                          height: '100%',
+                          verticalAlign: 'top'
+                        } : {
+                          display: 'block',
+                          height: '1.4em'
+                        }}
+                      />
+                    );
                   }
                   if (token.isLineBreak) {
-                    return <br key={tokIdx} />;
+                    return settings.readingOrientation === 'vertical' ? (
+                      <span 
+                        key={tokIdx} 
+                        style={{
+                          display: 'inline-block',
+                          width: '0.8em',
+                          height: '100%',
+                          verticalAlign: 'top'
+                        }}
+                      />
+                    ) : (
+                      <br key={tokIdx} />
+                    );
                   }
 
                   const isKnown = wordStatuses[token.basicForm] === 'known';
@@ -1740,9 +2012,235 @@ export default function Reader({
                     : `${window.innerHeight - popupPos.y - 20}px`,
                   display: 'flex',
                   flexDirection: 'column',
-                  overflowY: 'auto'
+                  overflowY: 'auto',
+                  writingMode: 'horizontal-tb',
+                  WebkitWritingMode: 'horizontal-tb',
+                  textOrientation: 'mixed'
                 }}
               >
+                {/* Status Toggle & SRS Review System (Jiten-style) â€” TOP of popup */}
+                {(() => {
+                  const wordStatus = wordStatuses[selectedWord.basicForm] || 'new';
+                  const isLearning = wordStatus === 'learning';
+                  const isKnown = wordStatus === 'known';
+                  const isIgnored = wordStatus === 'ignored';
+
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
+                      {/* Row 1: Statuses / Actions */}
+                      <div style={{ display: 'flex', gap: '5px' }}>
+                        {/* Never Forget (Known) */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isKnown) {
+                              onSetWordStatus(selectedWord.basicForm, 'new');
+                            } else {
+                              const wordData = {
+                                reading: selectedWord.reading || selectedWord.surface,
+                                meaning: dictEntry?.definitions?.slice(0, 3).join(' / ') || ''
+                              };
+                              onSetWordStatus(selectedWord.basicForm, 'known', wordData);
+                            }
+                          }}
+                          style={{
+                            padding: '4px 10px',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            borderRadius: '5px',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                            background: isKnown ? 'rgba(74, 117, 36, 0.22)' : 'rgba(255,255,255,0.02)',
+                            border: isKnown ? '1.5px solid rgba(74, 117, 36, 0.7)' : '1px solid rgba(255,255,255,0.1)',
+                            color: isKnown ? '#a3e635' : '#84cc16',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {lang === 'es' ? 'Nunca olvidar' : 'Never forget'}
+                        </button>
+
+                        {/* Blacklist (Ignored) */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isIgnored) {
+                              onSetWordStatus(selectedWord.basicForm, 'new');
+                            } else {
+                              onSetWordStatus(selectedWord.basicForm, 'ignored');
+                            }
+                          }}
+                          style={{
+                            padding: '4px 10px',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            borderRadius: '5px',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                            background: isIgnored ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.02)',
+                            border: isIgnored ? '1.5px solid rgba(255,255,255,0.3)' : '1px solid rgba(255,255,255,0.1)',
+                            color: isIgnored ? '#fff' : '#a1a1aa',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          Blacklist
+                        </button>
+
+                        {/* Forget (Reset) */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onSetWordStatus(selectedWord.basicForm, 'new');
+                            db.saveSrsCard(selectedWord.basicForm, null);
+                            setSrsCard(null);
+                          }}
+                          style={{
+                            padding: '4px 10px',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            borderRadius: '5px',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                            background: 'rgba(239, 68, 68, 0.06)',
+                            border: '1px solid rgba(239, 68, 68, 0.25)',
+                            color: '#f87171',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          Forget
+                        </button>
+
+                        {/* Deck + / Deck - */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isLearning) {
+                              onSetWordStatus(selectedWord.basicForm, 'new');
+                              db.saveSrsCard(selectedWord.basicForm, null);
+                              setSrsCard(null);
+                            } else {
+                              onSetWordStatus(selectedWord.basicForm, 'learning');
+                              const now = new Date();
+                              const initialCard = {
+                                interval: 0,
+                                ease: 2.5,
+                                repetitions: 0,
+                                dueDate: now.toISOString(),
+                                lastReview: now.toISOString(),
+                                lapses: 0,
+                                state: 0
+                              };
+                              db.saveSrsCard(selectedWord.basicForm, initialCard);
+                              setSrsCard(initialCard);
+                            }
+                          }}
+                          style={{
+                            padding: '4px 10px',
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            borderRadius: '5px',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s',
+                            background: isLearning ? 'rgba(255,224,0,0.07)' : 'rgba(255,255,255,0.02)',
+                            border: isLearning ? '1.5px solid var(--primary)' : '1px solid rgba(255,255,255,0.1)',
+                            color: isLearning ? 'var(--primary)' : '#fff',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {isLearning ? 'Deck -' : 'Deck +'}
+                        </button>
+                      </div>
+
+                      {/* Row 2: SRS Review Grading (only shown if learning state is active) */}
+                      {isLearning && (() => {
+                        const intervals = calculateSrsIntervals(srsCard);
+                        return (
+                          <div style={{ display: 'flex', gap: '5px' }}>
+                            {/* Again */}
+                            <button
+                              type="button"
+                              onClick={() => handleSrsReview(selectedWord.basicForm, 1)}
+                              style={{
+                                padding: '3px 10px',
+                                borderRadius: '5px',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s',
+                                background: 'rgba(239, 68, 68, 0.06)',
+                                border: '1px solid rgba(239, 68, 68, 0.25)',
+                                color: '#f87171',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              again <span style={{ opacity: 0.55, fontSize: '0.6rem' }}>({intervals.again})</span>
+                            </button>
+
+                            {/* Hard */}
+                            <button
+                              type="button"
+                              onClick={() => handleSrsReview(selectedWord.basicForm, 2)}
+                              style={{
+                                padding: '3px 10px',
+                                borderRadius: '5px',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s',
+                                background: 'rgba(249, 115, 22, 0.06)',
+                                border: '1px solid rgba(249, 115, 22, 0.25)',
+                                color: '#fb923c',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              hard <span style={{ opacity: 0.55, fontSize: '0.6rem' }}>({intervals.hard})</span>
+                            </button>
+
+                            {/* Good */}
+                            <button
+                              type="button"
+                              onClick={() => handleSrsReview(selectedWord.basicForm, 3)}
+                              style={{
+                                padding: '3px 10px',
+                                borderRadius: '5px',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s',
+                                background: 'rgba(168, 85, 247, 0.06)',
+                                border: '1px solid rgba(168, 85, 247, 0.25)',
+                                color: '#c084fc',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              good <span style={{ opacity: 0.55, fontSize: '0.6rem' }}>({intervals.good})</span>
+                            </button>
+
+                            {/* Easy */}
+                            <button
+                              type="button"
+                              onClick={() => handleSrsReview(selectedWord.basicForm, 4)}
+                              style={{
+                                padding: '3px 10px',
+                                borderRadius: '5px',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s',
+                                background: 'rgba(34, 197, 94, 0.06)',
+                                border: '1px solid rgba(34, 197, 94, 0.25)',
+                                color: '#4ade80',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              easy <span style={{ opacity: 0.55, fontSize: '0.6rem' }}>({intervals.easy})</span>
+                            </button>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  );
+                })()}
+
                 <div className="yomitan-header-row">
                   <div>
                     <div className="yomitan-reading">{selectedWord.reading || selectedWord.surface}</div>
@@ -1845,13 +2343,13 @@ export default function Reader({
                   ))}
                   {wordStatuses[selectedWord.basicForm] === 'known' && (
                     <div className="yomi-freq-group">
-                      <span className="yomi-freq-label">★</span>
+                      <span className="yomi-freq-label">â˜…</span>
                       <span className="yomi-freq-value">Conocida</span>
                     </div>
                   )}
                 </div>
 
-                {/* Pitch Accents */}
+                {/* Pitch Accents — compact inline like Jiten */}
                 {dictEntry && dictEntry.pitches && dictEntry.pitches.length > 0 && (() => {
                   const activeReading = (selectedWord.reading || selectedWord.surface || '').trim();
                   const sortedPitches = [...dictEntry.pitches].sort((a, b) => {
@@ -1861,20 +2359,30 @@ export default function Reader({
                     if (!aMatches && bMatches) return 1;
                     return 0;
                   });
-                  const limitedPitches = sortedPitches.slice(0, 4);
+                  const limitedPitches = sortedPitches.slice(0, 3);
 
                   return (
-                    <div className="yomitan-pitches-row" style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px', padding: '2px 0' }}>
-                      {limitedPitches.map((pitchEntry, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                          <span className="yomi-tag" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#c084fc', border: '1px solid rgba(139, 92, 246, 0.3)', fontSize: '0.65rem', padding: '1px 5px', borderRadius: '2px' }}>
-                            {pitchEntry.dictionary}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '5px', alignItems: 'center' }}>
+                      {limitedPitches.map((pitchEntry, i) =>
+                        pitchEntry.pitches.map((p, j) => (
+                          <span key={`${i}-${j}`} style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            background: 'rgba(139, 92, 246, 0.08)',
+                            border: '1px solid rgba(139, 92, 246, 0.25)',
+                            borderRadius: '4px',
+                            padding: '2px 7px',
+                            fontSize: '0.78rem',
+                            color: '#c084fc',
+                            fontWeight: 600,
+                            letterSpacing: '-0.01em'
+                          }}>
+                            {pitchEntry.reading || activeReading}
+                            <span style={{ opacity: 0.6 }}>[{p.position}]</span>
                           </span>
-                          {pitchEntry.pitches.map((p, j) => (
-                            <PitchAccent key={j} reading={pitchEntry.reading || selectedWord.reading || selectedWord.surface} position={p.position} />
-                          ))}
-                        </div>
-                      ))}
+                        ))
+                      )}
                     </div>
                   );
                 })()}
@@ -1892,54 +2400,6 @@ export default function Reader({
                   </a>
                 </div>
 
-                {/* Status Toggle (Migaku Word Statuses) */}
-                <div className="dict-status-selector">
-                  <button 
-                    className={`status-btn status-btn-new ${(!wordStatuses[selectedWord.basicForm] || wordStatuses[selectedWord.basicForm] === 'new') ? 'active' : ''}`}
-                    onClick={() => {
-                      onSetWordStatus(selectedWord.basicForm, 'new');
-                    }}
-                  >
-                    {t('statusNew', lang)}
-                  </button>
-                  <button 
-                    className={`status-btn status-btn-learning ${(wordStatuses[selectedWord.basicForm] === 'learning') ? 'active' : ''}`}
-                    onClick={() => {
-                      onSetWordStatus(selectedWord.basicForm, 'learning');
-                    }}
-                  >
-                    {t('statusLearning', lang)}
-                  </button>
-                  <button 
-                    className={`status-btn status-btn-known ${(wordStatuses[selectedWord.basicForm] === 'known') ? 'active' : ''}`}
-                    onClick={() => {
-                      const wordData = {
-                        reading: selectedWord.reading || selectedWord.surface,
-                        meaning: dictEntry?.definitions?.slice(0, 3).join(' / ') || ''
-                      };
-                      onSetWordStatus(selectedWord.basicForm, 'known', wordData);
-                    }}
-                  >
-                    {t('statusKnown', lang)}
-                  </button>
-                  <button 
-                    className={`status-btn status-btn-starred ${(wordStatuses[selectedWord.basicForm] === 'starred') ? 'active' : ''}`}
-                    onClick={() => {
-                      onSetWordStatus(selectedWord.basicForm, 'starred');
-                    }}
-                  >
-                    {t('statusStarred', lang)}
-                  </button>
-                  <button 
-                    className={`status-btn status-btn-ignored ${(wordStatuses[selectedWord.basicForm] === 'ignored') ? 'active' : ''}`}
-                    onClick={() => {
-                      onSetWordStatus(selectedWord.basicForm, 'ignored');
-                    }}
-                  >
-                    {t('statusIgnored', lang)}
-                  </button>
-                </div>
-
                 <div className="dict-body">
                   {dictLoading ? (
                     <div style={{ display: 'flex', justifyContent: 'center', padding: '10px' }}>
@@ -1947,7 +2407,7 @@ export default function Reader({
                     </div>
                   ) : dictEntry ? (
                     settings.showTranslation ? (
-                      (dictEntry.definitions.length === 0 || (dictEntry.definitions.length === 1 && (dictEntry.definitions[0].includes('No translation found') || dictEntry.definitions[0].includes('No se encontró definición')))) ? (
+                      (dictEntry.definitions.length === 0 || (dictEntry.definitions.length === 1 && (dictEntry.definitions[0].includes('No translation found') || dictEntry.definitions[0].includes('No se encontrÃ³ definiciÃ³n')))) ? (
                         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('noDefFound', lang)}</p>
                       ) : ( (() => {
                         const grouped = {};
@@ -1990,7 +2450,7 @@ export default function Reader({
                       )
                     ) : (
                       <p style={{ color: 'var(--text-dark)', fontSize: '0.85rem', fontStyle: 'italic' }}>
-                        {lang === 'es' ? 'Traducción oculta (puedes activarla en Ajustes).' : 'Definitions hidden (you can enable them in Settings).'}
+                        {lang === 'es' ? 'TraducciÃ³n oculta (puedes activarla en Ajustes).' : 'Definitions hidden (you can enable them in Settings).'}
                       </p>
                     )
                   ) : (
@@ -2005,50 +2465,80 @@ export default function Reader({
         </div>
       )}
 
-      {/* 3. Bottom Navigation bar */}
-      <footer className="reader-bottom-nav" style={{ borderTop: '2px solid #FFE000' }}>
+      {/* 3. Bottom Navigation bar (Yatsu-style minimalist) */}
+      <footer 
+        className="reader-bottom-nav" 
+        style={{ 
+          borderTop: 'none', 
+          background: 'rgba(18, 18, 20, 0.45)', 
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          height: '48px',
+          padding: '0 24px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          position: 'relative'
+        }}
+      >
         <button 
           className="reader-header-btn" 
           onClick={handlePrevPage}
-          disabled={currentChapter === 0 && currentPage === 0}
-          style={{ opacity: (currentChapter === 0 && currentPage === 0) ? 0.3 : 1 }}
+          disabled={currentChapter === 0}
+          style={{ opacity: (currentChapter === 0) ? 0.15 : 0.6, background: 'transparent', border: 'none', cursor: 'pointer', transition: 'opacity 0.2s' }}
+          title={lang === 'es' ? 'Capítulo anterior' : 'Previous chapter'}
         >
-          <ArrowLeft size={20} />
+          <ArrowLeft size={16} />
         </button>
 
-        <div className="nav-progress-widget">
-          {/* Progress badge (e.g. 70% | 0) */}
-          <div 
-            className="widget-stats"
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsComprehensionOpen(!isComprehensionOpen);
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          <button 
+            type="button"
+            onClick={onBack}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--primary)',
+              cursor: 'pointer',
+              opacity: 0.8,
+              transition: 'opacity 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
             }}
+            title={lang === 'es' ? 'Volver a la biblioteca' : 'Back to library'}
           >
-            <span>⚡ {book.vocabularyCoverage || 0}%</span>
-            <span>💎 {book.vocabStats?.recommendedSentences || 0}</span>
-          </div>
-          <span 
-            className="widget-page"
-            onClick={(e) => {
-              e.stopPropagation();
-              setJumpPageInput(globalCurrentPage);
-              setIsJumpModalOpen(true);
-            }}
-          >
-            {lang === 'es' ? `Página ${globalCurrentPage} de ${globalTotalPages}` : `Page ${globalCurrentPage} of ${globalTotalPages}`}
+            <BookOpen size={20} />
+          </button>
+        </div>
+
+        <div 
+          style={{ 
+            color: 'rgba(255, 255, 255, 0.45)', 
+            fontSize: '0.74rem', 
+            fontFamily: 'monospace',
+            userSelect: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}
+        >
+          <span ref={progressTextRef}>
+            {charactersReadSoFar.toLocaleString()} / {totalBookCharacters.toLocaleString()} Ch | {((charactersReadSoFar / (totalBookCharacters || 1)) * 100).toFixed(2)}%
           </span>
         </div>
 
         <button 
           className="reader-header-btn" 
           onClick={handleNextPage}
-          disabled={currentChapter === book.chapters.length - 1 && currentPage === totalPages - 1}
-          style={{ opacity: (currentChapter === book.chapters.length - 1 && currentPage === totalPages - 1) ? 0.3 : 1 }}
+          disabled={currentChapter === book.chapters.length - 1}
+          style={{ opacity: (currentChapter === book.chapters.length - 1) ? 0.15 : 0.6, background: 'transparent', border: 'none', cursor: 'pointer', transition: 'opacity 0.2s' }}
+          title={lang === 'es' ? 'Capítulo siguiente' : 'Next chapter'}
         >
-          <ArrowRight size={20} />
+          <ArrowRight size={16} />
         </button>
       </footer>
+
 
       {/* Comprehension Popover Card (Migaku-style with Yoru Cafe theme) */}
       {isComprehensionOpen && (
@@ -2071,7 +2561,7 @@ export default function Reader({
             {/* Main Stats Row */}
             <div className="comp-pop-main-row">
               <div className="comp-pop-stat-item">
-                <span className="comp-pop-stat-label">{lang === 'es' ? 'Comprensión general' : 'General comprehension'}</span>
+                <span className="comp-pop-stat-label">{lang === 'es' ? 'ComprensiÃ³n general' : 'General comprehension'}</span>
                 <span className="comp-pop-stat-val val-coverage">
                   {book.vocabularyCoverage || 0}%
                 </span>
@@ -2085,7 +2575,7 @@ export default function Reader({
             </div>
 
             {/* Title divider */}
-            <div className="comp-pop-section-title">{lang === 'es' ? 'Recuento de palabras únicas' : 'Unique words count'}</div>
+            <div className="comp-pop-section-title">{lang === 'es' ? 'Recuento de palabras Ãºnicas' : 'Unique words count'}</div>
 
             {/* Donut Chart & Legend Row */}
             <div className="comp-pop-chart-row">
@@ -2162,7 +2652,7 @@ export default function Reader({
       <button 
         className={`floating-tts-btn ${isTtsPlaying ? 'playing' : ''}`}
         onClick={leerPaginaEnVozAlta}
-        title={isTtsPlaying ? (lang === 'es' ? 'Detener lectura' : 'Stop reading') : (lang === 'es' ? 'Escuchar esta página en voz alta' : 'Read this page aloud')}
+        title={isTtsPlaying ? (lang === 'es' ? 'Detener lectura' : 'Stop reading') : (lang === 'es' ? 'Escuchar esta pÃ¡gina en voz alta' : 'Read this page aloud')}
       >
         {isTtsPlaying ? (
           <Square size={18} fill="#fff" />
@@ -2173,14 +2663,14 @@ export default function Reader({
 
 
 
-      {/* Jump to Page Modal (Migaku style) */}
+      {/* Jump to Chapter Modal */}
       {isJumpModalOpen && (
         <div className="jump-modal-overlay" onClick={() => setIsJumpModalOpen(false)}>
           <div className="jump-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="jump-modal-title">{lang === 'es' ? 'Ir a la página' : 'Go to page'}</div>
+            <div className="jump-modal-title">{lang === 'es' ? 'Ir al capítulo' : 'Go to chapter'}</div>
             
             <div className="jump-modal-row">
-              <span>{lang === 'es' ? 'Página' : 'Page'}</span>
+              <span>{lang === 'es' ? 'Capítulo' : 'Chapter'}</span>
               <input 
                 type="number" 
                 min="1" 
@@ -2217,7 +2707,7 @@ export default function Reader({
                 setIsJumpModalOpen(false);
               }}
             >
-              {lang === 'es' ? 'Ir a la página' : 'Go to page'}
+              {lang === 'es' ? 'Ir al capítulo' : 'Go to chapter'}
             </button>
 
             <button 
@@ -2231,7 +2721,7 @@ export default function Reader({
       )}
 
       {/* Reader Display Settings Drawer (triggered by Q or Sliders button) */}
-      <aside className={`display-settings-drawer ${isReaderSidebarOpen ? 'open' : ''}`} style={{ width: '310px' }}>
+      <aside className={`display-settings-drawer ${isReaderSidebarOpen ? 'open' : ''}`}>
         <div className="drawer-header">
           <span className="drawer-title" style={{ color: '#fff', fontSize: '0.9rem', textTransform: 'none', fontWeight: 650, letterSpacing: 'normal', textShadow: 'none' }}>
             {lang === 'es' ? 'Ajustes de visualización' : 'Display settings'}
@@ -2252,8 +2742,53 @@ export default function Reader({
               {lang === 'es' ? 'Visualización' : 'Display'}
             </div>
             
-            <div className="settings-row-control" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className="settings-label-text" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', fontWeight: 600 }}>
+            {/* Orientación de lectura (Horizontal / Vertical) */}
+            <div className="drawer-section" style={{ marginBottom: '14px' }}>
+              <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 700, display: 'block', marginBottom: '6px' }}>
+                {lang === 'es' ? 'Dirección de lectura' : 'Reading direction'}
+              </span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => onSaveSettings({ ...settings, readingOrientation: 'horizontal' })}
+                  style={{
+                    flex: 1,
+                    padding: '8px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    background: (settings.readingOrientation !== 'vertical') ? 'var(--primary)' : 'rgba(255,255,255,0.03)',
+                    border: (settings.readingOrientation !== 'vertical') ? 'none' : '1px solid rgba(255,255,255,0.1)',
+                    color: (settings.readingOrientation !== 'vertical') ? '#000' : '#fff',
+                    fontWeight: 700,
+                    fontSize: '0.76rem',
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  Horizontal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSaveSettings({ ...settings, readingOrientation: 'vertical' })}
+                  style={{
+                    flex: 1,
+                    padding: '8px',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    background: (settings.readingOrientation === 'vertical') ? 'var(--primary)' : 'rgba(255,255,255,0.03)',
+                    border: (settings.readingOrientation === 'vertical') ? 'none' : '1px solid rgba(255,255,255,0.1)',
+                    color: (settings.readingOrientation === 'vertical') ? '#000' : '#fff',
+                    fontWeight: 700,
+                    fontSize: '0.76rem',
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  {lang === 'es' ? 'Vertical (Tategaki)' : 'Vertical (Tategaki)'}
+                </button>
+              </div>
+            </div>
+
+            <div className="settings-row-control" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px' }}>
+              <span className="settings-label-text" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', fontWeight: 600, flex: 1, minWidth: 0, paddingRight: '12px' }}>
                 {lang === 'es' ? 'Oración al pasar el cursor (Highlight)' : 'Sentence hover highlight'}
               </span>
               <label className="migaku-switch">
@@ -2272,13 +2807,13 @@ export default function Reader({
               {lang === 'es' ? 'Estilo de texto y Audio' : 'Text Style & Audio'}
             </div>
             
-            {/* Tamaño de fuente del lector (Zoom de lectura) */}
+            {/* TamaÃ±o de fuente del lector (Zoom de lectura) */}
             <div className="drawer-section" style={{ marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <span className="drawer-section-label" style={{ color: '#ff6b4a', fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 {lang === 'es' ? 'AJUSTES DE PANTALLA' : 'DISPLAY SETTINGS'}
               </span>
               <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 700, marginBottom: '6px' }}>
-                {lang === 'es' ? 'Tamaño del texto' : 'Text size'}
+                {lang === 'es' ? 'TamaÃ±o del texto' : 'Text size'}
               </span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '0 4px' }}>
                 <span style={{ color: '#fff', fontSize: '0.75rem', fontWeight: 700, opacity: 0.6 }}>A</span>
@@ -2300,10 +2835,10 @@ export default function Reader({
               </div>
             </div>
 
-            {/* Velocidad de reproducción */}
+            {/* Velocidad de reproducciÃ³n */}
             <div className="drawer-section" style={{ marginBottom: '14px' }}>
               <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600 }}>
-                {lang === 'es' ? 'Velocidad de reproducción' : 'Playback Speed'}
+                {lang === 'es' ? 'Velocidad de reproducciÃ³n' : 'Playback Speed'}
               </span>
               <select 
                 value={settings.audioSpeed || '1.0'}
@@ -2312,8 +2847,8 @@ export default function Reader({
               >
                 <option value="1.0">Normal (1.0x)</option>
                 <option value="0.75">{lang === 'es' ? 'Lento (0.75x)' : 'Slow (0.75x)'}</option>
-                <option value="1.25">{lang === 'es' ? 'Rápido (1.25x)' : 'Fast (1.25x)'}</option>
-                <option value="1.5">{lang === 'es' ? 'Rápido (1.5x)' : 'Fast (1.5x)'}</option>
+                <option value="1.25">{lang === 'es' ? 'RÃ¡pido (1.25x)' : 'Fast (1.25x)'}</option>
+                <option value="1.5">{lang === 'es' ? 'RÃ¡pido (1.5x)' : 'Fast (1.5x)'}</option>
               </select>
             </div>
           </div>

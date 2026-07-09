@@ -33,3 +33,7 @@ voices/
 # Build outputs
 dist-electron-installer
 dist-android
+
+# Certificates
+build/*.pfx
+build/*.cer

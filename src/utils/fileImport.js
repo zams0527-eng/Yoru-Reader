@@ -36,6 +36,17 @@ export function htmlToStructuredParagraphs(doc) {
     } else if (node.nodeType === Node.ELEMENT_NODE) {
       const tagName = node.tagName.toLowerCase();
       
+      if (tagName === 'img' || tagName === 'image') {
+        const src = node.getAttribute('src') || node.getAttribute('xlink:href') || node.getAttribute('href') || '';
+        if (src) {
+          currentParagraph.push({
+            type: 'image',
+            src: src
+          });
+        }
+        return; // Don't traverse inside img/image elements
+      }
+
       if (tagName === 'ruby') {
         // Extract furigana from <rt> element
         const rtElement = node.querySelector('rt');
@@ -97,16 +108,22 @@ export function htmlToStructuredParagraphs(doc) {
       if (typeof segment === 'string') {
         return segment.trim().length > 0;
       }
-      return segment.text.trim().length > 0;
+      if (segment.type === 'image') {
+        return true;
+      }
+      return segment.text && segment.text.trim().length > 0;
     });
   }).filter(p => p.length > 0);
 }
 
-// Helper to serialize structured paragraphs into a text format that preserves ruby blocks
+// Helper to serialize structured paragraphs into a text format that preserves ruby blocks and images
 export function serializeStructuredParagraph(p) {
   return p.map(segment => {
     if (typeof segment === 'string') {
       return segment;
+    }
+    if (segment.type === 'image') {
+      return `{img:${segment.src}}`;
     }
     return `{${segment.text}|${segment.ruby}}`;
   }).join('');
@@ -352,6 +369,23 @@ export function parseASS(assText) {
   return dialogues.join('\n\n');
 }
 
+function resolveRelativePath(basePath, relativePath) {
+  const baseParts = basePath.split('/');
+  baseParts.pop(); // Remove filename
+  
+  const relParts = relativePath.split('/');
+  for (let part of relParts) {
+    if (part === '.') {
+      continue;
+    } else if (part === '..') {
+      baseParts.pop();
+    } else if (part) {
+      baseParts.push(part);
+    }
+  }
+  return baseParts.join('/');
+}
+
 // 4. EPUB Parser (Zip extractor)
 export async function parseEPUB(arrayBuffer) {
   const zip = await JSZip.loadAsync(arrayBuffer);
@@ -493,6 +527,29 @@ export async function parseEPUB(arrayBuffer) {
     
     const structuredParagraphs = htmlToStructuredParagraphs(doc);
     if (structuredParagraphs.length === 0) continue;
+    
+    // Resolve relative images inside the ZIP to base64 Data URIs
+    for (let pIdx = 0; pIdx < structuredParagraphs.length; pIdx++) {
+      const p = structuredParagraphs[pIdx];
+      for (let sIdx = 0; sIdx < p.length; sIdx++) {
+        const segment = p[sIdx];
+        if (segment && segment.type === 'image' && segment.src) {
+          try {
+            const cleanSrc = decodeURIComponent(segment.src.split('#')[0].split('?')[0]);
+            const targetPath = resolveRelativePath(resolvedPath, cleanSrc);
+            const imageFile = zip.file(targetPath);
+            if (imageFile) {
+              const ext = targetPath.split('.').pop().toLowerCase();
+              const mime = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+              const imgBase64 = await imageFile.async('base64');
+              segment.src = `data:${mime};base64,${imgBase64}`;
+            }
+          } catch (imgErr) {
+            console.warn("Failed to extract inline EPUB image:", segment.src, imgErr);
+          }
+        }
+      }
+    }
     
     const serializedContent = structuredParagraphs.map(serializeStructuredParagraph).join('\n');
     

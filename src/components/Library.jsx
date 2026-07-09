@@ -1,11 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Info, Trash2, ListChecks, Check, BarChart3, HelpCircle, Pencil, X, ArrowUpDown, Settings, SlidersHorizontal, Calendar, BookOpen, Clock, Flame, Download, Upload, MoreVertical, Search, EyeOff, User, Tag, RotateCcw, CircleSlash, Play, Pause, ChevronDown, Database, Palette, Cloud, FolderOpen, Globe, Type, Plug, Layers, AlertTriangle, Keyboard, Bug, Megaphone, Maximize, Menu } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Plus, Info, Trash2, ListChecks, Check, BarChart3, HelpCircle, Pencil, X, ArrowUpDown, Settings, SlidersHorizontal, Calendar, BookOpen, Clock, Flame, Download, Upload, MoreVertical, Search, EyeOff, User, Tag, RotateCcw, CircleSlash, Play, Pause, ChevronDown, Database, Palette, Cloud, FolderOpen, Globe, Type, Plug, Layers, AlertTriangle, Keyboard, Bug, Megaphone, Maximize, Menu, Zap } from 'lucide-react';
 import SettingsModal from './SettingsModal';
 import JSZip from 'jszip';
 import { importBookFile } from '../utils/fileImport';
 import { db } from '../utils/db';
 import { importYomitanZip, getInstalledDictionaries, deleteDictionary, exportDictionaryDataToZip, importAllDictionaryData, closeDB, getDB, migrateEnglishDictName, migrateDictFlags, cleanOrphanedEntries } from '../utils/yomitanDB';
-const AnkiConfigModal = React.lazy(() => import('./AnkiConfigModal'));
+const VocabularyModal = React.lazy(() => import('./VocabularyModal'));
+const SrsReviewModal = React.lazy(() => import('./SrsReviewModal'));
 import { tokenizeText } from '../utils/japanese';
 import { t } from '../utils/i18n';
 import { googleDriveService } from '../utils/googleDriveService';
@@ -1685,7 +1686,9 @@ export default function Library({
   };
 
   const [ankiConnectionStatus, setAnkiConnectionStatus] = useState(null); // 'connected' | 'error' | 'testing' | null
-  const [isAnkiConfigOpen, setIsAnkiConfigOpen] = useState(false);
+  const [isVocabModalOpen, setIsVocabModalOpen] = useState(false);
+  const [isSrsReviewOpen, setIsSrsReviewOpen] = useState(false);
+  const [srsUpdateTrigger, setSrsUpdateTrigger] = useState(0);
 
   const testAnkiConnection = async () => {
     setAnkiConnectionStatus('testing');
@@ -1944,6 +1947,18 @@ export default function Library({
   const learningWordsCount = Object.values(localWordStatuses).filter(s => s === 'learning').length;
   const newWordsCount = Object.values(localWordStatuses).filter(s => s === 'new').length;
   const totalWords = knownWordsCount + learningWordsCount + newWordsCount;
+
+  const dueCount = useMemo(() => {
+    const statuses = db.getWordStatuses();
+    const srsData = db.getSrsData();
+    const now = new Date();
+    const learningWords = Object.keys(statuses).filter(w => statuses[w] === 'learning');
+    return learningWords.filter(word => {
+      const card = srsData[word];
+      if (!card || !card.dueDate) return true;
+      return new Date(card.dueDate) <= now;
+    }).length;
+  }, [localWordStatuses, srsUpdateTrigger]);
 
   // Calculate percentages for vocabulary chart
   const knownPercent = totalWords > 0 ? Math.round((knownWordsCount / totalWords) * 100) : 0;
@@ -3613,7 +3628,7 @@ export default function Library({
                   <Plug size={13} style={{ color: 'rgba(255,255,255,0.4)' }} /> <span>{lang === 'es' ? 'Integración' : 'Integration'}</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
-                  {renderSidebarBtn('sec-anki', lang === 'es' ? 'Integración con Anki' : 'Anki Integration', Layers, 'anki integration connect card mapping local')}
+                  {renderSidebarBtn('sec-vocab-manage', lang === 'es' ? 'Gestión de Vocabulario y Anki' : 'Vocabulary & Anki Management', Database, 'vocabulario vocabulary import export jpdb anki file frequency')}
                   {renderSidebarBtn('sec-cloud-sync', lang === 'es' ? 'Sincronización Cloud' : 'Cloud Sync', Cloud, 'sync merge sincronizar combinar conflicto storage sync settings gdrive drive cloud cloud-sync')}
                 </div>
               </div>
@@ -3817,25 +3832,7 @@ export default function Library({
             </div>
           )}
 
-          {/* Card: Anki Integration */}
-          {matchesSearch('anki integration connect card mapping local') && (settingsSearchQuery || activeSettingsSection === 'sec-anki') && (
-            <div id="sec-anki" className="settings-section-card">
-              <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Layers size={18} style={{ color: 'var(--primary)' }} />
-                <span>{lang === 'es' ? 'Integración con Anki' : 'Anki Integration'}</span>
-              </h3>
-              <p className="settings-card-desc">{lang === 'es' ? 'Conéctate a tu Anki local para añadir tarjetas directamente desde las oraciones y palabras buscadas.' : 'Connect to your local Anki instance to mine flashcards directly from sentences and dictionary words.'}</p>
-              
-              <button 
-                type="button"
-                className="reset-filter-btn"
-                style={{ marginTop: '12px', display: 'inline-flex', alignItems: 'center', gap: '8px' }}
-                onClick={() => setIsAnkiConfigOpen(true)}
-              >
-                <Settings size={14} /> <span>{lang === 'es' ? 'Abrir Configuración de Anki' : 'Open Anki Settings'}</span>
-              </button>
-            </div>
-          )}
+
 
           {/* Card: Estadísticas (Yatsu style) */}
           {matchesSearch('stats config estadisticas tracking delete books annotations enabled') && (settingsSearchQuery || activeSettingsSection === 'sec-stats') && (
@@ -4049,6 +4046,29 @@ export default function Library({
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Card: Vocabulary Management */}
+          {matchesSearch('vocabulario vocabulary import export jpdb anki file frequency') && (settingsSearchQuery || activeSettingsSection === 'sec-vocab-manage') && (
+            <div id="sec-vocab-manage" className="settings-section-card">
+              <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Database size={18} style={{ color: 'var(--primary)' }} />
+                <span>{lang === 'es' ? 'Gestión de Vocabulario' : 'Vocabulary Management'}</span>
+              </h3>
+              <p className="settings-card-desc">
+                {lang === 'es'
+                  ? 'Importa, exporta y gestiona tu base de datos de palabras conocidas y en estudio. Sincroniza desde AnkiConnect, JPDB, archivos de texto o listas de frecuencia.'
+                  : 'Import, export, and manage your known and learning word database. Sync from AnkiConnect, JPDB, text files, or frequency lists.'}
+              </p>
+              <button 
+                type="button" 
+                className="reset-filter-btn"
+                onClick={() => setIsVocabModalOpen(true)}
+                style={{ background: 'rgba(255, 224, 0, 0.06)', borderColor: 'var(--primary)', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: '8px', marginTop: '12px' }}
+              >
+                <Database size={15} /> {lang === 'es' ? 'Abrir Panel de Vocabulario' : 'Open Vocabulary Panel'}
+              </button>
             </div>
           )}
 
@@ -4288,6 +4308,51 @@ export default function Library({
               <span style={{ color: 'var(--text-muted)', marginRight: '4px' }}>{totalIgnored}</span>
               {lang === 'es' ? 'ignorada(s)' : 'ignored'}
             </span>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: '16px', gap: '10px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="vocab-action-btn"
+              onClick={() => setIsVocabModalOpen(true)}
+              style={{ background: 'rgba(255, 224, 0, 0.08)', borderColor: 'var(--primary)', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 650, padding: '6px 14px', borderRadius: '8px' }}
+            >
+              <Database size={14} /> <span>{lang === 'es' ? 'Importar / Sincronizar' : 'Import / Sync'}</span>
+            </button>
+
+            {/* SRS Review Button */}
+            <button
+              type="button"
+              className="vocab-action-btn"
+              onClick={() => { setIsSrsReviewOpen(true); setSrsUpdateTrigger(t => t + 1); }}
+              style={{
+                background: dueCount > 0 ? 'rgba(168, 85, 247, 0.08)' : 'rgba(255,255,255,0.02)',
+                borderColor: dueCount > 0 ? 'rgba(168, 85, 247, 0.6)' : 'rgba(255,255,255,0.08)',
+                color: dueCount > 0 ? '#c084fc' : 'var(--text-muted)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                fontWeight: 650,
+                padding: '6px 14px',
+                borderRadius: '8px',
+                position: 'relative'
+              }}
+            >
+              <Zap size={14} />
+              <span>{lang === 'es' ? 'Repasar SRS' : 'Review SRS'}</span>
+              {dueCount > 0 && (
+                <span style={{
+                  background: '#a855f7',
+                  color: '#fff',
+                  borderRadius: '10px',
+                  fontSize: '0.65rem',
+                  fontWeight: 800,
+                  padding: '1px 6px',
+                  marginLeft: '2px'
+                }}>{dueCount}</span>
+              )}
+            </button>
           </div>
         </div>
 
@@ -5435,7 +5500,7 @@ export default function Library({
       )}
 
       {/* Display Settings Drawer (Yatsu style) */}
-      <aside className={`display-settings-drawer ${isDisplaySettingsOpen ? 'open' : ''}`} style={{ width: '310px' }}>
+      <aside className={`display-settings-drawer ${isDisplaySettingsOpen ? 'open' : ''}`}>
         <div className="drawer-header">
           <span className="drawer-title" style={{ color: '#fff', fontSize: '0.9rem', textTransform: 'none', fontWeight: 650, letterSpacing: 'normal', textShadow: 'none' }}>{lang === 'es' ? 'Ajustes de visualización' : 'Library display settings'}</span>
           <button 
@@ -6207,8 +6272,11 @@ export default function Library({
       )}
 
       <React.Suspense fallback={null}>
-        {isAnkiConfigOpen && (
-          <AnkiConfigModal isOpen={isAnkiConfigOpen} onClose={() => setIsAnkiConfigOpen(false)} />
+        {isVocabModalOpen && (
+          <VocabularyModal isOpen={isVocabModalOpen} onClose={() => setIsVocabModalOpen(false)} />
+        )}
+        {isSrsReviewOpen && (
+          <SrsReviewModal isOpen={isSrsReviewOpen} onClose={() => { setIsSrsReviewOpen(false); setSrsUpdateTrigger(t => t + 1); }} />
         )}
       </React.Suspense>
 

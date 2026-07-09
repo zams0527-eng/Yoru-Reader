@@ -1029,3 +1029,32 @@ export async function migrateEnglishDictName() {
     console.warn("Migration of English dictionary name failed:", err);
   }
 }
+
+export async function getTopWordsFromFrequencyDict(dictName, maxRank) {
+  const db = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_FREQS, 'readonly');
+    const store = tx.objectStore(STORE_FREQS);
+    const index = store.index('dictionary');
+    const request = index.openCursor(IDBKeyRange.only(dictName));
+    const words = new Set();
+    
+    request.onsuccess = (e) => {
+      const cursor = e.target.result;
+      if (cursor) {
+        const val = cursor.value;
+        const rank = Number(val.value);
+        if (!isNaN(rank) && rank > 0 && rank <= maxRank) {
+          if (val.term) words.add(val.term);
+        }
+        cursor.continue();
+      } else {
+        resolve([...words]);
+      }
+    };
+    
+    request.onerror = (e) => {
+      reject(e.target.error || new Error('Failed to query frequencies'));
+    };
+  });
+}
