@@ -568,22 +568,27 @@ export default function Reader({
       }
     };
 
-    const getFuriganaHTML = (token) => {
+    const getAnkiFurigana = (token) => {
       if (!token) return '';
       if (!token.alignment) return token.surface || '';
-      return token.alignment.map(part => {
+      
+      let result = '';
+      token.alignment.forEach((part) => {
         if (part.type === 'kanji') {
-          return `<ruby>${part.text}<rt>${part.ruby}</rt></ruby>`;
+          result += ` ${part.text}[${part.ruby}]`;
+        } else {
+          result += part.text;
         }
-        return part.text;
-      }).join('');
+      });
+      return result.trim();
     };
 
-    const getSentenceFuriganaHTML = (sentenceTokens) => {
+    const getSentenceAnkiFurigana = (sentenceTokens) => {
       return sentenceTokens.map(tok => {
         if (tok.isIndentSpace) return '　';
-        if (tok.isParagraphBreak || tok.isLineBreak) return '<br>';
-        return getFuriganaHTML(tok);
+        if (tok.isParagraphBreak || tok.isLineBreak) return ' ';
+        if (!tok.isWord) return tok.surface || '';
+        return getAnkiFurigana(tok);
       }).join('');
     };
 
@@ -645,8 +650,24 @@ export default function Reader({
     }
 
     const meaning = dictEntry && dictEntry.definitions ? dictEntry.definitions.join('<br>') : '';
-    const wordFurigana = getFuriganaHTML(selectedWord);
-    const sentenceFurigana = getSentenceFuriganaHTML(sentenceTokens);
+    
+    const isBilingual = (defText) => {
+      const SPA_DIACRITICS = /[áéíóúüñÁÉÍÓÚÜÑ¿¡]/u;
+      const SPA_WORDS = /\b(de|del|el|la|los|las|en|un|una|unos|unas|con|por|para|que|es|son|su|sus|se|al|como|más|no|si|lo|le|les|muy|también|pero|cuando|este|esta|estos|estas|fue|ser|hay|ya|porque|aunque|donde|mientras|entre)\b/i;
+      const ENG_WORDS = /\b(the|of|to|and|a|in|is|for|on|with|as|by|at|an|be|this|that|from|it|are|or|if|but|after|before|during|while|have|has|had|not|also|can|will|its|was|were|been|one|two|three|four|five|used|made|when|which|who|what|where|how)\b/i;
+      return SPA_DIACRITICS.test(defText) || SPA_WORDS.test(defText) || ENG_WORDS.test(defText);
+    };
+
+    const allDefs = dictEntry && dictEntry.definitions ? dictEntry.definitions : [];
+    const bilingualDefs = allDefs.filter(d => isBilingual(d));
+    const monolingualDefs = allDefs.filter(d => !isBilingual(d));
+
+    const meaningBilingual = bilingualDefs.join('<br>') || meaning;
+    const monolingualPrimary = monolingualDefs[0] || '';
+    const monolingualExtra = monolingualDefs.slice(1).join('<br>') || '';
+
+    const wordFurigana = getAnkiFurigana(selectedWord);
+    const sentenceFurigana = getSentenceAnkiFurigana(sentenceTokens);
 
     // Dynamic checks
     const fieldsConfigValues = Object.values(fieldsConfig);
@@ -799,7 +820,10 @@ export default function Reader({
         .replaceAll('{pitch-accent-categories}', pitchCategories)
         .replaceAll('{pitch-accent-graphs}', pitchGraphs)
         .replaceAll('{frequency-harmonic-rank}', frequencyRank)
-        .replaceAll('{frequencies}', frequenciesDetails);
+        .replaceAll('{frequencies}', frequenciesDetails)
+        .replaceAll('{bilingual}', meaningBilingual)
+        .replaceAll('{monolingual-primary}', monolingualPrimary)
+        .replaceAll('{monolingual-extra}', monolingualExtra);
       fields[fieldName] = val;
     }
 
