@@ -714,6 +714,7 @@ export default function Reader({
       
       let pitchPositions = '';
       let pitchCategories = '';
+      let pitchGraphs = '';
       if (dictEntry && dictEntry.pitches && dictEntry.pitches.length > 0) {
         pitchPositions = dictEntry.pitches
           .flatMap(pEntry => pEntry.pitches.map(p => p.position))
@@ -730,17 +731,56 @@ export default function Reader({
           }
           return '';
         };
+
+        const getPitchGraphHTML = (r, pos) => {
+          const morae = (r || '').match(/[ぁ-んァ-ン][ゃゅょャュョ]*/g) || [];
+          if (morae.length === 0) return r || '';
+          
+          let html = '<span style="display: inline-flex; padding: 2px 0; font-family: monospace;">';
+          morae.forEach((mora, idx) => {
+            const m = idx + 1;
+            let isHigh = false;
+            let hasDrop = false;
+
+            if (pos === 0) {
+              isHigh = m > 1;
+            } else if (pos === 1) {
+              isHigh = m === 1;
+              hasDrop = m === 1;
+            } else if (pos > 1) {
+              isHigh = m >= 2 && m <= pos;
+              hasDrop = m === pos;
+            }
+
+            const borderTop = isHigh ? '1px solid currentColor' : '1px solid transparent';
+            const borderRight = hasDrop ? '1px solid currentColor' : '1px solid transparent';
+            const paddingRight = hasDrop ? '1px' : '0px';
+
+            html += `<span style="border-top: ${borderTop}; border-right: ${borderRight}; padding-right: ${paddingRight}; line-height: 1.2; display: inline-block;">${mora}</span>`;
+          });
+          html += '</span>';
+          return html;
+        };
         
         pitchCategories = dictEntry.pitches
           .flatMap(pEntry => pEntry.pitches.map(p => getPitchCategoryName(p.position, pEntry.reading || selectedWord.reading)))
           .filter(Boolean)
           .join(', ');
+
+        pitchGraphs = dictEntry.pitches
+          .flatMap(pEntry => pEntry.pitches.map(p => getPitchGraphHTML(pEntry.reading || selectedWord.reading || selectedWord.surface, p.position)))
+          .join('<br>');
       }
 
       let frequencyRank = '';
+      let frequenciesDetails = '';
       if (dictEntry && dictEntry.frequencies && dictEntry.frequencies.length > 0) {
         frequencyRank = dictEntry.frequencies
           .map(f => f.displayValue || String(f.value))
+          .join(', ');
+
+        frequenciesDetails = dictEntry.frequencies
+          .map(f => `${f.dictionary}: ${f.displayValue || f.value}`)
           .join(', ');
       }
 
@@ -757,7 +797,9 @@ export default function Reader({
         .replaceAll('{tags}', rawTags)
         .replaceAll('{pitch-accent-positions}', pitchPositions)
         .replaceAll('{pitch-accent-categories}', pitchCategories)
-        .replaceAll('{frequency-harmonic-rank}', frequencyRank);
+        .replaceAll('{pitch-accent-graphs}', pitchGraphs)
+        .replaceAll('{frequency-harmonic-rank}', frequencyRank)
+        .replaceAll('{frequencies}', frequenciesDetails);
       fields[fieldName] = val;
     }
 

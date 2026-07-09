@@ -50,7 +50,8 @@ const AVAILABLE_TOKENS = [
   '', '{expression}', '{furigana}', '{reading}', '{audio}',
   '{popup-selection-text}', '{sentence}', '{sentence-furigana}',
   '{screenshot}', '{meaning}', '{tags}',
-  '{pitch-accent-positions}', '{pitch-accent-categories}', '{frequency-harmonic-rank}'
+  '{pitch-accent-positions}', '{pitch-accent-categories}', '{pitch-accent-graphs}',
+  '{frequency-harmonic-rank}', '{frequencies}'
 ];
 
 // ── Anki Cards sub-modal ──────────────────────────────────────────────────────
@@ -110,9 +111,11 @@ function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableMo
                 else if (lower.includes('sentence') || lower.includes('frase') || lower.includes('oracion') || lower.includes('contexto')) defaultVal = '{sentence}';
                 else if (lower.includes('screenshot') || lower.includes('picture') || lower.includes('imagen') || lower === 'pic') defaultVal = '{screenshot}';
                 else if (lower.includes('meaning') || lower.includes('definition') || lower.includes('significado') || lower.includes('definicion')) defaultVal = '{meaning}';
+                else if (lower.includes('pitchgraph') || lower.includes('pitchgraphs') || lower === 'pitchgraph') defaultVal = '{pitch-accent-graphs}';
                 else if (lower.includes('pitchposition') || lower.includes('accentposition') || lower === 'pitch' || lower === 'pitchposition') defaultVal = '{pitch-accent-positions}';
-                else if (lower.includes('pitchcategory') || lower.includes('pitchcategories') || lower.includes('tono') || lower === 'pitchcategories') defaultVal = '{pitch-accent-categories}';
-                else if (lower.includes('frequency') || lower.includes('frecuencia') || lower === 'freq' || lower === 'freqsort') defaultVal = '{frequency-harmonic-rank}';
+                else if (lower.includes('pitchcategory') || lower.includes('pitchcategories') || lower.includes('tono') || lower === 'pitchcategories' || lower === 'pitchpattern') defaultVal = '{pitch-accent-categories}';
+                else if (lower === 'frequencies') defaultVal = '{frequencies}';
+                else if (lower.includes('frequency') || lower.includes('frecuencia') || lower === 'freq' || lower === 'freqsort' || lower === 'frequenciessorted') defaultVal = '{frequency-harmonic-rank}';
                 
                 updatedFields[fName] = defaultVal;
                 changed = true;
