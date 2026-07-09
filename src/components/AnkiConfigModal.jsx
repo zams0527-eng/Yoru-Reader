@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, ChevronRight, Layers, Download, AlertTriangle } from 'lucide-react';
 import { db } from '../utils/db';
 import { tokenizeText } from '../utils/japanese';
+import { useConfirm } from './ConfirmModal';
 const DEFAULT_ANKI_SETTINGS = {
   host: 'http://127.0.0.1:8765',
   enabled: true,
@@ -47,13 +48,155 @@ const DEFAULT_ANKI_SETTINGS = {
 };
 
 const AVAILABLE_TOKENS = [
-  '', '{expression}', '{furigana}', '{reading}', '{audio}',
-  '{popup-selection-text}', '{sentence}', '{sentence-furigana}',
-  '{screenshot}', '{meaning}', '{tags}',
-  '{pitch-accent-positions}', '{pitch-accent-categories}', '{pitch-accent-graphs}',
-  '{frequency-harmonic-rank}', '{frequencies}',
-  '{bilingual}', '{monolingual-primary}', '{monolingual-extra}'
+  '', 
+  '{expression}', 
+  '{furigana}', 
+  '{furigana-plain}',
+  '{reading}', 
+  '{audio}', 
+  '{popup-selection-text}', 
+  '{sentence}', 
+  '{sentence-furigana}', 
+  '{sentence-furigana-plain}',
+  '{sentence-audio}',
+  '{sentence-cloze}',
+  '{screenshot}', 
+  '{meaning}', 
+  '{glossary}',
+  '{glossary-brief}',
+  '{glossary-first}',
+  '{glossary-first-brief}',
+  '{glossary-no-dictionary}',
+  '{glossary-plain}',
+  '{glossary-plain-no-dictionary}',
+  '{tags}', 
+  '{pitch-accent-positions}', 
+  '{pitch-accent-categories}', 
+  '{pitch-accent-graphs}', 
+  '{pitch-accent-graphs-jj}',
+  '{pitch-accents}',
+  '{frequency-harmonic-rank}', 
+  '{frequencies}', 
+  '{single-frequency-number-bccwj}',
+  '{single-frequency-number-jiten-anime}',
+  '{single-frequency-number-jpdb}',
+  '{single-frequency-number-vn-freq}',
+  '{cloze-prefix}',
+  '{cloze-body}',
+  '{cloze-body-kana}',
+  '{cloze-suffix}',
+  '{document-title}',
+  '{search-query}',
+  '{part-of-speech}',
+  '{bilingual}', 
+  '{monolingual-primary}', 
+  '{monolingual-extra}',
+  '{clipboard-text}',
+  '{clipboard-image}',
+  '{url}',
+  '{url-plain}'
 ];
+
+const getAutoMappedToken = (fName) => {
+  const lower = fName.toLowerCase().replace(/[-_]/g, '');
+  
+  // 1. Furigana
+  if (lower.includes('furigana')) {
+    if (lower.includes('sentence') || lower.includes('frase') || lower.includes('oracion') || lower.includes('contexto') || lower.includes('sent')) {
+      if (lower.includes('plain')) return '{sentence-furigana-plain}';
+      return '{sentence-furigana}';
+    }
+    if (lower.includes('plain')) return '{furigana-plain}';
+    return '{furigana}';
+  }
+  
+  // 2. Audio
+  if (lower.includes('audio')) {
+    if (lower.includes('sentence') || lower.includes('frase') || lower.includes('oracion') || lower.includes('contexto') || lower.includes('sent')) {
+      return '{sentence-audio}';
+    }
+    return '{audio}';
+  }
+  
+  // 3. Reading / Kana
+  if (lower.includes('reading') || lower.includes('lectura') || lower === 'yomi' || lower.includes('kana') || lower.includes('pronunciation')) {
+    if (lower.includes('sentence') || lower.includes('frase') || lower.includes('oracion') || lower.includes('contexto') || lower.includes('sent')) {
+      return '{sentence-furigana-plain}';
+    }
+    return '{reading}';
+  }
+  
+  // 4. Cloze
+  if (lower.includes('cloze') || lower.includes('clozed')) {
+    return '{sentence-cloze}';
+  }
+  
+  // 5. English / Meaning / Glossary / Definition / Bilingual / Monolingual
+  if (lower.includes('english') || lower.includes('meaning') || lower.includes('definition') || lower.includes('significado') || lower.includes('definicion') || lower.includes('glossary') || lower.includes('notes') || lower === 'translation') {
+    if (lower.includes('bilingual') || lower.includes('bilingue')) {
+      return '{bilingual}';
+    }
+    return '{meaning}';
+  }
+  
+  if (lower.includes('bilingual') || lower.includes('bilingue')) {
+    return '{bilingual}';
+  }
+  
+  if (lower.includes('monolingual') || lower.includes('monolingue')) {
+    if (lower.includes('extra') || lower.includes('secundario') || lower.includes('add') || lower.includes('more')) {
+      return '{monolingual-extra}';
+    }
+    return '{monolingual-primary}';
+  }
+  
+  // 6. Kanji / Expression / Word / Vocab
+  if (lower.includes('kanji') || lower.includes('expression') || lower.includes('word') || lower.includes('vocablo') || lower.includes('palabra') || lower.includes('vocab') || lower.includes('term')) {
+    if (lower.includes('sentence') || lower.includes('frase') || lower.includes('oracion') || lower.includes('contexto') || lower.includes('sent')) {
+      return '{sentence}';
+    }
+    return '{expression}';
+  }
+  
+  // 7. Image / Screenshot
+  if (lower.includes('screenshot') || lower.includes('picture') || lower.includes('imagen') || lower === 'pic' || lower.includes('image') || lower.includes('img') || lower.includes('foto')) {
+    return '{screenshot}';
+  }
+  
+  // 8. Part of Speech / POS
+  if (lower.includes('partofspeech') || lower === 'pos' || lower.includes('category') || lower === 'clase') {
+    return '{part-of-speech}';
+  }
+  
+  // 9. Pitch Accent
+  if (lower.includes('pitch')) {
+    if (lower.includes('num') || lower.includes('pos') || lower.includes('position') || lower.includes('acc') || lower.includes('accent')) {
+      return '{pitch-accent-positions}';
+    }
+    if (lower.includes('graph') || lower.includes('draw') || lower.includes('line') || lower.includes('visual')) {
+      return '{pitch-accent-graphs}';
+    }
+    if (lower.includes('category') || lower.includes('cat') || lower.includes('pattern') || lower.includes('type') || lower.includes('clase') || lower.includes('estilo')) {
+      return '{pitch-accent-categories}';
+    }
+    return '{pitch-accent-graphs}';
+  }
+  
+  // 10. Frequencies
+  if (lower.includes('frequency') || lower.includes('frecuencia') || lower === 'freq' || lower.includes('frequencies')) {
+    if (lower.includes('sorted') || lower.includes('rank') || lower.includes('harmonic') || lower.includes('best')) {
+      return '{frequency-harmonic-rank}';
+    }
+    return '{frequencies}';
+  }
+  
+  // 11. Sentence general fallback
+  if (lower.includes('sentence') || lower.includes('frase') || lower.includes('oracion') || lower.includes('contexto') || lower === 'sent') {
+    return '{sentence}';
+  }
+  
+  return '';
+};
 
 // ── Anki Cards sub-modal ──────────────────────────────────────────────────────
 function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableModels, lang }) {
@@ -74,6 +217,23 @@ function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableMo
         fields: { ...s[activeTab].fields, [fieldName]: token }
       }
     }));
+
+  const handleAutoMapFields = () => {
+    if (!modelFields || modelFields.length === 0) return;
+    setLocal(s => {
+      const updatedFields = {};
+      modelFields.forEach(fName => {
+        updatedFields[fName] = getAutoMappedToken(fName);
+      });
+      return {
+        ...s,
+        [activeTab]: {
+          ...s[activeTab],
+          fields: updatedFields
+        }
+      };
+    });
+  };
 
   useEffect(() => {
     let active = true;
@@ -98,30 +258,22 @@ function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableMo
             const currentFields = s[activeTab]?.fields || {};
             const updatedFields = {};
             let changed = false;
-            
             data.result.forEach(fName => {
               if (currentFields[fName] !== undefined) {
-                updatedFields[fName] = currentFields[fName];
-              } else {
-                let defaultVal = '';
                 const lower = fName.toLowerCase();
-                if (lower === 'expression' || lower === 'word' || lower === 'vocablo' || lower === 'palabra') defaultVal = '{expression}';
-                else if (lower.includes('reading') || lower.includes('lectura') || lower === 'yomi') defaultVal = '{reading}';
-                else if (lower.includes('furigana')) defaultVal = '{furigana}';
-                else if (lower.includes('audio')) defaultVal = '{audio}';
-                else if (lower.includes('sentence') || lower.includes('frase') || lower.includes('oracion') || lower.includes('contexto')) defaultVal = '{sentence}';
-                else if (lower.includes('screenshot') || lower.includes('picture') || lower.includes('imagen') || lower === 'pic') defaultVal = '{screenshot}';
-                else if (lower.includes('meaning') || lower.includes('definition') || lower.includes('significado') || lower.includes('definicion')) defaultVal = '{meaning}';
-                else if (lower === 'bilingual') defaultVal = '{bilingual}';
-                else if (lower.includes('monolingualprimary') || lower.includes('monolingualprimaryfurigana')) defaultVal = '{monolingual-primary}';
-                else if (lower.includes('monolingualextra') || lower.includes('monolingualextrafurigana')) defaultVal = '{monolingual-extra}';
-                else if (lower.includes('pitchgraph') || lower.includes('pitchgraphs') || lower === 'pitchgraph') defaultVal = '{pitch-accent-graphs}';
-                else if (lower.includes('pitchposition') || lower.includes('accentposition') || lower === 'pitch' || lower === 'pitchposition') defaultVal = '{pitch-accent-positions}';
-                else if (lower.includes('pitchcategory') || lower.includes('pitchcategories') || lower.includes('tono') || lower === 'pitchcategories' || lower === 'pitchpattern') defaultVal = '{pitch-accent-categories}';
-                else if (lower === 'frequencies') defaultVal = '{frequencies}';
-                else if (lower.includes('frequency') || lower.includes('frecuencia') || lower === 'freq' || lower === 'freqsort' || lower === 'frequenciessorted') defaultVal = '{frequency-harmonic-rank}';
-                
-                updatedFields[fName] = defaultVal;
+                const isSentenceFurigana = (lower.includes('sentence') || lower.includes('frase') || lower.includes('oracion') || lower.includes('contexto')) && lower.includes('furigana');
+                const isSentenceAudio = (lower.includes('sentence') || lower.includes('frase') || lower.includes('oracion') || lower.includes('contexto')) && lower.includes('audio');
+                if (isSentenceFurigana && currentFields[fName] === '{furigana}') {
+                  updatedFields[fName] = '{sentence-furigana}';
+                  changed = true;
+                } else if (isSentenceAudio && currentFields[fName] === '{audio}') {
+                  updatedFields[fName] = '{sentence-audio}';
+                  changed = true;
+                } else {
+                  updatedFields[fName] = currentFields[fName];
+                }
+              } else {
+                updatedFields[fName] = getAutoMappedToken(fName);
                 changed = true;
               }
             });
@@ -210,6 +362,46 @@ function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableMo
           {/* Fields divider */}
           <div className="yomitan-fields-divider" />
 
+          {/* Auto-map button positioned right above Fields list */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '14px', marginTop: '4px' }}>
+            <button
+              type="button"
+              className="yomitan-cards-btn-automap"
+              onClick={handleAutoMapFields}
+              style={{
+                background: 'linear-gradient(135deg, var(--primary, #FFE000) 0%, #ff8c00 100%)',
+                color: '#000',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '8px 16px',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 4px 14px rgba(255, 224, 0, 0.25)',
+                letterSpacing: '0.02em'
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.filter = 'brightness(1.15)';
+                e.currentTarget.style.transform = 'translateY(-1.5px)';
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(255, 224, 0, 0.4)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.filter = 'none';
+                e.currentTarget.style.transform = 'none';
+                e.currentTarget.style.boxShadow = '0 4px 14px rgba(255, 224, 0, 0.25)';
+              }}
+              onMouseDown={e => {
+                e.currentTarget.style.transform = 'translateY(0.5px)';
+              }}
+            >
+              <span>✨ {lang === 'es' ? 'Auto-mapear campos' : 'Auto-map fields'}</span>
+            </button>
+          </div>
+
           <div className="yomitan-fields-header">
             <span>{lang === 'es' ? 'Campo' : 'Field'}</span>
             <span>{lang === 'es' ? 'Valor' : 'Value'}</span>
@@ -255,6 +447,8 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
     const saved = localStorage.getItem('anki_settings_v2');
     return saved ? { ...DEFAULT_ANKI_SETTINGS, ...JSON.parse(saved) } : DEFAULT_ANKI_SETTINGS;
   });
+
+  const { showConfirm, confirmModal } = useConfirm();
   const lang = db.getSettings().appLanguage || 'es';
 
   const [connectionStatus, setConnectionStatus] = useState(null); // null | 'connected' | 'error' | 'testing'
@@ -368,7 +562,15 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
       }
       
       if (!cardsData.result || cardsData.result.length === 0) {
-        alert(lang === 'es' ? `No se encontraron tarjetas en estudio ni maduras en el mazo "${deck}". Asegúrate de haber comenzado a estudiar este mazo en tu Anki.` : `No learning or mature cards were found in the deck "${deck}". Make sure you have started studying this deck in your Anki.`);
+        await showConfirm({
+          title: lang === 'es' ? 'Sin tarjetas' : 'No cards found',
+          message: lang === 'es'
+            ? `No se encontraron tarjetas en estudio ni maduras en el mazo "${deck}". Asegúrate de haber comenzado a estudiar este mazo en tu Anki.`
+            : `No learning or mature cards were found in the deck "${deck}". Make sure you have started studying this deck in your Anki.`,
+          type: 'warning',
+          confirmText: lang === 'es' ? 'Entendido' : 'OK',
+          cancelText: '',
+        });
         return;
       }
       
@@ -382,7 +584,13 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
       });
       const infoData = await infoRes.json();
       if (!infoData.result) {
-        alert(lang === 'es' ? 'Error al recuperar información de las tarjetas.' : 'Failed to retrieve card information.');
+        await showConfirm({
+          title: lang === 'es' ? 'Error de Anki' : 'Anki Error',
+          message: lang === 'es' ? 'Error al recuperar información de las tarjetas.' : 'Failed to retrieve card information.',
+          type: 'warning',
+          confirmText: lang === 'es' ? 'Entendido' : 'OK',
+          cancelText: '',
+        });
         return;
       }
       
@@ -437,8 +645,16 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
       }
       
       if (words.length === 0) {
-         alert(lang === 'es' ? 'No se pudieron extraer palabras del campo "' + wordField + '".' : 'Could not extract words from field "' + wordField + '".');
-         return;
+        await showConfirm({
+          title: lang === 'es' ? 'Extracción fallida' : 'Extraction failed',
+          message: lang === 'es'
+            ? 'No se pudieron extraer palabras del campo "' + wordField + '".'
+            : 'Could not extract words from field "' + wordField + '".',
+          type: 'warning',
+          confirmText: lang === 'es' ? 'Entendido' : 'OK',
+          cancelText: '',
+        });
+        return;
       }
       
       const confirmMessage = lang === 'es'
@@ -449,19 +665,38 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
             ? `No mature cards (interval ≥ 21 days) were found in "${deck}". However, ${words.length} learning/review cards were found. Do you want to import them as "Known" in Yoru Reader?`
             : `Found ${words.length} mature words in Anki. Do you want to import them as "Known" in Yoru Reader?`);
 
-      if (confirm(confirmMessage)) {
+      const ok = await showConfirm({
+        title: lang === 'es' ? '¿Sincronizar palabras?' : 'Sync words?',
+        message: confirmMessage,
+        type: 'info',
+        confirmText: lang === 'es' ? 'Importar' : 'Import',
+      });
+
+      if (ok) {
         const currentStatuses = db.getWordStatuses();
         const updated = { ...currentStatuses };
         words.forEach(w => {
           updated[w] = 'known';
         });
         db.saveWordStatuses(updated);
-        alert(lang === 'es' ? `¡Importadas ${words.length} palabras con éxito! Reiniciando para actualizar...` : `Successfully imported ${words.length} words! Restarting to update...`);
+        await showConfirm({
+          title: lang === 'es' ? 'Sincronización completa' : 'Sync complete',
+          message: lang === 'es' ? `¡Importadas ${words.length} palabras con éxito! Reiniciando para actualizar...` : `Successfully imported ${words.length} words! Restarting to update...`,
+          type: 'info',
+          confirmText: lang === 'es' ? 'Entendido' : 'OK',
+          cancelText: '',
+        });
         window.location.reload();
       }
     } catch (err) {
       console.error(err);
-      alert((lang === 'es' ? 'Error durante la sincronización: ' : 'Error during synchronization: ') + err.message);
+      await showConfirm({
+        title: lang === 'es' ? 'Error' : 'Error',
+        message: (lang === 'es' ? 'Error durante la sincronización: ' : 'Error during synchronization: ') + err.message,
+        type: 'warning',
+        confirmText: lang === 'es' ? 'Entendido' : 'OK',
+        cancelText: '',
+      });
     }
   };
 
@@ -642,11 +877,11 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
               {/* Checkbox Auto-Mature */}
               <div className="yomitan-anki-row" style={{ padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
                 <div className="yomitan-anki-row-left" style={{ paddingRight: '12px' }}>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#fff' }}>{lang === 'es' ? 'Marcar como madura en Anki' : 'Mark as mature in Anki'}</div>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#fff' }}>{lang === 'es' ? 'Marcar como madura / crear en Anki' : 'Mark as mature / create in Anki'}</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px', lineHeight: '1.4' }}>
                     {lang === 'es'
-                      ? 'Al marcar una palabra como "Conocido" en Yoru Reader, se buscará su tarjeta en Anki y se configurará como madura automáticamente (intervalo de 30 días).'
-                      : 'When marking a word as "Known" in Yoru Reader, it will search for its card in Anki and automatically set it to mature (30-day interval).'}
+                      ? 'Al marcar una palabra como "Conocido" en Yoru Reader, se buscará su tarjeta en Anki. Si existe, la madurará automáticamente (intervalo 30 días). Si no existe, creará una tarjeta básica con la palabra y la marcará como madura.'
+                      : 'When marking a word as "Known" in Yoru Reader, it will search for its card in Anki. If found, it will mature it automatically (30-day interval). If not found, it will create a basic card with the word and mark it as mature.'}
                   </div>
                 </div>
                 <label className="migaku-switch" style={{ flexShrink: 0 }}>
@@ -722,6 +957,7 @@ export default function AnkiConfigModal({ isOpen, onClose }) {
           onClose={() => setIsCardsModalOpen(false)}
         />
       )}
+      {confirmModal}
     </>
   );
 }

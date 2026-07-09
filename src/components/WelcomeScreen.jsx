@@ -7,6 +7,7 @@ import { googleDriveService } from '../utils/googleDriveService';
 import { Browser } from '@capacitor/browser';
 import { App as CapacitorApp } from '@capacitor/app';
 import { importAllDictionaryData } from '../utils/yomitanDB';
+import { useConfirm } from './ConfirmModal';
 
 const PRESET_AVATARS = [
   { avatar: 'linear-gradient(135deg, #ff5e62 0%, #ff9966 100%)', emoji: '🦊' }
@@ -19,6 +20,20 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
   const [customAvatarUrl, setCustomAvatarUrl] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const fileInputRef = useRef(null);
+
+  const { showConfirm, confirmModal } = useConfirm();
+
+  // Custom themed toast notifications
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const toastTimerRef = useRef(null);
+
+  const showToast = React.useCallback((message, type = 'success') => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ show: true, message, type });
+    toastTimerRef.current = setTimeout(() => {
+      setToast(prev => ({ ...prev, show: false }));
+    }, 4000);
+  }, []);
 
   const handleImportLocalBackup = async (e) => {
     const file = e.target.files[0];
@@ -34,7 +49,7 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
         zip = await JSZip.loadAsync(file);
         const metaFile = zip.file('metadata.json');
         if (!metaFile) {
-          alert(lang === 'es' ? 'El archivo zip no contiene metadatos válidos de Yoru Reader.' : 'The zip file does not contain valid Yoru Reader metadata.');
+          showToast(lang === 'es' ? 'El archivo zip no contiene metadatos válidos de Yoru Reader.' : 'The zip file does not contain valid Yoru Reader metadata.', 'error');
           return;
         }
         const metaStr = await metaFile.async('text');
@@ -51,11 +66,26 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
       }
 
       if (!importData.books && !importData.profiles) {
-        alert(lang === 'es' ? 'El archivo no tiene un formato de respaldo válido de Yoru Reader.' : 'The file does not have a valid Yoru Reader backup format.');
+        await showConfirm({
+          title: lang === 'es' ? 'Error de respaldo' : 'Backup error',
+          message: lang === 'es' ? 'El archivo no tiene un formato de respaldo válido de Yoru Reader.' : 'The file does not have a valid Yoru Reader backup format.',
+          type: 'warning',
+          confirmText: lang === 'es' ? 'Entendido' : 'OK',
+          cancelText: '',
+        });
         return;
       }
 
-      if (confirm(lang === 'es' ? 'Al restaurar la copia de seguridad se combinarán o sobrescribirán los datos. ¿Deseas continuar?' : 'Restoring the backup will merge or overwrite current data. Do you want to continue?')) {
+      const ok = await showConfirm({
+        title: lang === 'es' ? '¿Restaurar respaldo?' : 'Restore backup?',
+        message: lang === 'es'
+          ? 'Al restaurar la copia de seguridad se combinarán o sobrescribirán los datos. ¿Deseas continuar?'
+          : 'Restoring the backup will merge or overwrite current data. Do you want to continue?',
+        type: 'warning',
+        confirmText: lang === 'es' ? 'Continuar' : 'Continue',
+      });
+
+      if (ok) {
         
         // 1. Restore active profile ID
         if (importData.activeProfileId) {
@@ -132,12 +162,14 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
           }
         }
 
-        alert(lang === 'es' ? 'Copia de seguridad restaurada con éxito. Reiniciando...' : 'Backup restored successfully. Restarting...');
-        window.location.reload();
+        showToast(lang === 'es' ? '✅ Copia de seguridad restaurada con éxito. Reiniciando...' : '✅ Backup restored successfully. Restarting...', 'success');
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
       }
     } catch (e) {
       console.error(e);
-      alert((lang === 'es' ? 'Error al importar la biblioteca: ' : 'Error importing library: ') + (e.message || String(e)));
+      showToast((lang === 'es' ? 'Error al importar la biblioteca: ' : 'Error importing library: ') + (e.message || String(e)), 'error');
     } finally {
       document.body.style.cursor = 'default';
     }
@@ -174,7 +206,7 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
           clientSecret
         );
         if (!tokens) {
-          alert(lang === 'es' ? 'Error al conectar con Google Drive.' : 'Failed to connect to Google Drive.');
+          showToast(lang === 'es' ? 'Error al conectar con Google Drive.' : 'Failed to connect to Google Drive.', 'error');
           return;
         }
         localStorage.setItem('gdrive_tokens', JSON.stringify(tokens));
@@ -184,16 +216,16 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
           tokens, clientId, 'yoru_reader_full_backup.zip', clientSecret
         );
         if (!zipBlob) {
-          alert(lang === 'es'
+          showToast(lang === 'es'
             ? 'No se encontró ningún archivo de copia de seguridad (yoru_reader_full_backup.zip) en Google Drive.'
-            : 'No backup file (yoru_reader_full_backup.zip) was found in your Google Drive.');
+            : 'No backup file (yoru_reader_full_backup.zip) was found in your Google Drive.', 'error');
           return;
         }
         const fileObj = new File([zipBlob], 'yoru_reader_full_backup.zip', { type: 'application/zip' });
         await handleImportLocalBackup({ target: { files: [fileObj] } });
       } catch (err) {
         console.error(err);
-        alert((lang === 'es' ? 'Error al restaurar desde Drive: ' : 'Error restoring from Drive: ') + err.message);
+        showToast((lang === 'es' ? 'Error al restaurar desde Drive: ' : 'Error restoring from Drive: ') + err.message, 'error');
       } finally {
         setIsSyncing(false);
         document.body.style.cursor = 'default';
@@ -290,7 +322,7 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
       );
 
       if (!tokens) {
-        alert(lang === 'es' ? 'Error al conectar con Google Drive.' : 'Failed to connect to Google Drive.');
+        showToast(lang === 'es' ? 'Error al conectar con Google Drive.' : 'Failed to connect to Google Drive.', 'error');
         return;
       }
 
@@ -309,9 +341,9 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
       );
 
       if (!zipBlob) {
-        alert(lang === 'es'
+        showToast(lang === 'es'
           ? 'No se encontró ningún archivo de copia de seguridad (yoru_reader_full_backup.zip) en Google Drive.'
-          : 'No backup file (yoru_reader_full_backup.zip) was found in your Google Drive.');
+          : 'No backup file (yoru_reader_full_backup.zip) was found in your Google Drive.', 'error');
         return;
       }
 
@@ -321,7 +353,7 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
 
     } catch (e) {
       console.error(e);
-      alert((lang === 'es' ? 'Error al restaurar desde Drive: ' : 'Error restoring from Drive: ') + e.message);
+      showToast((lang === 'es' ? 'Error al restaurar desde Drive: ' : 'Error restoring from Drive: ') + e.message, 'error');
     } finally {
       setIsSyncing(false);
       document.body.style.cursor = 'default';
@@ -337,8 +369,14 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
       setCustomAvatarUrl(event.target.result);
       setSelectedPresetIdx(-1);
     };
-    reader.onerror = () => {
-      alert(t('errorLoadImage', lang));
+    reader.onerror = async () => {
+      await showConfirm({
+        title: lang === 'es' ? 'Error al cargar imagen' : 'Error loading image',
+        message: t('errorLoadImage', lang),
+        type: 'warning',
+        confirmText: lang === 'es' ? 'Entendido' : 'OK',
+        cancelText: '',
+      });
     };
     reader.readAsDataURL(file);
   };
@@ -375,7 +413,11 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
           <Globe size={16} style={{ color: 'rgba(255,255,255,0.6)' }} />
           <select 
             value={lang}
-            onChange={(e) => onSaveSettings({ ...settings, appLanguage: e.target.value })}
+            onChange={(e) => {
+              const selectedLang = e.target.value;
+              localStorage.setItem('app_language', selectedLang);
+              onSaveSettings({ ...settings, appLanguage: selectedLang });
+            }}
             className="migaku-select"
             style={{ width: '130px', fontSize: '0.82rem', padding: '6px 10px', background: '#1c1c20', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', color: '#fff', outline: 'none' }}
           >
@@ -551,6 +593,38 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
           </button>
         </div>
       </div>
+    {/* Custom Toast Notification Styled with App Theme */}
+      {toast.show && (
+        <div className="yoru-toast" style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          background: '#18181b',
+          color: '#ffffff',
+          padding: '10px 16px',
+          borderRadius: '4px',
+          border: toast.type === 'success' ? '1px solid #34d399' : '1px solid #ef4444',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.6)',
+          zIndex: 10000,
+          fontFamily: 'system-ui, sans-serif',
+          fontSize: '0.82rem',
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          animation: 'toastIn 0.2s ease-out forwards'
+        }}>
+          <span style={{ 
+            width: '6px', 
+            height: '6px', 
+            borderRadius: '50%', 
+            background: toast.type === 'success' ? '#34d399' : '#ef4444',
+            display: 'inline-block' 
+          }} />
+          <span>{toast.message}</span>
+        </div>
+      )}
+      {confirmModal}
     </div>
   );
 }

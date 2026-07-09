@@ -9,6 +9,62 @@ const STORE_PITCHES = 'pitches';
 
 let dbInstance = null;
 
+// ─── Session-level in-memory caches ─────────────────────────────────────────
+// Eliminan las 90+ transacciones IDB que ocurrían por cada cambio de página.
+// Se invalidan explícitamente al importar/eliminar diccionarios o cambiar settings.
+const _searchCache = new Map();  // word → searchYomitanDB result
+const _freqCache   = new Map();  // word → getFrequenciesForWord result
+const _pitchCache  = new Map();  // word → getPitchesForWord result
+let _cachedSettings = null;       // { disabledDicts, dictOrder }
+let _cachedInstalledTitles = null; // Set<string>
+
+/**
+ * Invalida todos los caches en memoria.
+ * Debe llamarse al instalar/eliminar un diccionario y al guardar settings.
+ */
+export function clearYomitanCache() {
+  _searchCache.clear();
+  _freqCache.clear();
+  _pitchCache.clear();
+  _cachedSettings = null;
+  _cachedInstalledTitles = null;
+}
+
+/** Lee settings de lectura desde localStorage y los caches para la sesión. */
+function getCachedSettings() {
+  if (_cachedSettings) return _cachedSettings;
+  try {
+    const activeProfile = localStorage.getItem('migaku_reader_active_profile_id') || 'profile-default';
+    const settingsKey = `migaku_reader_settings_${activeProfile}`;
+    const settingsStr = localStorage.getItem(settingsKey) || localStorage.getItem('migaku_reader_settings');
+    if (settingsStr) {
+      const parsed = JSON.parse(settingsStr);
+      _cachedSettings = {
+        disabledDicts: parsed.disabledDictionaries || [],
+        dictOrder: parsed.dictionaryOrder || []
+      };
+    } else {
+      _cachedSettings = { disabledDicts: [], dictOrder: [] };
+    }
+  } catch (_e) {
+    _cachedSettings = { disabledDicts: [], dictOrder: [] };
+  }
+  return _cachedSettings;
+}
+
+/** Consulta los títulos de dicts instalados una sola vez y los caches. */
+async function getCachedInstalledTitles() {
+  if (_cachedInstalledTitles) return _cachedInstalledTitles;
+  const db = await getDB();
+  _cachedInstalledTitles = await new Promise((resolve) => {
+    const tx = db.transaction(STORE_DICTS, 'readonly');
+    const req = tx.objectStore(STORE_DICTS).getAllKeys();
+    req.onsuccess = () => resolve(new Set(req.result));
+    req.onerror = () => resolve(new Set());
+  });
+  return _cachedInstalledTitles;
+}
+
 /**
  * Cierra de forma inmediata la conexión de IndexedDB para liberar memoria.
  */
@@ -194,6 +250,8 @@ export async function cleanOrphanedEntries() {
  * Elimina un diccionario y sus registros asociados de forma ultra-rápida en una sola transacción.
  */
 export async function deleteDictionary(title) {
+  // Invalidar cachés en memoria porque el inventario de dicts cambió
+  clearYomitanCache();
   const db = await getDB();
   
   // 1. Borrar de la tabla de diccionarios
@@ -270,6 +328,8 @@ export async function deleteDictionary(title) {
 export async function importYomitanZip(file, onProgress) {
   let zip = null;
   try {
+    // Invalidar cachés: un nuevo diccionario cambia los resultados de búsqueda
+    clearYomitanCache();
     onProgress('Leyendo archivo .zip...', 0);
     zip = await JSZip.loadAsync(file);
     
@@ -398,23 +458,24 @@ export async function importYomitanZip(file, onProgress) {
                   let value = 0;
                   let displayValue = '';
                   
+                  let freqVal = null;
                   if (metaData.length === 3) {
-                    const freqVal = metaData[2];
-                    if (typeof freqVal === 'object' && freqVal !== null) {
-                      value = freqVal.value || 0;
-                      displayValue = freqVal.displayValue || String(value);
-                    } else {
-                      value = Number(freqVal) || 0;
-                      displayValue = String(freqVal);
-                    }
+                    freqVal = metaData[2];
                   } else if (metaData.length === 4) {
-                    const freqVal = metaData[3];
-                    if (typeof freqVal === 'object' && freqVal !== null) {
-                      value = freqVal.value || 0;
-                      displayValue = freqVal.displayValue || String(value);
+                    freqVal = metaData[3];
+                  }
+
+                  if (freqVal !== null && freqVal !== undefined) {
+                    const targetVal = (typeof freqVal === 'object' && freqVal.frequency !== undefined)
+                      ? freqVal.frequency
+                      : freqVal;
+
+                    if (typeof targetVal === 'object' && targetVal !== null) {
+                      value = targetVal.value || 0;
+                      displayValue = targetVal.displayValue || String(value);
                     } else {
-                      value = Number(freqVal) || 0;
-                      displayValue = String(freqVal);
+                      value = Number(targetVal) || 0;
+                      displayValue = String(targetVal);
                     }
                   }
                   
@@ -459,34 +520,17 @@ export async function importYomitanZip(file, onProgress) {
 }
 
 /**
- * Obtiene las frecuencias de una palabra proyectando únicamente los campos necesarios y cerrando la conexión.
+ * Obtiene las frecuencias de una palabra. Usa caché en memoria para evitar
+ * consultas IDB y relecturas de localStorage repetidas por página.
  */
 export async function getFrequenciesForWord(word) {
+  // Cache hit: devolver inmediatamente sin tocar IDB ni localStorage
+  if (_freqCache.has(word)) return _freqCache.get(word);
+
   const db = await getDB();
   const freqs = [];
-  
-  let disabledDicts = [];
-  let dictOrder = [];
-  try {
-    const activeProfile = localStorage.getItem('migaku_reader_active_profile_id') || 'profile-default';
-    const settingsKey = `migaku_reader_settings_${activeProfile}`;
-    const settingsStr = localStorage.getItem(settingsKey) || localStorage.getItem('migaku_reader_settings');
-    if (settingsStr) {
-      const parsed = JSON.parse(settingsStr);
-      disabledDicts = parsed.disabledDictionaries || [];
-      dictOrder = parsed.dictionaryOrder || [];
-    }
-  } catch (errSettings) {
-    console.warn("Could not read settings for filtering:", errSettings);
-  }
-
-  // Get the set of actually installed dictionary titles to filter out orphaned entries
-  const installedTitles = await new Promise((resolve) => {
-    const tx = db.transaction(STORE_DICTS, 'readonly');
-    const req = tx.objectStore(STORE_DICTS).getAllKeys();
-    req.onsuccess = () => resolve(new Set(req.result));
-    req.onerror = () => resolve(new Set());
-  });
+  const { disabledDicts, dictOrder } = getCachedSettings();
+  const installedTitles = await getCachedInstalledTitles();
 
   await new Promise((resolve) => {
     const tx = db.transaction(STORE_FREQS, 'readonly');
@@ -498,7 +542,6 @@ export async function getFrequenciesForWord(word) {
       const cursor = e.target.result;
       if (cursor) {
         const val = cursor.value;
-        // Only include if the dictionary is installed AND not disabled
         if (installedTitles.has(val.dictionary) && !disabledDicts.includes(val.dictionary)) {
           freqs.push({
             dictionary: val.dictionary,
@@ -524,37 +567,28 @@ export async function getFrequenciesForWord(word) {
       return idxA - idxB;
     });
   }
-  
+
+  // Guardar en caché antes de retornar
+  _freqCache.set(word, freqs);
   return freqs;
 }
 
 /**
  * Obtiene los tonos (pitch accent) de una palabra desde STORE_PITCHES.
+ * Usa caché en memoria para evitar consultas IDB repetidas por página.
  */
 export async function getPitchesForWord(word) {
-  const db = await getDB();
-  if (!db.objectStoreNames.contains(STORE_PITCHES)) return [];
-  const pitches = [];
-  
-  let disabledDicts = [];
-  try {
-    const activeProfile = localStorage.getItem('migaku_reader_active_profile_id') || 'profile-default';
-    const settingsKey = `migaku_reader_settings_${activeProfile}`;
-    const settingsStr = localStorage.getItem(settingsKey) || localStorage.getItem('migaku_reader_settings');
-    if (settingsStr) {
-      const parsed = JSON.parse(settingsStr);
-      disabledDicts = parsed.disabledDictionaries || [];
-    }
-  } catch (errSettings) {
-    console.warn("Could not read settings for filtering:", errSettings);
-  }
+  // Cache hit
+  if (_pitchCache.has(word)) return _pitchCache.get(word);
 
-  const installedTitles = await new Promise((resolve) => {
-    const tx = db.transaction(STORE_DICTS, 'readonly');
-    const req = tx.objectStore(STORE_DICTS).getAllKeys();
-    req.onsuccess = () => resolve(new Set(req.result));
-    req.onerror = () => resolve(new Set());
-  });
+  const db = await getDB();
+  if (!db.objectStoreNames.contains(STORE_PITCHES)) {
+    _pitchCache.set(word, []);
+    return [];
+  }
+  const pitches = [];
+  const { disabledDicts } = getCachedSettings();
+  const installedTitles = await getCachedInstalledTitles();
 
   await new Promise((resolve) => {
     const tx = db.transaction(STORE_PITCHES, 'readonly');
@@ -580,7 +614,8 @@ export async function getPitchesForWord(word) {
     };
     request.onerror = () => resolve();
   });
-  
+
+  _pitchCache.set(word, pitches);
   return pitches;
 }
 
@@ -608,26 +643,17 @@ function cleanDefinition(def) {
 
 /**
  * Realiza una búsqueda de palabras en la base de datos IndexedDB usando cursores y proyección
- * para minimizar drásticamente el consumo de RAM, y cierra la conexión inmediatamente al terminar.
+ * para minimizar drásticamente el consumo de RAM.
+ * Los resultados se cachean en memoria por sesión para eliminar repetidas consultas IDB por página.
  */
 export async function searchYomitanDB(word, reading = '') {
+  // Cache hit: respuesta instantánea sin IDB
+  const cacheKey = reading ? `${word}|${reading}` : word;
+  if (_searchCache.has(cacheKey)) return _searchCache.get(cacheKey);
+
   const db = await getDB();
   let results = [];
-  
-  let disabledDicts = [];
-  let dictOrder = [];
-  try {
-    const activeProfile = localStorage.getItem('migaku_reader_active_profile_id') || 'profile-default';
-    const settingsKey = `migaku_reader_settings_${activeProfile}`;
-    const settingsStr = localStorage.getItem(settingsKey) || localStorage.getItem('migaku_reader_settings');
-    if (settingsStr) {
-      const parsed = JSON.parse(settingsStr);
-      disabledDicts = parsed.disabledDictionaries || [];
-      dictOrder = parsed.dictionaryOrder || [];
-    }
-  } catch (errSettings) {
-    console.warn("Could not read settings for filtering:", errSettings);
-  }
+  const { disabledDicts, dictOrder } = getCachedSettings();
 
   try {
     // 1. Buscar coincidencia de término exacto usando cursores (Consultas selectivas)
@@ -750,7 +776,9 @@ export async function searchYomitanDB(word, reading = '') {
       results.length = 0; 
       results = null;
       tagsSet.clear();
-      
+
+      // Guardar en caché para futuras páginas
+      _searchCache.set(cacheKey, finalResult);
       return finalResult;
     }
     
@@ -766,11 +794,14 @@ export async function searchYomitanDB(word, reading = '') {
       };
       results.length = 0;
       results = null;
+      _searchCache.set(cacheKey, finalResult);
       return finalResult;
     }
     
     results.length = 0;
     results = null;
+    // null también se cachea para no repetir búsquedas fallidas
+    _searchCache.set(cacheKey, null);
     return null;
   } catch (err) {
     console.error('Error in searchYomitanDB:', err);

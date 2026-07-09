@@ -11,6 +11,7 @@ import { t } from '../utils/i18n';
 import { googleDriveService } from '../utils/googleDriveService';
 import { Browser } from '@capacitor/browser';
 import { App as CapacitorApp } from '@capacitor/app';
+import { useConfirm } from './ConfirmModal';
 
 const resizeImage = (file, maxDimension = 128) => {
   return new Promise((resolve, reject) => {
@@ -72,6 +73,8 @@ export default function Library({
   const backupInputRef = useRef(null);
   const profileWidgetRef = useRef(null);
   const customAvatarInputRef = useRef(null);
+
+  const { showConfirm, confirmModal } = useConfirm();
   
   // Book Manager states
   const [isParsing, setIsParsing] = useState(false);
@@ -141,6 +144,18 @@ export default function Library({
   // Sidebar Navigation states
   const [activeFilter, setActiveFilter] = useState({ type: 'all', value: null });
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Custom themed toast notifications
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const toastTimerRef = useRef(null);
+
+  const showToast = (message, type = 'success') => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ show: true, message, type });
+    toastTimerRef.current = setTimeout(() => {
+      setToast(prev => ({ ...prev, show: false }));
+    }, 4000);
+  };
 
   // Library Display settings (Yatsu style)
   const [cardWidth, setCardWidth] = useState(() => {
@@ -273,6 +288,20 @@ export default function Library({
   }, []);
 
   useEffect(() => {
+    const runMaintenance = async () => {
+      try {
+        await migrateEnglishDictName();
+        await migrateDictFlags();
+        await cleanOrphanedEntries();
+        await loadInstalledDicts();
+      } catch (err) {
+        console.warn("Background maintenance failed:", err);
+      }
+    };
+    runMaintenance();
+  }, []);
+
+  useEffect(() => {
     if (activeTab === 'settings') {
       loadInstalledDicts();
     }
@@ -318,9 +347,6 @@ export default function Library({
 
   const loadInstalledDicts = async () => {
     try {
-      await migrateEnglishDictName();
-      await migrateDictFlags();
-      await cleanOrphanedEntries();
       const dicts = await getInstalledDictionaries();
       const order = settings.dictionaryOrder || [];
       const sorted = sortDicts(dicts || [], order);
@@ -403,7 +429,13 @@ export default function Library({
   };
 
   const handleDeleteDict = async (title) => {
-    if (window.confirm(lang === 'es' ? `¿Seguro que quieres borrar el diccionario "${title}"?` : `Are you sure you want to delete the dictionary "${title}"?`)) {
+    const ok = await showConfirm({
+      title: lang === 'es' ? '¿Eliminar diccionario?' : 'Delete dictionary?',
+      message: lang === 'es' ? `¿Seguro que quieres borrar el diccionario "${title}"?` : `Are you sure you want to delete the dictionary "${title}"?`,
+      type: 'danger',
+      confirmText: lang === 'es' ? 'Borrar' : 'Delete',
+    });
+    if (ok) {
       // Immediately remove from state so the UI updates instantly
       setInstalledDicts(prev => prev.filter(d => d.title !== title));
       try {
@@ -1346,6 +1378,7 @@ export default function Library({
         exportDate: new Date().toISOString(),
         profiles,
         activeProfileId: localStorage.getItem('migaku_reader_active_profile_id') || 'profile-default',
+        appLanguage: settings.appLanguage || localStorage.getItem('app_language') || 'es',
         books,
         wordStatuses,
         settings,
@@ -1404,18 +1437,16 @@ export default function Library({
 
       if (!zipBlob) {
         setGDriveSyncStatus('authorized');
-        alert(lang === 'es'
+        showToast(lang === 'es'
           ? 'No se encontró ningún archivo de copia de seguridad en Google Drive. Sube una copia primero con el botón "Subir copia completa".'
-          : 'No backup file found in Google Drive. Upload one first using "Upload full backup".');
+          : 'No backup file found in Google Drive. Upload one first using "Upload full backup".', 'error');
         return;
       }
 
-      if (!confirm(lang === 'es'
-        ? '¿Quieres restaurar la copia de seguridad completa de Google Drive? Se fusionarán libros, vocabulario y configuraciones con los datos actuales.'
-        : 'Do you want to restore the full backup from Google Drive? Books, vocabulary and settings will be merged with current data.')) {
-        setGDriveSyncStatus('authorized');
-        return;
-      }
+      // Proceder directamente sólo notificando
+      showToast(lang === 'es'
+        ? 'Descargando y restaurando copia de seguridad desde Google Drive...'
+        : 'Downloading and restoring backup from Google Drive...', 'info');
 
       // 2. Parse the ZIP using JSZip (same logic as handleImportLibrary)
       const zip = await JSZip.loadAsync(zipBlob);
@@ -1429,7 +1460,13 @@ export default function Library({
         throw new Error('El archivo de Google Drive no tiene un formato de respaldo válido.');
       }
 
-      // 3. Restore active profile ID
+      // 3. Restore active profile ID & global language
+      if (importData.appLanguage) {
+        localStorage.setItem('app_language', importData.appLanguage);
+        if (importData.settings) {
+          importData.settings.appLanguage = importData.appLanguage;
+        }
+      }
       if (importData.activeProfileId) {
         localStorage.setItem('migaku_reader_active_profile_id', importData.activeProfileId);
       } else if (importData.profiles && importData.profiles.length > 0) {
@@ -1502,10 +1539,12 @@ export default function Library({
       localStorage.setItem('gdrive_last_sync_time', timeStr);
       setLastSyncTime(timeStr);
 
-      alert(lang === 'es'
-        ? '✅ Copia de seguridad restaurada con éxito. Reiniciando para aplicar los cambios...'
-        : '✅ Backup restored successfully. Restarting to apply changes...');
-      window.location.reload();
+      showToast(lang === 'es'
+        ? '✅ Copia de seguridad restaurada con éxito. Reiniciando...'
+        : '✅ Backup restored successfully. Restarting...', 'success');
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
     } catch (err) {
       setGDriveSyncStatus('authorized');
       console.error('GDrive download restore failed:', err);
@@ -1680,6 +1719,7 @@ export default function Library({
         exportDate: new Date().toISOString(),
         profiles: profiles,
         activeProfileId: localStorage.getItem('migaku_reader_active_profile_id') || 'profile-default',
+        appLanguage: settings.appLanguage || localStorage.getItem('app_language') || 'es',
         books: books,
         wordStatuses: wordStatuses,
         settings: settings,
@@ -1701,7 +1741,7 @@ export default function Library({
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error(e);
-      alert((lang === 'es' ? 'Error al exportar la biblioteca: ' : 'Error exporting library: ') + e.message);
+      showToast((lang === 'es' ? 'Error al exportar la biblioteca: ' : 'Error exporting library: ') + e.message, 'error');
     } finally {
       document.body.style.cursor = 'default';
     }
@@ -1742,14 +1782,23 @@ export default function Library({
         return;
       }
 
-      if (confirm(lang === 'es' ? 'Al restaurar, se combinarán los libros, historiales, configuraciones y diccionarios con los actuales. ¿Deseas continuar?' : 'Restoring the backup will merge books, histories, settings, and dictionaries. Do you want to continue?')) {
-        
-        // 1. Restore active profile ID
-        if (importData.activeProfileId) {
-          localStorage.setItem('migaku_reader_active_profile_id', importData.activeProfileId);
-        } else if (importData.profiles && importData.profiles.length > 0) {
-          localStorage.setItem('migaku_reader_active_profile_id', importData.profiles[0].id);
+      // Proceder directamente sólo notificando
+      showToast(lang === 'es'
+        ? 'Restaurando copia de seguridad local...'
+        : 'Restoring local backup...', 'info');
+
+      // 1. Restore active profile ID & global language
+      if (importData.appLanguage) {
+        localStorage.setItem('app_language', importData.appLanguage);
+        if (importData.settings) {
+          importData.settings.appLanguage = importData.appLanguage;
         }
+      }
+      if (importData.activeProfileId) {
+        localStorage.setItem('migaku_reader_active_profile_id', importData.activeProfileId);
+      } else if (importData.profiles && importData.profiles.length > 0) {
+        localStorage.setItem('migaku_reader_active_profile_id', importData.profiles[0].id);
+      }
 
         // 2. Merge profiles
         const mergedProfiles = [...profiles];
@@ -1843,12 +1892,15 @@ export default function Library({
           }
         }
         
-        alert(lang === 'es' ? '¡Respaldo importado con éxito! Reiniciaremos la aplicación para aplicar los cambios.' : 'Backup imported successfully! Restarting the app to apply changes.');
-        window.location.reload();
-      }
+        showToast(lang === 'es' 
+          ? '✅ Copia de seguridad importada con éxito. Reiniciando...' 
+          : '✅ Backup imported successfully. Restarting...', 'success');
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
     } catch (err) {
       console.error(err);
-      alert((lang === 'es' ? 'Error al restaurar el respaldo: ' : 'Error restoring backup: ') + err.message);
+      showToast((lang === 'es' ? 'Error al restaurar el respaldo: ' : 'Error restoring backup: ') + err.message, 'error');
     } finally {
       document.body.style.cursor = 'default';
     }
@@ -1955,9 +2007,15 @@ export default function Library({
   };
 
   // Bulk deletion
-  const handleBulkDelete = () => {
+  const handleBulkDelete = async () => {
     if (selectedBookIds.length === 0) return;
-    if (confirm(lang === 'es' ? `¿Estás seguro de que quieres eliminar los ${selectedBookIds.length} libros seleccionados?` : `Are you sure you want to delete the ${selectedBookIds.length} selected books?`)) {
+    const ok = await showConfirm({
+      title: lang === 'es' ? '¿Eliminar libros?' : 'Delete books?',
+      message: lang === 'es' ? `¿Estás seguro de que quieres eliminar los ${selectedBookIds.length} libros seleccionados?` : `Are you sure you want to delete the ${selectedBookIds.length} selected books?`,
+      type: 'danger',
+      confirmText: lang === 'es' ? 'Eliminar' : 'Delete',
+    });
+    if (ok) {
       onBulkDeleteBooks(selectedBookIds);
       setSelectedBookIds([]);
       setSelectMode(false);
@@ -1985,7 +2043,7 @@ export default function Library({
     for (const bookId of selectedBookIds) {
       await onUpdateBookDetails(bookId, { series: series.trim() });
     }
-    alert(lang === 'es' ? "Serie actualizada con éxito." : "Series successfully updated.");
+    showToast(lang === 'es' ? "Serie actualizada con éxito." : "Series successfully updated.", 'success');
   };
 
   const handleSetAuthor = async () => {
@@ -1995,7 +2053,7 @@ export default function Library({
     for (const bookId of selectedBookIds) {
       await onUpdateBookDetails(bookId, { author: author.trim() });
     }
-    alert(lang === 'es' ? "Autor actualizado con éxito." : "Author successfully updated.");
+    showToast(lang === 'es' ? "Autor actualizado con éxito." : "Author successfully updated.", 'success');
   };
 
   const handleAddTags = async () => {
@@ -2013,7 +2071,7 @@ export default function Library({
         }
       }
     }
-    alert(lang === 'es' ? "Etiquetas añadidas." : "Tags added.");
+    showToast(lang === 'es' ? "Etiquetas añadidas." : "Tags added.", 'success');
   };
 
   const handleRemoveTags = async () => {
@@ -2028,7 +2086,7 @@ export default function Library({
         await onUpdateBookDetails(bookId, { tags });
       }
     }
-    alert(lang === 'es' ? "Etiquetas eliminadas." : "Tags removed.");
+    showToast(lang === 'es' ? "Etiquetas eliminadas." : "Tags removed.", 'success');
   };
 
   const handleBlurCovers = async () => {
@@ -2039,19 +2097,25 @@ export default function Library({
         await onUpdateBookDetails(bookId, { hideCover: !book.hideCover });
       }
     }
-    alert(lang === 'es' ? 'Visibilidad de portadas actualizada.' : 'Covers visibility updated.');
+    showToast(lang === 'es' ? 'Visibilidad de portadas actualizada.' : 'Covers visibility updated.', 'success');
   };
 
   const handleMarkAsUnread = async () => {
     if (selectedBookIds.length === 0) return;
-    if (confirm(lang === 'es' ? "¿Quieres marcar como no leídos los libros seleccionados y reiniciar su progreso?" : "Do you want to mark selected books as unread and reset their progress?")) {
+    const ok = await showConfirm({
+      title: lang === 'es' ? '¿Marcar como no leídos?' : 'Mark as unread?',
+      message: lang === 'es' ? "¿Quieres marcar como no leídos los libros seleccionados y reiniciar su progreso?" : "Do you want to mark selected books as unread and reset their progress?",
+      type: 'warning',
+      confirmText: lang === 'es' ? 'Marcar' : 'Mark',
+    });
+    if (ok) {
       for (const bookId of selectedBookIds) {
         await onUpdateBookDetails(bookId, {
           progress: { currentChapter: 0, currentPage: 0, percent: 0 },
           status: 'unread'
         });
       }
-      alert(lang === 'es' ? "Progreso reiniciado para los libros seleccionados." : "Progress reset for selected books.");
+      showToast(lang === 'es' ? "Progreso reiniciado para los libros seleccionados." : "Progress reset for selected books.", 'success');
     }
   };
 
@@ -2078,7 +2142,7 @@ export default function Library({
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      alert((lang === 'es' ? 'Error al exportar selección: ' : 'Error exporting selection: ') + e.message);
+      showToast((lang === 'es' ? 'Error al exportar selección: ' : 'Error exporting selection: ') + e.message, 'error');
     }
   };
 
@@ -2091,14 +2155,20 @@ export default function Library({
 
   const handleDeleteStatistics = async () => {
     if (selectedBookIds.length === 0) return;
-    if (confirm(lang === 'es' ? `¿Seguro que quieres borrar los registros de lectura de ${selectedBookIds.length} libro(s) seleccionado(s)?` : `Are you sure you want to clear the reading records of the ${selectedBookIds.length} selected book(s)?`)) {
+    const ok = await showConfirm({
+      title: lang === 'es' ? '¿Borrar estadísticas?' : 'Clear statistics?',
+      message: lang === 'es' ? `¿Seguro que quieres borrar los registros de lectura de ${selectedBookIds.length} libro(s) seleccionado(s)?` : `Are you sure you want to clear the reading records of the ${selectedBookIds.length} selected book(s)?`,
+      type: 'danger',
+      confirmText: lang === 'es' ? 'Borrar' : 'Clear',
+    });
+    if (ok) {
       for (const bookId of selectedBookIds) {
         await onUpdateBookDetails(bookId, {
           progress: { ...((books.find(b => b.id === bookId) || {}).progress || {}), charactersRead: 0, secondsRead: 0 },
           lastRead: null
         });
       }
-      alert(lang === 'es' ? 'Estadísticas de lectura borradas.' : 'Reading statistics cleared.');
+      showToast(lang === 'es' ? 'Estadísticas de lectura borradas.' : 'Reading statistics cleared.', 'success');
     }
   };
 
@@ -2521,9 +2591,15 @@ export default function Library({
             <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '4px 0' }} />
 
             <button 
-              onClick={() => {
+              onClick={async () => {
                 setActiveMenuBookId(null);
-                if (confirm(lang === 'es' ? `¿Estás seguro de que quieres eliminar "${book.title}"?` : `Are you sure you want to delete "${book.title}"?`)) {
+                const ok = await showConfirm({
+                  title: lang === 'es' ? '¿Eliminar novela?' : 'Delete novel?',
+                  message: lang === 'es' ? `¿Estás seguro de que quieres eliminar "${book.title}"?` : `Are you sure you want to delete "${book.title}"?`,
+                  type: 'danger',
+                  confirmText: lang === 'es' ? 'Eliminar' : 'Delete',
+                });
+                if (ok) {
                   onDeleteBook(book.id);
                 }
               }}
@@ -3396,8 +3472,14 @@ export default function Library({
   };
 
   const handleDeleteAllData = async () => {
-    if (!confirm(lang === 'es' ? '⚠️ ¿Seguro que quieres eliminar TODOS los datos de la aplicación? Esta acción es irreversible.' : '⚠️ Are you sure you want to delete ALL application data? This action is irreversible.')) return;
-    if (!confirm(lang === 'es' ? '⚠️ Se borrarán todos los libros, historiales, perfiles y diccionarios instalados. ¿Estás COMPLETAMENTE seguro?' : '⚠️ All books, histories, profiles, and installed dictionaries will be deleted. Are you COMPLETELY sure?')) return;
+    const ok = await showConfirm({
+      title: lang === 'es' ? '⚠️ Eliminar todos los datos' : '⚠️ Delete all data',
+      message: lang === 'es' ? '¿Seguro que quieres eliminar TODOS los datos de la aplicación? Esta acción es irreversible.' : 'Are you sure you want to delete ALL application data? This action is irreversible.',
+      message2: lang === 'es' ? 'Se borrarán todos los libros, historiales, perfiles y diccionarios instalados. ¿Estás COMPLETAMENTE seguro?' : 'All books, histories, profiles, and installed dictionaries will be deleted. Are you COMPLETELY sure?',
+      type: 'danger',
+      confirmText: lang === 'es' ? 'Sí, borrar todo' : 'Yes, delete all',
+    });
+    if (!ok) return;
     
     localStorage.clear();
     try {
@@ -3653,7 +3735,11 @@ export default function Library({
                 <span className="settings-label-text">{t('interfaceLanguage', lang)}</span>
                 <select 
                   value={settings.appLanguage || 'es'}
-                  onChange={(e) => onSaveSettings({ ...settings, appLanguage: e.target.value })}
+                  onChange={(e) => {
+                    const selectedLang = e.target.value;
+                    localStorage.setItem('app_language', selectedLang);
+                    onSaveSettings({ ...settings, appLanguage: selectedLang });
+                  }}
                   className="migaku-select"
                 >
                   <option value="es">Español 🇪🇸</option>
@@ -3791,9 +3877,15 @@ export default function Library({
               <div style={{ marginTop: '16px' }}>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (window.confirm(lang === 'es' ? '¿Limpiar estadísticas de libros ya eliminados?' : 'Clear stats for already deleted books?')) {
-                      alert(lang === 'es' ? 'Limpieza completada.' : 'Cleanup done.');
+                  onClick={async () => {
+                    const ok = await showConfirm({
+                      title: lang === 'es' ? '¿Limpiar estadísticas?' : 'Clear statistics?',
+                      message: lang === 'es' ? '¿Limpiar estadísticas de libros ya eliminados?' : 'Clear stats for already deleted books?',
+                      type: 'warning',
+                      confirmText: lang === 'es' ? 'Limpiar' : 'Clear',
+                    });
+                    if (ok) {
+                      showToast(lang === 'es' ? 'Limpieza completada.' : 'Cleanup done.', 'success');
                     }
                   }}
                   style={{ width: '100%', padding: '8px 10px', fontSize: '0.8rem', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
@@ -4324,10 +4416,22 @@ export default function Library({
                     <button 
                       type="button"
                       className="profile-delete-btn"
-                      onClick={() => {
-                        if (confirm(lang === 'es' ? `¿Quieres eliminar "${item.word}" de tu vocabulario?` : `Do you want to delete "${item.word}" from your vocabulary?`)) {
+                      onClick={async () => {
+                        const ok = await showConfirm({
+                          title: lang === 'es' ? '¿Eliminar palabra?' : 'Delete word?',
+                          message: lang === 'es' ? `¿Quieres eliminar "${item.word}" de tu vocabulario?` : `Do you want to delete "${item.word}" from your vocabulary?`,
+                          type: 'danger',
+                          confirmText: lang === 'es' ? 'Eliminar' : 'Delete',
+                        });
+                        if (ok) {
                           db.setWordStatus(item.word, 'unknown');
-                          alert(lang === 'es' ? 'Palabra eliminada. Recargando para actualizar...' : 'Word deleted. Reloading to update...');
+                          await showConfirm({
+                            title: lang === 'es' ? 'Palabra eliminada' : 'Word deleted',
+                            message: lang === 'es' ? 'Palabra eliminada con éxito. La aplicación se recargará ahora.' : 'Word deleted successfully. The application will reload now.',
+                            type: 'info',
+                            confirmText: lang === 'es' ? 'Entendido' : 'OK',
+                            cancelText: '',
+                          });
                           window.location.reload();
                         }
                       }}
@@ -5747,8 +5851,14 @@ export default function Library({
               
               <button 
                 className="preview-delete-btn"
-                onClick={() => {
-                  if (confirm(lang === 'es' ? `¿Estás seguro de que quieres eliminar "${previewBook.title}" de la biblioteca?` : `Are you sure you want to delete "${previewBook.title}" from the library?`)) {
+                onClick={async () => {
+                  const ok = await showConfirm({
+                    title: lang === 'es' ? '¿Eliminar novela?' : 'Delete novel?',
+                    message: lang === 'es' ? `¿Estás seguro de que quieres eliminar "${previewBook.title}" de la biblioteca?` : `Are you sure you want to delete "${previewBook.title}" from the library?`,
+                    type: 'danger',
+                    confirmText: lang === 'es' ? 'Eliminar' : 'Delete',
+                  });
+                  if (ok) {
                     onDeleteBook(previewBook.id);
                     setPreviewBook(null);
                   }
@@ -6132,6 +6242,39 @@ export default function Library({
           }}
         />
       )}
+
+      {/* Custom Toast Notification Styled with App Theme */}
+      {toast.show && (
+        <div className="yoru-toast" style={{
+          position: 'fixed',
+          bottom: '24px',
+          right: '24px',
+          background: '#18181b',
+          color: '#ffffff',
+          padding: '10px 16px',
+          borderRadius: '4px',
+          border: toast.type === 'success' ? '1px solid #34d399' : toast.type === 'info' ? '1px solid #60a5fa' : '1px solid #ef4444',
+          boxShadow: '0 4px 20px rgba(0, 0, 0, 0.6)',
+          zIndex: 10000,
+          fontFamily: 'system-ui, sans-serif',
+          fontSize: '0.82rem',
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          animation: 'toastIn 0.2s ease-out forwards'
+        }}>
+          <span style={{ 
+            width: '6px', 
+            height: '6px', 
+            borderRadius: '50%', 
+            background: toast.type === 'success' ? '#34d399' : toast.type === 'info' ? '#60a5fa' : '#ef4444',
+            display: 'inline-block' 
+          }} />
+          <span>{toast.message}</span>
+        </div>
+      )}
+      {confirmModal}
     </div>
   );
 }

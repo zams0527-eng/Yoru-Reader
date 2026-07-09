@@ -179,80 +179,119 @@ export async function tokenizeText(text) {
       continue;
     }
     
-    // Parse the stored format into structured segments
-    const segments = parseEncodedText(para);
-    const processedTokens = [];
+    // 1. Reconstruct plain text and extract original rubies with offsets
+    let plainText = "";
+    const originalRubies = [];
+    const regex = /\{([^|]+)\|([^}]+)\}/g;
+    let lastIndex = 0;
+    let match;
+    while ((match = regex.exec(para)) !== null) {
+      plainText += para.slice(lastIndex, match.index);
+      const start = plainText.length;
+      plainText += match[1];
+      const end = plainText.length;
+      originalRubies.push({ start, end, text: match[1], ruby: match[2] });
+      lastIndex = regex.lastIndex;
+    }
+    plainText += para.slice(lastIndex);
     
-    for (const segment of segments) {
-      if (segment.type === 'text') {
-        try {
-          const tokens = tokenizer.tokenize(segment.content);
-          const mapped = tokens.map(token => {
-            const surface = token.surface_form;
-            const katakanaReading = token.reading || '';
-            const hiraganaReading = katakanaToHiragana(katakanaReading) || surface;
-            
-            let alignment = [];
-            if (hasKanji(surface)) {
-              const aligned = alignFurigana(surface, hiraganaReading);
-              alignment = aligned || [{ type: 'kanji', text: surface, ruby: hiraganaReading }];
-            } else {
-              alignment = [{ type: 'kana', text: surface }];
-            }
-            
-            const CONTENT_WORD_POS = ['名詞', '動詞', '形容詞', '副詞', '連体詞', '代名詞', '感動詞'];
-            const isWord = CONTENT_WORD_POS.includes(token.pos);
-            
-            return {
-              surface,
-              reading: hiraganaReading,
-              basicForm: token.basic_form && token.basic_form !== '*' ? token.basic_form : surface,
-              pos: token.pos,
-              alignment,
-              isWord,
-              isPunctuation: token.pos === '記号'
-            };
-          });
-          processedTokens.push(...mapped);
-        } catch (e) {
-          console.error("Failed to tokenize text segment:", segment.content, e);
-          processedTokens.push({
-            surface: segment.content,
-            reading: '',
-            basicForm: segment.content,
-            pos: 'UNK',
-            alignment: [{ type: 'kana', text: segment.content }],
-            isWord: false,
-            isPunctuation: false
-          });
+    // 2. Tokenize plain text as a single string for full context
+    let rawTokens = [];
+    try {
+      rawTokens = tokenizer.tokenize(plainText);
+    } catch (e) {
+      console.error("Kuromoji tokenization failed for paragraph:", plainText, e);
+      resultParagraphs.push([{
+        surface: plainText,
+        reading: '',
+        basicForm: plainText,
+        pos: 'UNK',
+        alignment: [{ type: 'kana', text: plainText }],
+        isWord: false,
+        isPunctuation: false
+      }]);
+      continue;
+    }
+    
+    // Pre-calculate character ranges for each raw token
+    let tempIdx = 0;
+    const rawTokensWithRanges = rawTokens.map(token => {
+      const start = tempIdx;
+      const end = start + token.surface_form.length;
+      tempIdx = end;
+      return { token, start, end };
+    });
+    
+    const processedTokens = [];
+    let tokenIdx = 0;
+    
+    // 3. Map/merge tokens based on overlapping original rubies
+    while (tokenIdx < rawTokensWithRanges.length) {
+      const current = rawTokensWithRanges[tokenIdx];
+      
+      // Look for a ruby block that starts at or before this token and overlaps it
+      const matchingRuby = originalRubies.find(r => r.start <= current.start && r.end > current.start);
+      
+      if (matchingRuby) {
+        // Collect all tokens that fall inside this ruby block
+        const tokensInRuby = [];
+        let j = tokenIdx;
+        while (j < rawTokensWithRanges.length && rawTokensWithRanges[j].start < matchingRuby.end) {
+          tokensInRuby.push(rawTokensWithRanges[j]);
+          j++;
         }
-      } else if (segment.type === 'ruby') {
-        // Morphological properties based on the kanji base form
-        let pos = '名詞'; // Default to Noun
-        let basicForm = segment.text;
         
-        try {
-          const tokens = tokenizer.tokenize(segment.text);
-          if (tokens.length > 0) {
-            pos = tokens[0].pos;
-            basicForm = tokens[0].basic_form && tokens[0].basic_form !== '*' ? tokens[0].basic_form : tokens[0].surface_form;
-          }
-        } catch (e) {
-          console.warn("Furigana base tokenization failed:", segment.text, e);
-        }
+        const mergedSurface = matchingRuby.text;
+        const mergedReading = matchingRuby.ruby;
+        
+        const firstContentToken = tokensInRuby.find(t => t.token.pos !== '記号') || tokensInRuby[0];
+        const pos = firstContentToken.token.pos;
+        const basicForm = firstContentToken.token.basic_form && firstContentToken.token.basic_form !== '*' 
+          ? firstContentToken.token.basic_form 
+          : firstContentToken.token.surface_form;
         
         const CONTENT_WORD_POS = ['名詞', '動詞', '形容詞', '副詞', '連体詞', '代名詞', '感動詞'];
         const isWord = CONTENT_WORD_POS.includes(pos);
         
         processedTokens.push({
-          surface: segment.text,
-          reading: segment.ruby,
+          surface: mergedSurface,
+          reading: mergedReading,
           basicForm: basicForm,
           pos: pos,
-          alignment: [{ type: 'kanji', text: segment.text, ruby: segment.ruby }],
+          alignment: [{ type: 'kanji', text: mergedSurface, ruby: mergedReading }],
           isWord,
           isPunctuation: false
         });
+        
+        tokenIdx = j;
+      } else {
+        const { token, start, end } = current;
+        const surface = token.surface_form;
+        const katakanaReading = token.reading || '';
+        const hiraganaReading = katakanaToHiragana(katakanaReading) || surface;
+        
+        let alignment = [];
+        if (hasKanji(surface)) {
+          const aligned = alignFurigana(surface, hiraganaReading);
+          alignment = aligned || [{ type: 'kanji', text: surface, ruby: hiraganaReading }];
+        } else {
+          alignment = [{ type: 'kana', text: surface }];
+        }
+        
+        const CONTENT_WORD_POS = ['名詞', '動詞', '形容詞', '副詞', '連体詞', '代名詞', '感動詞'];
+        const isWord = CONTENT_WORD_POS.includes(token.pos);
+        
+        processedTokens.push({
+          surface,
+          reading: hiraganaReading,
+          basicForm: token.basic_form && token.basic_form !== '*' ? token.basic_form : surface,
+          pos: token.pos,
+          alignment,
+          isWord,
+          isPunctuation: token.pos === '記号'
+        });
+        
+        tokenIdx++;
       }
     }
     

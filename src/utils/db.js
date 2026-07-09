@@ -139,7 +139,10 @@ export const db = {
   getSettings() {
     try {
       const data = localStorage.getItem(this._getKey(STORAGE_KEYS.SETTINGS));
-      return data ? { ...DEFAULT_SETTINGS, ...JSON.parse(data) } : DEFAULT_SETTINGS;
+      const globalLang = localStorage.getItem('app_language') || 'es';
+      const parsed = data ? JSON.parse(data) : {};
+      // Ensure globalLang overrides defaults, but settings can override if they exist and match
+      return { ...DEFAULT_SETTINGS, appLanguage: globalLang, ...parsed };
     } catch (e) {
       console.error('Error loading settings:', e);
       return DEFAULT_SETTINGS;
@@ -148,6 +151,9 @@ export const db = {
 
   saveSettings(settings) {
     try {
+      if (settings && settings.appLanguage) {
+        localStorage.setItem('app_language', settings.appLanguage);
+      }
       localStorage.setItem(this._getKey(STORAGE_KEYS.SETTINGS), JSON.stringify(settings));
     } catch (e) {
       console.error('Error saving settings:', e);

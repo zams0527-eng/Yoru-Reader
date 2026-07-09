@@ -54,7 +54,7 @@
   /* Fonts */
   --font-ui: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-heading: 'GT Maru', 'Outfit', sans-serif;
-  --font-japanese: 'Noto Sans JP Custom', 'Noto Sans JP', serif;
+  --font-japanese: 'Noto Sans JP Custom', 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Meiryo', 'Yu Gothic', sans-serif;
 }
 
 /* Sepia Theme */
@@ -398,8 +398,8 @@ body.reader-active .app-container {
 }
 
 .reader-header {
-  position: sticky;
-  top: 0;
+  position: relative;
+  flex-shrink: 0; /* Don't shrink - always 64px */
   height: 64px;
   background: var(--bg-panel-translucent);
   backdrop-filter: blur(12px);
@@ -445,11 +445,10 @@ body.reader-active .app-container {
 
 /* Bottom navigation bar - mirrors the header neon bar */
 .reader-bottom-nav {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 100%;
+  position: relative; /* Part of flex column flow - no longer fixed */
+  flex-shrink: 0; /* Don't shrink - always 60px */
   height: 60px;
+  width: 100%;
   background: var(--bg-panel-translucent);
   backdrop-filter: blur(12px);
   border-top: 2px solid var(--primary); /* Neon yellow top bar - mirrors header */
@@ -509,13 +508,13 @@ body.reader-active .app-container {
 
 /* Main Reader Content */
 .reader-content-wrapper {
-  flex: 1;
+  flex: 1; /* Fills exactly the space between header and footer */
+  min-height: 0; /* Critical: allows flex child to shrink below content size */
   display: flex;
   justify-content: center;
-  align-items: center; /* Center text vertically in the view */
-  padding: 3rem 2rem 5.5rem 2rem; /* increased top padding to 3rem to push container down */
-  max-height: 540px; /* raised height limit to accommodate the extra sentence space */
-  overflow: visible; /* Allow dict popup to overflow */
+  align-items: flex-start; /* Align text content top in the view */
+  padding: 1.5rem 2rem;
+  overflow: hidden; /* Clip text at the boundary */
   position: relative;
 }
 
@@ -533,37 +532,31 @@ body.reader-active .app-container {
 }
 
 .reader-text-container {
-  max-width: 900px; /* widened to 900px for wider line structures */
+  max-width: 800px;
   width: 100%;
-  height: calc(100vh - 160px);
-  max-height: 520px; /* raised from 460px to 520px to support one more sentence */
-  padding: 45px 0 20px 0; /* increased top padding to 45px to push first text line away from header */
-  overflow: visible; /* Allow dict popup to overflow */
+  height: 100%; /* Fill the parent flex item - browser computes exact height */
+  padding: 15px 0 20px 0; /* Small bottom padding for breathing room */
+  overflow: hidden; /* Clip any overflowing text at the container boundary */
   font-family: var(--font-japanese);
-  text-align: left; /* Align parent content left */
+  text-align: left;
   user-select: text;
   position: relative;
   
   display: flex;
   flex-direction: column;
-  justify-content: center; /* Center the text paragraphs vertically inside the container */
+  justify-content: flex-start; /* Top-align paragraphs inside the container for a consistent Kindle-like feel */
 }
 
 .reader-text-page {
   line-height: 1.9; /* clean spacing for Japanese text with ruby */
   text-align: left; /* Align text content exactly to the left */
   width: 100%;
+  word-break: break-all; /* Wrap character by character, matching Migaku layout */
 }
 
 .paragraph-break {
   display: block;
-  height: 1.2rem; /* reduced paragraph spacing to avoid pushing text to next page */
-}
-
-/* Paragraph break spacing in flat token page flow */
-.paragraph-break {
-  display: block;
-  height: 1.2rem; /* compact vertical gap between paragraphs */
+  height: 0.8em; /* proportional vertical gap between paragraphs that scales with font size */
   content: "";
 }
 
@@ -573,7 +566,6 @@ body.reader-active .app-container {
   display: inline;
   padding: 0;
   border-radius: 0;
-  transition: background-color 0.2s;
 }
 
 /* Only interactive words get pointer cursor and hover highlight */
@@ -590,7 +582,8 @@ body.reader-active .app-container {
 .word-token.status-known:hover,
 .word-token.status-starred:hover,
 .word-token.status-ignored:hover {
-  background-color: rgba(255, 255, 255, 0.15);
+  background-color: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
 }
 
 /* Word Status Underlines & Highlighting */
@@ -615,25 +608,15 @@ body.reader-active .app-container {
   border-bottom: none;
 }
 
-/* Underline Hover Checkmarks (Migaku Detail) */
+/* Underline hover dot — uses pointer-events none and z-index so it never affects text flow */
 .word-token.status-new:hover::after,
 .word-token.status-learning:hover::after,
 .word-token.status-starred:hover::after {
-  content: '✓';
-  position: absolute;
-  bottom: -12px;
-  left: 50%;
-  transform: translateX(-50%) scale(0.7);
-  font-size: 0.65rem;
-  color: #fff;
-  background: var(--primary);
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  content: '';
+  position: fixed;
+  width: 0;
+  height: 0;
+  pointer-events: none;
 }
 
 /* Ruby Furigana adjustment */
@@ -673,21 +656,20 @@ rt {
 /* --- DICTIONARY POPUP (Yomitan Layout + Yoru Glassmorphism Theme) --- */
 .dict-popup {
   position: fixed;
-  width: 280px;
-  background: var(--bg-panel-translucent);
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--border-light);
-  border-radius: 14px;
-  padding: 0.9rem 1rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255, 255, 255, 0.1);
+  width: 380px;
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 0px;
+  padding: 0.6rem 0.8rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.7);
   z-index: 9999;
   pointer-events: auto;
-  animation: popIn 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+  animation: popIn 0.1s ease-out forwards;
 }
 
 @keyframes popIn {
-  from { opacity: 0; transform: translateY(-6px) scale(0.96); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .yomitan-header-row {
@@ -698,14 +680,14 @@ rt {
 
 .yomitan-reading {
   font-family: var(--font-japanese);
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   color: var(--text-muted);
   margin-bottom: 2px;
 }
 
 .yomitan-term {
   font-family: var(--font-japanese);
-  font-size: 1.8rem;
+  font-size: 1.5rem;
   font-weight: 700;
   line-height: 1.1;
   color: var(--text-main);
@@ -720,9 +702,9 @@ rt {
 .yomitan-action-btn {
   background: rgba(255,255,255,0.05);
   border: 1px solid var(--border-light);
-  border-radius: 50%;
-  width: 32px;
-  height: 32px;
+  border-radius: 3px;
+  width: 20px;
+  height: 20px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -741,15 +723,15 @@ rt {
 .yomitan-tags-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
+  gap: 4px;
+  margin-top: 5px;
   align-items: center;
 }
 
 .yomi-tag {
-  font-size: 0.72rem;
-  padding: 2px 8px;
-  border-radius: 6px;
+  font-size: 0.65rem;
+  padding: 1px 5px;
+  border-radius: 2px;
   font-weight: 600;
 }
 
@@ -760,20 +742,20 @@ rt {
 .yomi-freq-group {
   display: flex;
   border: 1px solid rgba(52, 211, 153, 0.3);
-  border-radius: 6px;
+  border-radius: 2px;
   overflow: hidden;
-  font-size: 0.72rem;
+  font-size: 0.65rem;
 }
 .yomi-freq-label {
   background: rgba(52, 211, 153, 0.15);
   color: #34d399;
-  padding: 2px 6px;
+  padding: 1px 5px;
   font-weight: 600;
 }
 .yomi-freq-value {
   background: rgba(0, 0, 0, 0.3);
   color: var(--text-light);
-  padding: 2px 6px;
+  padding: 1px 5px;
   border-left: 1px solid rgba(52, 211, 153, 0.2);
 }
 
@@ -790,9 +772,9 @@ rt {
 .yomi-pos-tag {
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-muted);
-  font-size: 0.72rem;
-  padding: 2px 6px;
-  border-radius: 4px;
+  font-size: 0.65rem;
+  padding: 1px 5px;
+  border-radius: 2px;
   font-weight: 600;
 }
 
@@ -800,9 +782,9 @@ rt {
   background: rgba(168, 85, 247, 0.15);
   color: #c084fc;
   border: 1px solid rgba(168, 85, 247, 0.3);
-  font-size: 0.72rem;
-  padding: 2px 6px;
-  border-radius: 4px;
+  font-size: 0.65rem;
+  padding: 1px 5px;
+  border-radius: 2px;
   font-weight: 600;
 }
 
@@ -825,7 +807,7 @@ rt {
 }
 .dict-body::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.18);
-  border-radius: 4px;
+  border-radius: 0px;
 }
 .dict-body::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.32);
@@ -835,18 +817,17 @@ rt {
   margin-bottom: 6px;
 }
 
-/* Learning Status Buttons inside Popup (Migaku signature UI) */
 .dict-status-selector {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-bottom: 0.75rem;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  margin-bottom: 0.5rem;
 }
 
 .status-btn {
-  padding: 6px;
-  border-radius: 8px;
-  font-size: 0.75rem;
+  padding: 3px 2px;
+  border-radius: 2px;
+  font-size: 0.65rem;
   font-weight: 600;
   text-align: center;
   border: 1px solid var(--border-light);
@@ -5962,6 +5943,48 @@ rt {
   .section-title {
     font-size: 1.4rem !important;
   }
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Range Slider (Migaku style) */
+.migaku-range-slider {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 6px;
+  background: linear-gradient(to right, 
+    rgba(255,255,255,0.25) 0%, rgba(255,255,255,0.25) 2px, transparent 2px,
+    transparent calc(25% - 1px), rgba(255,255,255,0.25) calc(25% - 1px), rgba(255,255,255,0.25) calc(25% + 1px), transparent calc(25% + 1px),
+    transparent calc(50% - 1px), rgba(255,255,255,0.25) calc(50% - 1px), rgba(255,255,255,0.25) calc(50% + 1px), transparent calc(50% + 1px),
+    transparent calc(75% - 1px), rgba(255,255,255,0.25) calc(75% - 1px), rgba(255,255,255,0.25) calc(75% + 1px), transparent calc(75% + 1px),
+    transparent calc(100% - 2px), rgba(255,255,255,0.25) calc(100% - 2px)
+  ), rgba(255,255,255,0.15);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+
+.migaku-range-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+
+.migaku-range-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.migaku-range-slider::-webkit-slider-thumb:active {
+  transform: scale(0.95);
 }
 
 

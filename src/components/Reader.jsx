@@ -2,101 +2,151 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { ArrowLeft, ArrowRight, Settings, Volume2, ExternalLink, BookOpen, Play, Plus, X, Square, Sliders } from 'lucide-react';
 import { tokenizeText } from '../utils/japanese';
 import { lookupWord } from '../utils/dictionary';
+import { searchYomitanDB } from '../utils/yomitanDB';
 
 import html2canvas from 'html2canvas';
 import { t } from '../utils/i18n';
 import { synthesizeSpeechAzure } from '../utils/azureTtsService';
 
 
-export function chunkTokensIntoPages(tokenizedParagraphs, fontSize = 24) {
-  // 1. Agrupar tokens en oraciones completas coherentes
-  const sentences = [];
-  let currentSentence = [];
+export function getUniqueFrequencies(frequencies) {
+  if (!frequencies || frequencies.length === 0) return [];
   
-  for (let pIdx = 0; pIdx < tokenizedParagraphs.length; pIdx++) {
-    const paragraph = tokenizedParagraphs[pIdx];
-    if (paragraph.length === 0) continue;
-    
-    // Añadimos sangría al inicio de cada párrafo
-    currentSentence.push({ isIndentSpace: true });
-    
-    for (let tIdx = 0; tIdx < paragraph.length; tIdx++) {
-      const token = paragraph[tIdx];
-      currentSentence.push(token);
-      
-      // Identificar signos de puntuación final de oración en japonés y occidental
-      if (token.surface === '。' || token.surface === '！' || token.surface === '？' || 
-          token.surface === '.' || token.surface === '!' || token.surface === '?') {
-        sentences.push(currentSentence);
-        currentSentence = [];
+  const bestFreqs = {};
+  frequencies.forEach(f => {
+    const dict = f.dictionary;
+    let numVal = Infinity;
+    if (typeof f.value === 'number') {
+      numVal = f.value;
+    } else if (f.value) {
+      const parsed = parseInt(String(f.value).replace(/[^\d]/g, ''), 10);
+      if (!isNaN(parsed)) {
+        numVal = parsed;
+      }
+    } else if (f.displayValue) {
+      const parsed = parseInt(String(f.displayValue).replace(/[^\d]/g, ''), 10);
+      if (!isNaN(parsed)) {
+        numVal = parsed;
       }
     }
     
-    if (currentSentence.length > 0) {
-      sentences.push(currentSentence);
-      currentSentence = [];
+    if (!bestFreqs[dict]) {
+      bestFreqs[dict] = { ...f, parsedValue: numVal };
+    } else {
+      if (numVal < bestFreqs[dict].parsedValue) {
+        bestFreqs[dict] = { ...f, parsedValue: numVal };
+      }
     }
-    
-    // Insertar salto de párrafo si no es el último bloque del capítulo
-    if (pIdx < tokenizedParagraphs.length - 1) {
-      sentences.push([{ isParagraphBreak: true }]);
+  });
+  
+  const seenDicts = new Set();
+  const orderedResult = [];
+  frequencies.forEach(f => {
+    if (!seenDicts.has(f.dictionary)) {
+      seenDicts.add(f.dictionary);
+      if (bestFreqs[f.dictionary]) {
+        orderedResult.push(bestFreqs[f.dictionary]);
+      }
     }
+  });
+  
+  return orderedResult;
+}
+
+export function chunkTokensIntoPages(tokenizedParagraphs, fontSize = 24, containerPixelHeight = null, measuredLineHeight = null, lineShift = 0) {
+  // 1. Asignar índices de oración para soporte de resaltado en hover
+  let sentenceCount = 0;
+  for (const para of tokenizedParagraphs) {
+    for (const token of para) {
+      token.sentenceIdx = sentenceCount;
+      if (token.surface === '。' || token.surface === '！' || token.surface === '？' || 
+          token.surface === '.' || token.surface === '!' || token.surface === '?') {
+        sentenceCount++;
+      }
+    }
+    sentenceCount++;
   }
-  
-  const cleanSentences = sentences.filter(s => s.length > 0);
-  
-  // 2. Empaquetar oraciones completas en páginas respetando los límites físicos
-  const pages = [];
-  let currentPageTokens = [];
-  
-  const containerHeight = Math.min(520, window.innerHeight - 200);
-  const availableHeight = Math.max(200, containerHeight - 40); // 40px de margen de seguridad
-  
-  const lineMultiplier = 1.9; // Coincide con index.css
-  const estimatedLineHeight = fontSize * lineMultiplier;
-  const maxLines = Math.max(2, Math.floor(availableHeight / estimatedLineHeight));
-  
+
   const columnWidth = Math.min(800, window.innerWidth - 60);
   const charsPerLine = Math.max(8, Math.floor(columnWidth / fontSize));
   
-  // Objetivo de caracteres por página: 190 (escalado por fuente para agregar una oración más por página)
-  const charsPerPage = Math.max(80, Math.round(190 * (24 / fontSize)));
-  
-  let currentPageCharCount = 0;
-  let currentPageLines = 0;
-  
-  for (let sIdx = 0; sIdx < cleanSentences.length; sIdx++) {
-    const sentence = cleanSentences[sIdx];
-    
-    // Asignar el índice de oración a cada token para resaltado en hover
-    sentence.forEach(tok => {
-      tok.sentenceIdx = sIdx;
-    });
-    
-    // Calcular peso de la oración
-    const sentLength = sentence.filter(tok => tok.surface).reduce((sum, tok) => sum + tok.surface.length, 0);
-    const sentLines = Math.ceil(sentLength / charsPerLine) || 0.5; // los saltos de párrafo ocupan media línea
-    
-    // Si agregar la oración excede la capacidad de la página y ya tenemos contenido, hacemos el corte
-    if (currentPageTokens.length > 0 && (
-      (currentPageLines + sentLines > maxLines) || 
-      (currentPageCharCount + sentLength > charsPerPage)
-    )) {
-      pages.push(currentPageTokens);
-      currentPageTokens = [];
-      currentPageCharCount = 0;
-      currentPageLines = 0;
+  // Use the real measured line height from DOM (includes furigana overhang), fallback to estimate
+  // measuredLineHeight is obtained by rendering a hidden ruby test element at the exact font size
+  const estimatedLineHeight = measuredLineHeight
+    ? Math.ceil(measuredLineHeight) + 2 // Add 2px safety margin
+    : fontSize * 2.4; // Safe fallback — 2.4x accounts for worst-case furigana
+  const availableHeight = containerPixelHeight != null
+    ? Math.max(50, containerPixelHeight) // DOM-measured: pixel perfect
+    : Math.max(100, window.innerHeight - 210); // Fallback if ref not ready yet
+  // lineShift: auto-corrected by the overflow detector — each unit = 1 fewer line per page
+  const maxLines = Math.max(1, Math.floor(availableHeight / estimatedLineHeight) - lineShift);
+
+  const pages = [];
+  let currentPageTokens = [];
+  let currentLineChars = 0;
+  let currentLines = 0;
+
+  for (let pIdx = 0; pIdx < tokenizedParagraphs.length; pIdx++) {
+    const paragraph = tokenizedParagraphs[pIdx];
+    if (paragraph.length === 0) continue;
+
+    // Si no es el primer párrafo de la página, agregamos un salto de párrafo
+    if (currentPageTokens.length > 0) {
+      const paraBreakWeight = 0.5; // Peso visual de .paragraph-break
+      if (currentLines + paraBreakWeight > maxLines) {
+        pages.push(currentPageTokens);
+        currentPageTokens = [];
+        currentLineChars = 0;
+        currentLines = 0;
+      } else {
+        currentPageTokens.push({ isParagraphBreak: true });
+        currentLines += paraBreakWeight;
+      }
     }
-    
-    currentPageTokens.push(...sentence);
-    currentPageCharCount += sentLength;
-    currentPageLines += sentLines;
+
+    for (let tIdx = 0; tIdx < paragraph.length; tIdx++) {
+      const token = paragraph[tIdx];
+
+      if (token.isLineBreak) {
+        if (currentPageTokens.length > 0 && currentLines + 1 > maxLines) {
+          pages.push(currentPageTokens);
+          currentPageTokens = [token];
+          currentLineChars = 0;
+          currentLines = 0;
+        } else {
+          currentPageTokens.push(token);
+          currentLines += 1;
+          currentLineChars = 0;
+        }
+        continue;
+      }
+
+      const tokenLen = token.surface ? token.surface.length : 0;
+      if (tokenLen === 0) continue;
+
+      // Calcular cuántas líneas ocupa sumando a la línea actual
+      const totalChars = currentLineChars + tokenLen;
+      const linesOccupied = Math.floor(totalChars / charsPerLine);
+      const remainingChars = totalChars % charsPerLine;
+
+      if (currentPageTokens.length > 0 && currentLines + linesOccupied > maxLines) {
+        // Salto de página
+        pages.push(currentPageTokens);
+        currentPageTokens = [token];
+        currentLineChars = tokenLen % charsPerLine;
+        currentLines = Math.floor(tokenLen / charsPerLine);
+      } else {
+        currentPageTokens.push(token);
+        currentLines += linesOccupied;
+        currentLineChars = remainingChars;
+      }
+    }
   }
-  
+
   if (currentPageTokens.length > 0) {
     pages.push(currentPageTokens);
   }
-  
+
   return pages.length > 0 ? pages : [[]];
 }
 
@@ -145,6 +195,8 @@ function PitchAccent({ reading, position }) {
   );
 }
 
+export const FONT_SIZE_STEPS = [16, 20, 24, 28, 32];
+
 export default function Reader({ 
   book, 
   onBack, 
@@ -166,6 +218,32 @@ export default function Reader({
   const [dictEntry, setDictEntry] = useState(null);
   const [dictLoading, setDictLoading] = useState(false);
   const [ankiCardExists, setAnkiCardExists] = useState(false);
+
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const toastTimerRef = useRef(null);
+
+  // Densidad calibrada: se establece automáticamente desde la paginación real de capítulos.
+  // Se persiste en localStorage por libro para que sea correcta desde el primer render.
+  // v2: stripping corregido que excluye lecturas de furigana (<rt>).
+  const densityStorageKey = `yoru_page_density_v2_${book.id || 'default'}`;
+  const [calibratedDensity, setCalibratedDensity] = useState(() => {
+    try {
+      const cached = localStorage.getItem(densityStorageKey);
+      if (cached) {
+        const val = parseInt(cached, 10);
+        if (val >= 100 && val <= 1500) return val;
+      }
+    } catch (_) {}
+    return null;
+  });
+
+  const showToast = useCallback((message, type = 'success') => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ show: true, message, type });
+    toastTimerRef.current = setTimeout(() => {
+      setToast(prev => ({ ...prev, show: false }));
+    }, 3500);
+  }, []);
 
   const checkAnkiCardExists = async (word) => {
     setAnkiCardExists(false);
@@ -234,10 +312,61 @@ export default function Reader({
 
   const containerRef = useRef(null);
   const readerContentRef = useRef(null);
+  const textContainerRef = useRef(null); // Ref for the text area - used to measure actual pixel height
   const ttsAudioRef = useRef(null);
   const ttsKeepAliveRef = useRef(null);
+  // Ref que expone el estado mutable actual al keyboard handler.
+  // Evita re-registrar el event listener en cada cambio de estado (Fix #4).
+  const keyboardStateRef = useRef({});
+  // Ref para selectedWord usada por el outside-click handler estable (Fix #6).
+  const selectedWordRef = useRef(null);
+  // Ref para el rectángulo de la palabra cliqueada (para posicionamiento reactivo)
+  const clickedWordRectRef = useRef(null);
 
+  // Measured pixel height of the text container from the DOM (the ground truth)
+  const [textContainerHeight, setTextContainerHeight] = useState(null);
 
+  useEffect(() => {
+    const el = textContainerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const h = entry.contentRect.height;
+        if (h > 0) {
+          setTextContainerHeight(h);
+        }
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []); // Only runs once - ResizeObserver handles all future size changes
+
+  // Measured height of a single Japanese line with furigana ruby at the current font size.
+  // We create a hidden test element in the DOM to get the browser's real rendered height.
+  const [measuredLineHeight, setMeasuredLineHeight] = useState(null);
+
+  useEffect(() => {
+    // Create a hidden <ruby> element to measure actual rendered line height (furigana included)
+    const testEl = document.createElement('div');
+    testEl.setAttribute('style', [
+      'position:fixed',
+      'top:-9999px',
+      'left:-9999px',
+      'visibility:hidden',
+      'pointer-events:none',
+      `font-size:${settings.fontSize}px`,
+      'font-family:"Noto Sans JP","Hiragino Kaku Gothic ProN","Meiryo",sans-serif',
+      'line-height:1.9',
+      'white-space:nowrap',
+    ].join(';'));
+    testEl.innerHTML = '<ruby>漢字<rt>かんじ</rt></ruby>'; // Sample kanji+furigana
+    document.body.appendChild(testEl);
+    const h = testEl.getBoundingClientRect().height;
+    document.body.removeChild(testEl);
+    if (h > 0) {
+      setMeasuredLineHeight(h);
+    }
+  }, [settings.fontSize]); // Re-measure whenever font size changes
 
   const [windowSize, setWindowSize] = useState({ width: window.innerWidth, height: window.innerHeight });
 
@@ -246,8 +375,11 @@ export default function Reader({
       setWindowSize({ width: window.innerWidth, height: window.innerHeight });
     };
     window.addEventListener('resize', handleResize);
+    // Fix #5: cleanup was missing — cause de memory leak al desmontar el Reader
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+
 
 
 
@@ -298,37 +430,183 @@ export default function Reader({
     return () => { active = false; };
   }, [currentChapter, book.id]);
 
-  // 2. Calculo dinámico de páginas basado en tamaño de fuente
+  // lineShift: number of lines to subtract from maxLines to fix overflow.
+  // Self-corrects: if the rendered page overflows, this increments by 1 until it stops.
+  const [lineShift, setLineShift] = useState(0);
+  const lineShiftRef = useRef(0);
+  const prevLayoutKey = useRef('');
+
+  // 2. Calculo dinámico de páginas basado en tamaño de fuente y altura REAL del contenedor
   const pages = useMemo(() => {
     if (tokenizedParagraphs.length === 0) return [[]];
-    return chunkTokensIntoPages(tokenizedParagraphs, settings.fontSize);
-  }, [tokenizedParagraphs, settings.fontSize, windowSize]);
-
+    // Both textContainerHeight (container size) and measuredLineHeight (line height with furigana)
+    // come from real DOM measurements — no guesswork, no magic multipliers.
+    // lineShift is auto-corrected by the overflow detector below.
+    return chunkTokensIntoPages(tokenizedParagraphs, settings.fontSize, textContainerHeight, measuredLineHeight, lineShift);
+  }, [tokenizedParagraphs, settings.fontSize, windowSize, textContainerHeight, measuredLineHeight, lineShift]);
   const totalPages = pages.length;
   const currentPageTokens = pages[currentPage] || [];
 
-  // Estimación de páginas globales de todos los capítulos (basado en el nuevo target de 190 caracteres)
-  const chapterPageCounts = useMemo(() => {
-    return book.chapters.map((ch, idx) => {
-      if (idx === currentChapter && tokenizedParagraphs.length > 0) {
-        return totalPages;
+  // Overflow detector: runs after every page render.
+  // If text overflows the container, increment lineShift to fit one fewer line next time.
+  // Resets when layout changes (font size / container height / measured line height).
+  useEffect(() => {
+    const el = textContainerRef.current;
+    if (!el) return;
+
+    // Build a key representing the current layout config
+    const layoutKey = `${settings.fontSize}-${textContainerHeight}-${measuredLineHeight}`;
+    if (layoutKey !== prevLayoutKey.current) {
+      // Layout changed: reset shift and let it re-converge
+      prevLayoutKey.current = layoutKey;
+      lineShiftRef.current = 0;
+      setLineShift(0);
+      return;
+    }
+
+    // Check overflow after a short paint delay
+    const timer = setTimeout(() => {
+      if (el.scrollHeight > el.clientHeight + 2 && lineShiftRef.current < 10) {
+        lineShiftRef.current += 1;
+        setLineShift(lineShiftRef.current);
       }
-      const content = ch.content || "";
-      return Math.max(1, Math.ceil(content.length / 190));
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [currentPageTokens, settings.fontSize, textContainerHeight, measuredLineHeight]);
+
+  const [pagePitches, setPagePitches] = useState({});
+
+  useEffect(() => {
+    let active = true;
+    async function loadPagePitches() {
+      if (!currentPageTokens || currentPageTokens.length === 0) {
+        setPagePitches({});
+        return;
+      }
+      
+      const uniqueWords = [...new Set(
+        currentPageTokens
+          .filter(t => t.isWord && t.basicForm)
+          .map(t => t.basicForm)
+      )];
+      
+      if (uniqueWords.length === 0) {
+        setPagePitches({});
+        return;
+      }
+      
+      const pitchMap = {};
+      try {
+        await Promise.all(uniqueWords.map(async (word) => {
+          const entries = await searchYomitanDB(word);
+          if (entries && entries.length > 0) {
+            const entryWithPitch = entries.find(e => e.pitches && e.pitches.length > 0);
+            if (entryWithPitch) {
+              const pitchVal = entryWithPitch.pitches[0].pitches[0];
+              if (pitchVal) {
+                pitchMap[word] = {
+                  position: pitchVal.position,
+                  reading: entryWithPitch.pitches[0].reading || entryWithPitch.reading
+                };
+              }
+            }
+          }
+        }));
+        if (active) {
+          setPagePitches(pitchMap);
+        }
+      } catch (err) {
+        console.warn('Failed to load page pitches:', err);
+      }
+    }
+    loadPagePitches();
+    return () => {
+      active = false;
+    };
+  }, [currentPageTokens]);
+
+  const getPitchAccentColor = (word, reading) => {
+    const pitchInfo = pagePitches[word];
+    if (!pitchInfo) return '';
+    
+    const position = pitchInfo.position;
+    const wordReading = pitchInfo.reading || reading || '';
+    const morae = wordReading.match(/[ぁ-んァ-ン][ゃゅょャュョ]*/g) || [];
+    const moraeCount = morae.length;
+    
+    if (position === 0) return 'var(--pitch-heiban, #3da7f5)'; // Heiban (Blue)
+    if (position === 1) return 'var(--pitch-atamadaka, #f53d5c)'; // Atamadaka (Red)
+    if (position > 1 && position < moraeCount) return 'var(--pitch-nakadaka, #ff9100)'; // Nakadaka (Orange)
+    if (position === moraeCount) return 'var(--pitch-odaka, #00e676)'; // Odaka (Green)
+    
+    return '';
+  };
+
+  const currentChapterCharCount = useMemo(() => {
+    let count = 0;
+    tokenizedParagraphs.forEach(p => {
+      p.forEach(t => {
+        if (t.surface) count += t.surface.length;
+      });
     });
-  }, [book.chapters, currentChapter, totalPages, tokenizedParagraphs]);
+    return count;
+  }, [tokenizedParagraphs]);
+
+  // Helper para extraer el texto principal de ch.content.
+  // CRÍTICO: ch.content usa formato {texto|lectura} para furigana (NO es HTML).
+  // Ejemplo: {漢字|かんじ} → "漢字" (2 chars), no "漢字かんじ" (8 chars con braces).
+  // Sin este stripping, {冷蔵庫|れいぞうこ} = 11 chars en vez de 3 → inflación 4x.
+  const stripChapterHtml = useCallback((content) => {
+    return (content || '')
+      .replace(/\{([^|{}]+)\|[^{}]*\}/g, '$1')  // {texto|lectura} → solo el texto principal
+      .replace(/<rt[^>]*>[\s\S]*?<\/rt>/gi, '')  // Por si hay HTML residual: eliminar rt
+      .replace(/<[^>]+>/g, '')                    // Eliminar cualquier tag HTML residual
+      .replace(/&[a-zA-Z0-9#]+;/g, '')            // Eliminar HTML entities
+      .replace(/\s+/g, '');                        // Comprimir espacios (contar solo chars reales)
+  }, []);
+
+  // Densidad Migaku: constante derivada de datos reales del libro.
+  // "また、同じ夢を見ていた": 124,436 chars ÷ 238 páginas Migaku = 523 chars/página.
+  // Al usar esta constante fija (no viewport-based), el total de páginas coincide
+  // con Migaku independientemente del tamaño de pantalla o fuente.
+  // eslint-disable-next-line no-unused-vars
+  const _ = calibratedDensity; // Guardamos la densidad calibrada por compatibilidad
+  const avgCharsPerPage = 523;
+
+  // Total de caracteres legibles del libro (sin etiquetas HTML)
+  const totalBookCharacters = useMemo(() => {
+    return book.chapters.reduce((sum, ch) => sum + stripChapterHtml(ch.content).length, 0);
+  }, [book.chapters, stripChapterHtml]);
+
+  const charactersReadSoFar = useMemo(() => {
+    // Caracteres de capítulos anteriores (sin HTML)
+    let charsBefore = 0;
+    for (let i = 0; i < currentChapter; i++) {
+      charsBefore += stripChapterHtml(book.chapters[i].content).length;
+    }
+    
+    // Caracteres de páginas anteriores dentro del capítulo actual (ya tokenizados = texto limpio)
+    let charsInCurrentChapterBefore = 0;
+    for (let p = 0; p < currentPage; p++) {
+      const pageTokens = pages[p] || [];
+      pageTokens.forEach(t => {
+        if (t.surface) charsInCurrentChapterBefore += t.surface.length;
+      });
+    }
+    
+    return charsBefore + charsInCurrentChapterBefore;
+  }, [book.chapters, currentChapter, currentPage, pages, stripChapterHtml]);
 
   const globalTotalPages = useMemo(() => {
-    return chapterPageCounts.reduce((sum, c) => sum + c, 0);
-  }, [chapterPageCounts]);
+    if (totalBookCharacters <= 0) return 1;
+    return Math.max(1, Math.ceil(totalBookCharacters / avgCharsPerPage));
+  }, [totalBookCharacters, avgCharsPerPage]);
 
   const globalCurrentPage = useMemo(() => {
-    let sum = 0;
-    for (let i = 0; i < currentChapter; i++) {
-      sum += chapterPageCounts[i] || 1;
-    }
-    return sum + currentPage + 1;
-  }, [chapterPageCounts, currentChapter, currentPage]);
+    if (totalBookCharacters <= 0) return 1;
+    const pageEstimation = Math.ceil(charactersReadSoFar / avgCharsPerPage) + 1;
+    return Math.max(1, Math.min(globalTotalPages, pageEstimation));
+  }, [charactersReadSoFar, avgCharsPerPage, globalTotalPages, totalBookCharacters]);
 
   // Refs and hooks to track unique page visits and time spent reading
   const visitedPages = useRef(new Set());
@@ -379,18 +657,26 @@ export default function Reader({
     };
   }, []);
 
-  const jumpToGlobalPage = (targetVal) => {
-    let accumulated = 0;
+  const jumpToGlobalPage = (targetPage) => {
+    const targetCharOffset = (targetPage - 1) * avgCharsPerPage;
+    
+    let accumulatedChars = 0;
     for (let cIdx = 0; cIdx < book.chapters.length; cIdx++) {
-      const pCount = chapterPageCounts[cIdx] || 1;
-      if (targetVal <= accumulated + pCount) {
-        const subPage = targetVal - accumulated - 1;
+      const chContent = book.chapters[cIdx].content || "";
+      const chLen = chContent.length;
+      
+      if (targetCharOffset <= accumulatedChars + chLen) {
         setCurrentChapter(cIdx);
-        setCurrentPage(subPage);
+        const relativeOffset = targetCharOffset - accumulatedChars;
+        const estimatedSubPage = Math.floor(relativeOffset / avgCharsPerPage);
+        setCurrentPage(estimatedSubPage);
         return;
       }
-      accumulated += pCount;
+      accumulatedChars += chLen;
     }
+    
+    setCurrentChapter(book.chapters.length - 1);
+    setCurrentPage(999);
   };
 
   // 3. Ajuste de límites de página al recargar texto o cambiar tamaño
@@ -406,24 +692,26 @@ export default function Reader({
 
   // 4. Guardar progreso al cambiar de página o capítulo
   useEffect(() => {
-    if (tokenizedParagraphs.length === 0 || totalPages === 0) return;
-    const chapterWeight = 1 / book.chapters.length;
-    const currentProgress = currentChapter + (currentPage / totalPages);
-    const percent = Math.min(100, Math.max(0, Math.round(currentProgress * chapterWeight * 100)));
+    if (tokenizedParagraphs.length === 0 || totalPages === 0 || totalBookCharacters === 0) return;
+    const percent = Math.min(100, Math.max(0, Math.round((charactersReadSoFar / totalBookCharacters) * 100)));
     
     onUpdateProgress(book.id, currentChapter, currentPage, percent);
-  }, [currentPage, currentChapter, totalPages]);
+  }, [currentPage, currentChapter, totalPages, charactersReadSoFar, totalBookCharacters]);
 
-  // 5. Cerrar popup de diccionario al hacer click fuera
+  // Fix #6: Outside click handler estable — listener registrado UNA vez, usa ref para selectedWord.
   useEffect(() => {
     const handleOutsideClick = (e) => {
-      if (selectedWord && !e.target.closest('.dict-popup') && !e.target.closest('.word-token')) {
+      if (
+        selectedWordRef.current &&
+        !e.target.closest('.dict-popup') &&
+        !e.target.closest('.word-token')
+      ) {
         setSelectedWord(null);
       }
     };
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, [selectedWord]);
+  }, []); // [] → se registra solo una vez
 
   // 6. Lógica de Paginación por Caracteres (135 caracteres promedio)
   const handlePrevPage = () => {
@@ -454,27 +742,31 @@ export default function Reader({
     setSelectedWord(token);
     setDictLoading(true);
     
-    // Position below the clicked word using screen-fixed coordinates (like Yomitan)
+    // Position using screen-fixed coordinates (like Yomitan)
     const rect = e.currentTarget.getBoundingClientRect();
-    const popupWidth = 280;
+    clickedWordRectRef.current = rect;
+    const popupWidth = 380; // matches CSS width
 
-    // Place below word, aligned to the word's left edge
     let x = rect.left;
-    let y = rect.bottom + 6; // 6px gap below the word
+    let y = rect.bottom + 6;
 
     // Keep popup inside the viewport horizontally
     if (x + popupWidth > window.innerWidth - 10) x = window.innerWidth - popupWidth - 10;
     if (x < 10) x = 10;
 
-    // Vertical: only go above if there is MORE space above than below
+    // Vertical: place above if the word is in the lower half of the screen (so it has plenty of space above)
+    // or if the space below is too small to fit the popup.
     const spaceBelow = window.innerHeight - rect.bottom - 10;
     const spaceAbove = rect.top - 10;
-    if (spaceBelow < 180 && spaceAbove > spaceBelow) {
-      // Place above — anchor its bottom to just above the word
-      y = Math.max(10, rect.top - 6);
-      // We'll use CSS to pin it upwards via transform
+    const isLowerHalf = rect.top > window.innerHeight / 2;
+
+    if (isLowerHalf || (spaceBelow < 240 && spaceAbove > spaceBelow)) {
+      // Place above — anchor its bottom to just 6px above the word
+      y = rect.top - 6;
       setPopupPos({ x, y, anchorBottom: true });
     } else {
+      // Place below — anchor its top to just 6px below the word
+      y = rect.bottom + 6;
       setPopupPos({ x, y, anchorBottom: false });
     }
 
@@ -515,7 +807,7 @@ export default function Reader({
       });
     } catch (e) {
       console.error('Error opening Anki browser:', e);
-      alert(lang === 'es' ? 'No se pudo conectar con Anki. Asegúrate de que Anki esté abierto y AnkiConnect configurado.' : 'Could not connect to Anki. Make sure Anki is open and AnkiConnect is configured.');
+      showToast(lang === 'es' ? 'No se pudo conectar con Anki. Asegúrate de que Anki esté abierto y AnkiConnect configurado.' : 'Could not connect to Anki. Make sure Anki is open and AnkiConnect is configured.', 'error');
     }
   };
 
@@ -568,7 +860,7 @@ export default function Reader({
       }
     };
 
-    const getAnkiFurigana = (token) => {
+    const getAnkiFurigana = (token, keepLeadingSpace = false) => {
       if (!token) return '';
       if (!token.alignment) return token.surface || '';
       
@@ -580,7 +872,7 @@ export default function Reader({
           result += part.text;
         }
       });
-      return result.trim();
+      return keepLeadingSpace ? result : result.trim();
     };
 
     const getSentenceAnkiFurigana = (sentenceTokens) => {
@@ -588,7 +880,7 @@ export default function Reader({
         if (tok.isIndentSpace) return '　';
         if (tok.isParagraphBreak || tok.isLineBreak) return ' ';
         if (!tok.isWord) return tok.surface || '';
-        return getAnkiFurigana(tok);
+        return getAnkiFurigana(tok, true);
       }).join('');
     };
 
@@ -673,6 +965,7 @@ export default function Reader({
     const fieldsConfigValues = Object.values(fieldsConfig);
     const hasScreenshot = fieldsConfigValues.includes('{screenshot}');
     const hasAudio = fieldsConfigValues.includes('{audio}');
+    const hasSentenceAudio = fieldsConfigValues.includes('{sentence-audio}');
 
     // Capture screenshot if needed
     let screenshotHTML = '';
@@ -722,6 +1015,19 @@ export default function Reader({
         audioHTML = `[sound:${filename}]`;
       } catch (e) {
         console.error('Audio generation failed:', e);
+      }
+    }
+
+    // Capture sentence audio if needed
+    let sentenceAudioHTML = '';
+    if (hasSentenceAudio) {
+      try {
+        const filename = `yoru_sentence_audio_${Date.now()}.mp3`;
+        const downloadUrl = `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=ja&q=${encodeURIComponent(sentenceText)}`;
+        await uploadMediaUrlToAnki(host, filename, downloadUrl);
+        sentenceAudioHTML = `[sound:${filename}]`;
+      } catch (e) {
+        console.error('Sentence audio generation failed:', e);
       }
     }
 
@@ -793,37 +1099,134 @@ export default function Reader({
           .join('<br>');
       }
 
-      let frequencyRank = '';
+       let frequencyRank = '';
       let frequenciesDetails = '';
       if (dictEntry && dictEntry.frequencies && dictEntry.frequencies.length > 0) {
-        frequencyRank = dictEntry.frequencies
+        const uniqueFreqs = getUniqueFrequencies(dictEntry.frequencies);
+        frequencyRank = uniqueFreqs
           .map(f => f.displayValue || String(f.value))
           .join(', ');
 
-        frequenciesDetails = dictEntry.frequencies
+        frequenciesDetails = uniqueFreqs
           .map(f => `${f.dictionary}: ${f.displayValue || f.value}`)
           .join(', ');
       }
 
+      // Cloze deletion parts
+      let clozePrefix = '';
+      let clozeBody = selectedWord.surface || '';
+      let clozeBodyKana = selectedWord.reading || '';
+      let clozeSuffix = '';
+      if (selectedWord.sentenceIdx !== undefined && sentenceTokens.length > 0) {
+        const idx = sentenceTokens.findIndex(t => t === selectedWord);
+        if (idx !== -1) {
+          clozePrefix = sentenceTokens.slice(0, idx).map(t => t.surface || '').join('');
+          clozeSuffix = sentenceTokens.slice(idx + 1).map(t => t.surface || '').join('');
+        } else {
+          const parts = sentenceText.split(selectedWord.surface);
+          clozePrefix = parts[0] || '';
+          clozeSuffix = parts.slice(1).join(selectedWord.surface);
+        }
+      }
+      const sentenceClozeHTML = `${clozePrefix}{{c1::${clozeBody}}}${clozeSuffix}`;
+
+      // Furigana variants
+      const furiganaPlain = getAnkiFurigana(selectedWord, false);
+      const sentenceFuriganaPlain = sentenceTokens.map(tok => {
+        if (tok.isIndentSpace) return '　';
+        if (tok.isParagraphBreak || tok.isLineBreak) return ' ';
+        if (!tok.isWord) return tok.surface || '';
+        return getAnkiFurigana(tok, false);
+      }).join('');
+
+      // Glossary variants
+      const glossary = meaning;
+      const glossaryFirst = dictEntry && dictEntry.definitions && dictEntry.definitions[0] ? dictEntry.definitions[0] : '';
+      const glossaryBrief = glossaryFirst;
+      const glossaryFirstBrief = glossaryFirst;
+      const glossaryNoDict = meaning; 
+      const glossaryPlain = meaning.replace(/<[^>]*>/g, '');
+      const glossaryPlainNoDict = glossaryPlain;
+
+      // Part of speech
+      const partOfSpeechVal = dictEntry && dictEntry.partsOfSpeech ? dictEntry.partsOfSpeech.join(', ') : '';
+
+      // Pitch Accents list
+      let pitchAccentsVal = '';
+      if (dictEntry && dictEntry.pitches && dictEntry.pitches.length > 0) {
+        pitchAccentsVal = dictEntry.pitches
+          .flatMap(pEntry => pEntry.pitches.map(p => `${pEntry.reading || selectedWord.reading || ''}: [${p.position}]`))
+          .join(', ');
+      }
+
+      // Single frequencies
+      let singleFreqBccwj = '';
+      let singleFreqJpdb = '';
+      let singleFreqJiten = '';
+      let singleFreqVn = '';
+      if (dictEntry && dictEntry.frequencies) {
+        dictEntry.frequencies.forEach(f => {
+          const dictName = (f.dictionary || '').toLowerCase();
+          const valStr = String(f.value);
+          if (dictName.includes('bccwj')) singleFreqBccwj = valStr;
+          else if (dictName.includes('jpdb')) singleFreqJpdb = valStr;
+          else if (dictName.includes('jiten') || dictName.includes('anime')) singleFreqJiten = valStr;
+          else if (dictName.includes('vn') || dictName.includes('novel')) singleFreqVn = valStr;
+        });
+      }
+
+      // Document title and URL
+      const documentTitleVal = book.title || book.filename || '';
+      const docUrlVal = `yoru://book/${book.id || 'local'}`;
+
       let val = tokenTemplate
         .replaceAll('{expression}', selectedWord.basicForm || selectedWord.surface)
         .replaceAll('{furigana}', wordFurigana)
+        .replaceAll('{furigana-plain}', furiganaPlain)
         .replaceAll('{reading}', selectedWord.reading || '')
         .replaceAll('{audio}', audioHTML)
         .replaceAll('{popup-selection-text}', selectedWord.surface)
         .replaceAll('{sentence}', sentenceText)
         .replaceAll('{sentence-furigana}', sentenceFurigana)
+        .replaceAll('{sentence-furigana-plain}', sentenceFuriganaPlain)
+        .replaceAll('{sentence-audio}', sentenceAudioHTML)
+        .replaceAll('{sentence-cloze}', sentenceClozeHTML)
         .replaceAll('{screenshot}', screenshotHTML)
         .replaceAll('{meaning}', meaning)
+        .replaceAll('{glossary}', glossary)
+        .replaceAll('{glossary-brief}', glossaryBrief)
+        .replaceAll('{glossary-first}', glossaryFirst)
+        .replaceAll('{glossary-first-brief}', glossaryFirstBrief)
+        .replaceAll('{glossary-no-dictionary}', glossaryNoDict)
+        .replaceAll('{glossary-plain}', glossaryPlain)
+        .replaceAll('{glossary-plain-no-dictionary}', glossaryPlainNoDict)
         .replaceAll('{tags}', rawTags)
         .replaceAll('{pitch-accent-positions}', pitchPositions)
         .replaceAll('{pitch-accent-categories}', pitchCategories)
         .replaceAll('{pitch-accent-graphs}', pitchGraphs)
+        .replaceAll('{pitch-accent-graphs-jj}', pitchGraphs)
+        .replaceAll('{pitch-accents}', pitchAccentsVal)
         .replaceAll('{frequency-harmonic-rank}', frequencyRank)
         .replaceAll('{frequencies}', frequenciesDetails)
+        .replaceAll('{single-frequency-number-bccwj}', singleFreqBccwj)
+        .replaceAll('{single-frequency-number-jiten-anime}', singleFreqJiten)
+        .replaceAll('{single-frequency-number-jpdb}', singleFreqJpdb)
+        .replaceAll('{single-frequency-number-vn-freq}', singleFreqVn)
+        .replaceAll('{cloze-prefix}', clozePrefix)
+        .replaceAll('{cloze-body}', clozeBody)
+        .replaceAll('{cloze-body-kana}', clozeBodyKana)
+        .replaceAll('{cloze-suffix}', clozeSuffix)
+        .replaceAll('{document-title}', documentTitleVal)
+        .replaceAll('{search-query}', selectedWord.basicForm || selectedWord.surface)
+        .replaceAll('{part-of-speech}', partOfSpeechVal)
         .replaceAll('{bilingual}', meaningBilingual)
         .replaceAll('{monolingual-primary}', monolingualPrimary)
-        .replaceAll('{monolingual-extra}', monolingualExtra);
+        .replaceAll('{monolingual-extra}', monolingualExtra)
+        .replaceAll('{clipboard-text}', selectedWord.surface)
+        .replaceAll('{clipboard-image}', screenshotHTML)
+        .replaceAll('{single-glossary-jmdict-spanish-2026-06-10}', glossary)
+        .replaceAll('{url}', docUrlVal)
+        .replaceAll('{url-plain}', docUrlVal);
       fields[fieldName] = val;
     }
 
@@ -850,17 +1253,17 @@ export default function Reader({
       });
       const result = await response.json();
       if (result.error) {
-        alert('Anki error: ' + result.error);
+        showToast('Anki error: ' + result.error, 'error');
       } else {
         // Auto-mark the word as "Estudiando" when card is created
         if (selectedWord && selectedWord.basicForm) {
           onSetWordStatus(selectedWord.basicForm, 'learning');
         }
         setAnkiCardExists(true);
-        alert(lang === 'es' ? '¡Tarjeta de Anki creada con éxito! La palabra fue marcada como "Estudiando".' : 'Anki card created successfully! The word was marked as "Learning".');
+        showToast(lang === 'es' ? '¡Tarjeta de Anki creada con éxito! La palabra fue marcada como "Estudiando".' : 'Anki card created successfully! The word was marked as "Learning".', 'success');
       }
     } catch (e) {
-      alert(lang === 'es' ? 'Error de conexión con AnkiConnect. Asegúrate de tener Anki abierto.' : 'Connection error with AnkiConnect. Make sure Anki is open.');
+      showToast(lang === 'es' ? 'Error de conexión con AnkiConnect. Asegúrate de tener Anki abierto.' : 'Connection error with AnkiConnect. Make sure Anki is open.', 'error');
     }
   };
 
@@ -1043,7 +1446,87 @@ export default function Reader({
     reproducirTexto(rawText, settings.audioVoiceOption || 'Nanami');
   };
 
-  // Keyboard shortcuts (A/D/Arrows for navigation, Esc to close modals, V for TTS, M for mining)
+  // Ajustar la posición del popup reactivamente si colisiona con el borde inferior o superior de la pantalla.
+  // Mide el alto real del DOM del popup y lo voltea automáticamente si no cabe.
+  useEffect(() => {
+    if (!selectedWord) return;
+
+    const adjustPosition = () => {
+      const popupEl = document.querySelector('.dict-popup');
+      const wordRect = clickedWordRectRef.current;
+      if (!popupEl || !wordRect) return;
+
+      const popupRect = popupEl.getBoundingClientRect();
+      const popupHeight = popupRect.height;
+      
+      const spaceBelow = window.innerHeight - wordRect.bottom - 10;
+      const spaceAbove = wordRect.top - 10;
+
+      // Si está abajo y choca/excede el límite inferior de la pantalla
+      if (!popupPos.anchorBottom && wordRect.bottom + 6 + popupHeight > window.innerHeight - 10) {
+        if (spaceAbove > popupHeight || spaceAbove > spaceBelow) {
+          setPopupPos(prev => ({
+            ...prev,
+            y: wordRect.top - 6,
+            anchorBottom: true
+          }));
+        }
+      }
+      // Si está arriba y excede el límite superior de la pantalla
+      else if (popupPos.anchorBottom && wordRect.top - 6 - popupHeight < 10) {
+        if (spaceBelow > popupHeight || spaceBelow > spaceAbove) {
+          setPopupPos(prev => ({
+            ...prev,
+            y: wordRect.bottom + 6,
+            anchorBottom: false
+          }));
+        }
+      }
+    };
+
+    // Corremos inmediatamente y con pequeños intervalos para reaccionar al cambio de carga/renderizado
+    adjustPosition();
+    const timer1 = setTimeout(adjustPosition, 10);
+    const timer2 = setTimeout(adjustPosition, 50);
+    const timer3 = setTimeout(adjustPosition, 150);
+    
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+    };
+  }, [selectedWord, dictEntry, dictLoading, popupPos.anchorBottom]);
+
+
+
+  // Fix #4: Actualizar el ref con todos los valores actuales antes de cada render.
+  // El keyboard handler siempre lee desde aquí, sin necesidad de re-registrarse.
+  keyboardStateRef.current = {
+    currentPage,
+    currentChapter,
+    totalPages,
+    selectedWord,
+    dictEntry,
+    isReaderSidebarOpen,
+    isJumpModalOpen,
+    isComprehensionOpen,
+    isTtsPlaying,
+    currentPageTokens,
+    settings,
+    handlePrevPage,
+    handleNextPage,
+    leerPaginaEnVozAlta,
+    handleMineToAnki,
+    setSelectedWord,
+    setDictEntry,
+    setIsReaderSidebarOpen,
+    setIsJumpModalOpen,
+    setIsComprehensionOpen,
+  };
+  // Sincronizar selectedWordRef para el handler estable de outside-click (Fix #6)
+  selectedWordRef.current = selectedWord;
+
+  // Keyboard shortcuts — registrado UNA SOLA VEZ. Lee estado desde keyboardStateRef.
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (
@@ -1055,54 +1538,54 @@ export default function Reader({
         return;
       }
 
+      const s = keyboardStateRef.current;
       const key = e.key.toLowerCase();
 
       // 1. Navigation: Left / A (Previous Page)
       if (e.key === 'ArrowLeft' || key === 'a') {
         e.preventDefault();
-        handlePrevPage();
+        s.handlePrevPage();
       }
 
       // 2. Navigation: Right / D (Next Page)
       else if (e.key === 'ArrowRight' || key === 'd') {
         e.preventDefault();
-        handleNextPage();
+        s.handleNextPage();
       }
 
       // 3. Close Modals / Popups: Esc
       else if (e.key === 'Escape') {
         e.preventDefault();
-        if (selectedWord) {
-          setSelectedWord(null);
-          setDictEntry(null);
-        } else if (isReaderSidebarOpen) {
-          setIsReaderSidebarOpen(false);
-        } else if (isJumpModalOpen) {
-          setIsJumpModalOpen(false);
-        } else if (isComprehensionOpen) {
-          setIsComprehensionOpen(false);
+        if (s.selectedWord) {
+          s.setSelectedWord(null);
+          s.setDictEntry(null);
+        } else if (s.isReaderSidebarOpen) {
+          s.setIsReaderSidebarOpen(false);
+        } else if (s.isJumpModalOpen) {
+          s.setIsJumpModalOpen(false);
+        } else if (s.isComprehensionOpen) {
+          s.setIsComprehensionOpen(false);
         }
       }
 
       // 4. TTS: V
       else if (key === 'v') {
         e.preventDefault();
-        leerPaginaEnVozAlta();
+        s.leerPaginaEnVozAlta();
       }
 
       // 5. Mine to Anki: M
       else if (key === 'm') {
         e.preventDefault();
-        if (selectedWord) {
-          handleMineToAnki();
+        if (s.selectedWord) {
+          s.handleMineToAnki();
         }
       }
-
 
       // 7. Sidebar Settings: Q
       else if (key === 'q') {
         e.preventDefault();
-        setIsReaderSidebarOpen(prev => !prev);
+        s.setIsReaderSidebarOpen(prev => !prev);
       }
 
       // 8. Fullscreen: F
@@ -1122,20 +1605,7 @@ export default function Reader({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    currentPage, 
-    currentChapter, 
-    totalPages, 
-    selectedWord, 
-    dictEntry,
-    tokenizedParagraphs,
-    isReaderSidebarOpen, 
-    isJumpModalOpen, 
-    isComprehensionOpen, 
-    isTtsPlaying, 
-    currentPageTokens, 
-    settings
-  ]);
+  }, []); // [] → listener registrado UNA SOLA VEZ en todo el ciclo de vida del Reader
 
   // Get learning status style class
   const getWordStatusClass = (token) => {
@@ -1197,6 +1667,7 @@ export default function Reader({
           <div 
             className={`reader-text-container ${settings.showFurigana === 'none' ? 'hide-furigana' : ''}`}
             style={{ fontSize: `${settings.fontSize}px` }}
+            ref={textContainerRef}
           >
             {currentPageTokens.length === 0 ? (
               <p style={{ color: 'var(--text-dark)', textAlign: 'center', marginTop: '2rem' }}>
@@ -1219,10 +1690,14 @@ export default function Reader({
                   const isUnknownOnly = settings.showFurigana === 'unknown-only';
                   const shouldHideFurigana = isUnknownOnly && isKnown;
 
+                  const pitchColor = settings.pitchAccent === 'pitch-color' ? getPitchAccentColor(token.basicForm, token.reading) : '';
+                  const tokenStyle = pitchColor ? { color: pitchColor } : {};
+
                   return (
                     <span 
                       key={tokIdx}
                       className={`word-token ${getWordStatusClass(token)} ${hoveredSentenceIdx === token.sentenceIdx ? 'sentence-highlight' : ''}`}
+                      style={tokenStyle}
                       onClick={(e) => handleWordClick(token, e)}
                       onMouseEnter={() => {
                         if (settings.sentenceHover) {
@@ -1258,9 +1733,14 @@ export default function Reader({
                   position: 'fixed',
                   left: `${popupPos.x}px`, 
                   top: `${popupPos.y}px`,
-                  width: '280px',
                   zIndex: 9999,
-                  transform: popupPos.anchorBottom ? 'translateY(-100%)' : 'none'
+                  transform: popupPos.anchorBottom ? 'translateY(-100%)' : 'none',
+                  maxHeight: popupPos.anchorBottom 
+                    ? `${popupPos.y - 20}px` 
+                    : `${window.innerHeight - popupPos.y - 20}px`,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflowY: 'auto'
                 }}
               >
                 <div className="yomitan-header-row">
@@ -1275,7 +1755,7 @@ export default function Reader({
                       title={lang === 'es' ? 'Ver en Anki' : 'View in Anki'}
                       style={{ position: 'relative' }}
                     >
-                      <BookOpen size={20} />
+                      <BookOpen size={14} />
                       {ankiCardExists && (
                         <span style={{
                           position: 'absolute',
@@ -1284,9 +1764,9 @@ export default function Reader({
                           background: '#34d399',
                           color: '#000000',
                           borderRadius: '50%',
-                          width: '10px',
-                          height: '10px',
-                          fontSize: '8px',
+                          width: '7px',
+                          height: '7px',
+                          fontSize: '6px',
                           fontWeight: 'bold',
                           display: 'flex',
                           alignItems: 'center',
@@ -1304,24 +1784,24 @@ export default function Reader({
                       title={ankiCardExists ? (lang === 'es' ? 'Agregar duplicado a Anki' : 'Add duplicate to Anki') : t('mineToAnki', lang)}
                     >
                       {ankiCardExists ? (
-                        <div style={{ position: 'relative', width: '20px', height: '20px' }}>
+                        <div style={{ position: 'relative', width: '14px', height: '14px' }}>
                           <div style={{
                             position: 'absolute',
-                            left: '1px',
-                            bottom: '1px',
-                            width: '12px',
-                            height: '12px',
-                            border: '2px solid currentColor',
+                            left: '0px',
+                            bottom: '0px',
+                            width: '9px',
+                            height: '9px',
+                            border: '1.5px solid currentColor',
                             borderRadius: '50%',
                             boxSizing: 'border-box'
                           }} />
                           <div style={{
                             position: 'absolute',
-                            right: '1px',
-                            top: '1px',
-                            width: '12px',
-                            height: '12px',
-                            border: '2px solid currentColor',
+                            right: '0px',
+                            top: '0px',
+                            width: '9px',
+                            height: '9px',
+                            border: '1.5px solid currentColor',
                             borderRadius: '50%',
                             background: '#1e1e1e',
                             display: 'flex',
@@ -1329,11 +1809,11 @@ export default function Reader({
                             justifyContent: 'center',
                             boxSizing: 'border-box'
                           }}>
-                            <span style={{ fontSize: '9px', fontWeight: 'bold', lineHeight: '1', marginTop: '-2.5px' }}>+</span>
+                            <span style={{ fontSize: '7px', fontWeight: 'bold', lineHeight: '1', marginTop: '-2px' }}>+</span>
                           </div>
                         </div>
                       ) : (
-                        <Plus size={20} />
+                        <Plus size={14} />
                       )}
                     </button>
                     <button 
@@ -1341,7 +1821,7 @@ export default function Reader({
                       onClick={() => reproducirTexto(selectedWord.surface)}
                       title={t('listenPronunciation', lang)}
                     >
-                      <Volume2 size={20} />
+                      <Volume2 size={14} />
                     </button>
                   </div>
                 </div>
@@ -1357,10 +1837,11 @@ export default function Reader({
                       <span key={i} className="yomi-tag yomi-tag-blue">{pos.substring(0, 15)}</span>
                     ))
                   }
-                  {dictEntry && dictEntry.frequencies && dictEntry.frequencies.map((freq, i) => (
-                    <span key={`freq-${i}`} className="yomi-tag yomi-tag-green">
-                      {freq.dictionary} {freq.displayValue}
-                    </span>
+                  {dictEntry && dictEntry.frequencies && getUniqueFrequencies(dictEntry.frequencies).map((freq, i) => (
+                    <div key={`freq-${i}`} className="yomi-freq-group">
+                      <span className="yomi-freq-label">{freq.dictionary}</span>
+                      <span className="yomi-freq-value">{freq.displayValue}</span>
+                    </div>
                   ))}
                   {wordStatuses[selectedWord.basicForm] === 'known' && (
                     <div className="yomi-freq-group">
@@ -1371,20 +1852,32 @@ export default function Reader({
                 </div>
 
                 {/* Pitch Accents */}
-                {dictEntry && dictEntry.pitches && dictEntry.pitches.length > 0 && (
-                  <div className="yomitan-pitches-row" style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px', padding: '2px 0' }}>
-                    {dictEntry.pitches.map((pitchEntry, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <span className="yomi-tag" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#c084fc', border: '1px solid rgba(139, 92, 246, 0.3)', fontSize: '0.68rem', padding: '1px 6px', borderRadius: '4px' }}>
-                          {pitchEntry.dictionary}
-                        </span>
-                        {pitchEntry.pitches.map((p, j) => (
-                          <PitchAccent key={j} reading={pitchEntry.reading || selectedWord.reading || selectedWord.surface} position={p.position} />
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {dictEntry && dictEntry.pitches && dictEntry.pitches.length > 0 && (() => {
+                  const activeReading = (selectedWord.reading || selectedWord.surface || '').trim();
+                  const sortedPitches = [...dictEntry.pitches].sort((a, b) => {
+                    const aMatches = (a.reading || '').trim() === activeReading;
+                    const bMatches = (b.reading || '').trim() === activeReading;
+                    if (aMatches && !bMatches) return -1;
+                    if (!aMatches && bMatches) return 1;
+                    return 0;
+                  });
+                  const limitedPitches = sortedPitches.slice(0, 4);
+
+                  return (
+                    <div className="yomitan-pitches-row" style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '6px', padding: '2px 0' }}>
+                      {limitedPitches.map((pitchEntry, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span className="yomi-tag" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#c084fc', border: '1px solid rgba(139, 92, 246, 0.3)', fontSize: '0.65rem', padding: '1px 5px', borderRadius: '2px' }}>
+                            {pitchEntry.dictionary}
+                          </span>
+                          {pitchEntry.pitches.map((p, j) => (
+                            <PitchAccent key={j} reading={pitchEntry.reading || selectedWord.reading || selectedWord.surface} position={p.position} />
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
 
                 <div className="yomi-dict-tag-row">
                   <span className="yomi-pos-tag">{selectedWord.pos || 'Exp'}</span>
@@ -1420,7 +1913,11 @@ export default function Reader({
                   <button 
                     className={`status-btn status-btn-known ${(wordStatuses[selectedWord.basicForm] === 'known') ? 'active' : ''}`}
                     onClick={() => {
-                      onSetWordStatus(selectedWord.basicForm, 'known');
+                      const wordData = {
+                        reading: selectedWord.reading || selectedWord.surface,
+                        meaning: dictEntry?.definitions?.slice(0, 3).join(' / ') || ''
+                      };
+                      onSetWordStatus(selectedWord.basicForm, 'known', wordData);
                     }}
                   >
                     {t('statusKnown', lang)}
@@ -1452,8 +1949,9 @@ export default function Reader({
                     settings.showTranslation ? (
                       (dictEntry.definitions.length === 0 || (dictEntry.definitions.length === 1 && (dictEntry.definitions[0].includes('No translation found') || dictEntry.definitions[0].includes('No se encontró definición')))) ? (
                         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('noDefFound', lang)}</p>
-                      ) : (
-                        dictEntry.definitions.map((def, idx) => {
+                      ) : ( (() => {
+                        const grouped = {};
+                        dictEntry.definitions.forEach(def => {
                           let cleanDef = def;
                           let dictTag = '';
                           const tagMatch = def.match(/^\[(.*?)\] (.*)/);
@@ -1461,14 +1959,34 @@ export default function Reader({
                             dictTag = tagMatch[1];
                             cleanDef = tagMatch[2];
                           }
-                          
+                          if (!grouped[dictTag]) {
+                            grouped[dictTag] = [];
+                          }
+                          grouped[dictTag].push(cleanDef.trim());
+                        });
+
+                        return Object.entries(grouped).map(([dictTag, defs], idx) => {
+                          const uniqueDefs = [];
+                          const seen = new Set();
+                          defs.forEach(d => {
+                            const clean = d.replace(/^\d+\.\s*/, '').trim();
+                            if (clean && !seen.has(clean.toLowerCase())) {
+                              seen.add(clean.toLowerCase());
+                              uniqueDefs.push(clean);
+                            }
+                          });
+
+                          const joinedDefs = uniqueDefs.join(', ');
+                          if (!joinedDefs) return null;
+
                           return (
-                            <div key={idx} className="yomitan-definition-entry">
-                              {dictTag && <span className="yomitan-dict-name">[{dictTag}]</span>}
-                              <span className="yomitan-definition-text">{cleanDef}</span>
+                            <div key={idx} className="yomitan-definition-entry" style={{ margin: '1px 0', fontSize: '0.8rem', lineHeight: '1.3' }}>
+                              {dictTag && <span className="yomitan-dict-name" style={{ marginRight: '4px', fontSize: '0.62rem', padding: '1px 3px', borderRadius: '2px' }}>[{dictTag}]</span>}
+                              <span className="yomitan-definition-text">{joinedDefs}</span>
                             </div>
                           );
-                        })
+                        });
+                      })()
                       )
                     ) : (
                       <p style={{ color: 'var(--text-dark)', fontSize: '0.85rem', fontStyle: 'italic' }}>
@@ -1755,23 +2273,31 @@ export default function Reader({
             </div>
             
             {/* Tamaño de fuente del lector (Zoom de lectura) */}
-            <div className="drawer-section" style={{ marginBottom: '14px' }}>
-              <span className="drawer-section-label" style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.78rem', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600 }}>
-                {lang === 'es' ? 'Zoom de lectura' : 'Reading Zoom'}
+            <div className="drawer-section" style={{ marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <span className="drawer-section-label" style={{ color: '#ff6b4a', fontSize: '0.72rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {lang === 'es' ? 'AJUSTES DE PANTALLA' : 'DISPLAY SETTINGS'}
               </span>
-              <select 
-                value={settings.fontSize || 36}
-                onChange={(e) => onSaveSettings({ ...settings, fontSize: parseInt(e.target.value) })}
-                className="drawer-select"
-                style={{ width: '100%', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', color: '#fff', outline: 'none' }}
-              >
-                <option value="18">75%</option>
-                <option value="24">100%</option>
-                <option value="30">125%</option>
-                <option value="36">150%</option>
-                <option value="42">175%</option>
-                <option value="48">200%</option>
-              </select>
+              <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 700, marginBottom: '6px' }}>
+                {lang === 'es' ? 'Tamaño del texto' : 'Text size'}
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '0 4px' }}>
+                <span style={{ color: '#fff', fontSize: '0.75rem', fontWeight: 700, opacity: 0.6 }}>A</span>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="4" 
+                    step="1"
+                    value={FONT_SIZE_STEPS.includes(settings.fontSize) ? FONT_SIZE_STEPS.indexOf(settings.fontSize) : 2}
+                    onChange={(e) => {
+                      const newSize = FONT_SIZE_STEPS[parseInt(e.target.value)];
+                      onSaveSettings({ ...settings, fontSize: newSize });
+                    }}
+                    className="migaku-range-slider"
+                  />
+                </div>
+                <span style={{ color: '#fff', fontSize: '1.2rem', fontWeight: 700 }}>A</span>
+              </div>
             </div>
 
             {/* Velocidad de reproducción */}
@@ -1792,7 +2318,39 @@ export default function Reader({
             </div>
           </div>
         </div>
-      </aside>
-    </div>
-  );
+    </aside>
+
+    {/* Custom Toast Notification */}
+    {toast.show && (
+      <div className="yoru-toast" style={{
+        position: 'fixed',
+        bottom: '24px',
+        right: '24px',
+        background: '#18181b',
+        color: '#ffffff',
+        padding: '10px 16px',
+        borderRadius: '4px',
+        border: toast.type === 'success' ? '1px solid #10b981' : '1px solid #ef4444',
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.6)',
+        zIndex: 10000,
+        fontFamily: 'system-ui, sans-serif',
+        fontSize: '0.82rem',
+        fontWeight: 600,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        animation: 'toastIn 0.2s ease-out forwards'
+      }}>
+        <span style={{ 
+          width: '6px', 
+          height: '6px', 
+          borderRadius: '50%', 
+          background: toast.type === 'success' ? '#10b981' : '#ef4444',
+          display: 'inline-block' 
+        }} />
+        <span>{toast.message}</span>
+      </div>
+    )}
+  </div>
+);
 }

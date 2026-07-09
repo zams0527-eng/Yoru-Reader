@@ -3,7 +3,10 @@ import { X, Search, Palette, Clock, Type, Target, Layers, FolderOpen, BookOpen, 
 import { t } from '../utils/i18n';
 import packageJson from '../../package.json';
 import { CHANGELOG } from '../utils/changelog';
+import { useConfirm } from './ConfirmModal';
 const AnkiConfigModal = React.lazy(() => import('./AnkiConfigModal'));
+
+const FONT_SIZE_STEPS = [16, 20, 24, 28, 32];
 
 export default function SettingsModal({ 
   isOpen, 
@@ -21,6 +24,8 @@ export default function SettingsModal({
   const [isAnkiConfigOpen, setIsAnkiConfigOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('text-style');
   const [searchQuery, setSearchQuery] = useState('');
+
+  const { showConfirm, confirmModal } = useConfirm();
   const [mobileSubView, setMobileSubView] = useState('menu'); // 'menu' o 'content'
   
   const lang = settings.appLanguage || 'es';
@@ -221,20 +226,31 @@ export default function SettingsModal({
       <h4 className="settings-panel-title">{lang === 'es' ? 'Estilo de texto' : 'Text Style'}</h4>
       
       {/* Tamaño del texto (Zoom de lectura) */}
-      <div className="migaku-row" style={{ marginBottom: '14px' }}>
-        <span className="migaku-label">{lang === 'es' ? 'Zoom de lectura' : 'Reading Zoom'}</span>
-        <select 
-          value={getSliderVal()}
-          onChange={(e) => updateSetting('fontSize', parseInt(e.target.value))}
-          className="migaku-select"
-        >
-          <option value="18">75%</option>
-          <option value="24">100%</option>
-          <option value="30">125%</option>
-          <option value="36">150%</option>
-          <option value="42">175%</option>
-          <option value="48">200%</option>
-        </select>
+      <div className="migaku-row" style={{ marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'stretch' }}>
+        <span className="migaku-label" style={{ fontSize: '0.72rem', fontWeight: 800, color: '#ff6b4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          {lang === 'es' ? 'AJUSTES DE PANTALLA' : 'DISPLAY SETTINGS'}
+        </span>
+        <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 700, marginBottom: '6px' }}>
+          {lang === 'es' ? 'Tamaño del texto' : 'Text size'}
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '0 4px', width: '100%' }}>
+          <span style={{ color: '#fff', fontSize: '0.75rem', fontWeight: 700, opacity: 0.6 }}>A</span>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center' }}>
+            <input 
+              type="range" 
+              min="0" 
+              max="4" 
+              step="1"
+              value={FONT_SIZE_STEPS.includes(getSliderVal()) ? FONT_SIZE_STEPS.indexOf(getSliderVal()) : 2}
+              onChange={(e) => {
+                const newSize = FONT_SIZE_STEPS[parseInt(e.target.value)];
+                updateSetting('fontSize', newSize);
+              }}
+              className="migaku-range-slider"
+            />
+          </div>
+          <span style={{ color: '#fff', fontSize: '1.2rem', fontWeight: 700 }}>A</span>
+        </div>
       </div>
 
       {/* Furigana */}
@@ -472,14 +488,25 @@ export default function SettingsModal({
         </p>
         <button
           type="button"
-          onClick={() => {
-            const confirm = window.confirm(lang === 'es' ? '¿Estás absolutamente seguro de que deseas restablecer TODOS los datos? Esta acción es irreversible.' : 'Are you absolutely sure you want to reset ALL data? This is irreversible.');
-            if (confirm) {
+          onClick={async () => {
+            const ok = await showConfirm({
+              title: lang === 'es' ? '¿Restablecer datos?' : 'Reset data?',
+              message: lang === 'es' ? '¿Estás absolutamente seguro de que deseas restablecer TODOS los datos? Esta acción es irreversible.' : 'Are you absolutely sure you want to reset ALL data? This is irreversible.',
+              type: 'danger',
+              confirmText: lang === 'es' ? 'Restablecer' : 'Reset'
+            });
+            if (ok) {
               localStorage.clear();
               // Borrar IndexedDB de forma rápida
               const req = indexedDB.deleteDatabase('yoru-reader-db');
-              req.onsuccess = () => {
-                alert(lang === 'es' ? 'Aplicación restablecida con éxito. Se reiniciará ahora.' : 'App reset successfully. Restarting now.');
+              req.onsuccess = async () => {
+                await showConfirm({
+                  title: lang === 'es' ? 'Éxito' : 'Success',
+                  message: lang === 'es' ? 'Aplicación restablecida con éxito. Se reiniciará ahora.' : 'App reset successfully. Restarting now.',
+                  type: 'info',
+                  confirmText: lang === 'es' ? 'Reiniciar' : 'Restart',
+                  cancelText: ''
+                });
                 window.location.reload();
               };
               req.onerror = () => {
@@ -706,6 +733,7 @@ export default function SettingsModal({
           <AnkiConfigModal isOpen={isAnkiConfigOpen} onClose={() => setIsAnkiConfigOpen(false)} />
         )}
       </React.Suspense>
+      {confirmModal}
     </div>
   );
 }

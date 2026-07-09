@@ -5,6 +5,8 @@ const Reader = React.lazy(() => import('./components/Reader'));
 const SettingsModal = React.lazy(() => import('./components/SettingsModal'));
 import { db } from './utils/db';
 import { tokenizeText } from './utils/japanese';
+import { clearYomitanCache } from './utils/yomitanDB';
+import { useConfirm } from './components/ConfirmModal';
 
 const SAMPLE_BOOKS = [
   {
@@ -114,6 +116,8 @@ export default function App() {
   const lang = settings.appLanguage || 'es';
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [infoBook, setInfoBook] = useState(null);
+
+  const { showConfirm, confirmModal } = useConfirm();
 
   const uniqueWordsCacheRef = React.useRef({});
 
@@ -401,45 +405,19 @@ export default function App() {
   // 3. Handle updating book reading progress
   // 3. Handle updating book reading progress
   const handleUpdateProgress = useCallback(async (bookId, currentChapter, currentPage, percent) => {
+    // Solo persistimos en DB y actualizamos la lista de libros.
+    // Reader gestiona su propio currentPage/currentChapter internamente,
+    // por lo que actualizar activeBook aquí causaría un re-render innecesario.
     const updatedBooks = await db.updateBookProgress(bookId, currentChapter, currentPage, percent);
     setBooks(updatedBooks);
-    
-    // Update active book reference
-    if (activeBook && activeBook.id === bookId) {
-      setActiveBook(prev => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          progress: { 
-            ...(prev.progress || {}),
-            currentChapter, 
-            currentPage, 
-            percent 
-          }
-        };
-      });
-    }
-  }, [activeBook]);
+  }, []);  // Sin deps de activeBook → identidad estable entre renders
 
   const handleIncrementReadingStats = useCallback(async (bookId, chars, seconds) => {
+    // Solo persistimos stats en DB. Reader maneja sus propios contadores en refs.
+    // Actualizar activeBook causaría un re-render de Reader cada 5 segundos.
     const updatedBooks = await db.incrementReadingStats(bookId, chars, seconds);
     setBooks(updatedBooks);
-    
-    // Update active book reference to reflect new stats
-    if (activeBook && activeBook.id === bookId) {
-      setActiveBook(prev => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          progress: {
-            ...(prev.progress || {}),
-            charactersRead: ((prev.progress || {}).charactersRead || 0) + chars,
-            secondsRead: ((prev.progress || {}).secondsRead || 0) + seconds
-          }
-        };
-      });
-    }
-  }, [activeBook]);
+  }, []);  // Sin deps de activeBook → identidad estable
   // 4. Handle adding custom books
   const handleAddBooks = async (booksData) => {
     const updatedBooks = await db.addBooks(booksData);
@@ -474,63 +452,153 @@ export default function App() {
   };
 
   // 6. Handle vocabulary status changes
-  // 6. Handle vocabulary status changes
-  const handleSetWordStatus = async (word, status) => {
+  // wordData: optional { reading, meaning } passed from Reader when marking as known
+  const handleSetWordStatus = async (word, status, wordData = null) => {
     const updatedStatuses = db.setWordStatus(word, status);
     setWordStatuses(updatedStatuses);
 
-    // Auto-mature in Anki if enabled and status is 'known'
+    // Auto-mature (and auto-create if needed) in Anki when status becomes 'known'
+    if (status !== 'known') return;
+
     const savedAnki = localStorage.getItem('anki_settings_v2');
-    if (savedAnki) {
+    if (!savedAnki) return;
+
+    let ankiOpts;
+    try { ankiOpts = JSON.parse(savedAnki); } catch { return; }
+    if (!ankiOpts.enabled) return;
+
+    const host = ankiOpts.host || 'http://127.0.0.1:8765';
+    const deck = ankiOpts.expression?.deck || 'sentence mining';
+    const noteType = ankiOpts.expression?.noteType || 'Lapis';
+    const fields = ankiOpts.expression?.fields || {};
+    const wordField = Object.keys(fields).find(k => fields[k] === '{expression}') || 'Expression';
+
+    const ankiFetch = async (action, params) => {
       try {
-        const ankiOpts = JSON.parse(savedAnki);
-        if (ankiOpts.enabled && ankiOpts.autoMature && status === 'known') {
-          const deck = ankiOpts.expression?.deck || 'sentence mining';
-          const fields = ankiOpts.expression?.fields || {};
-          const wordField = Object.keys(fields).find(k => fields[k] === '{expression}') || 'Expression';
-          
-          // Query expression in Anki
-          const query = `deck:"${deck}" "${wordField}:${word}"`;
-          const res = await fetch(ankiOpts.host, {
-            method: 'POST',
-            body: JSON.stringify({
-              action: 'findCards',
-              version: 6,
-              params: { query }
-            })
-          });
-          const data = await res.json();
-          if (data.result && data.result.length > 0) {
-            // Force cards to become mature (interval: 30 days, ease: 2500)
-            for (const cardId of data.result) {
-              await fetch(ankiOpts.host, {
-                method: 'POST',
-                body: JSON.stringify({
-                  action: 'setSpecificCardInfo',
-                  version: 6,
-                  params: {
-                    card: cardId,
-                    ease: 2500,
-                    interval: 30,
-                    lapses: 0,
-                    reviews: 1
-                  }
-                })
-              });
-            }
-            console.log(`Auto-matured card(s) in Anki for word: "${word}"`);
-          }
+        const r = await fetch(host, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action, version: 6, params })
+        });
+        return await r.json();
+      } catch { return null; }
+    };
+
+    // 1. Search for existing notes matching this word across ALL decks and common field names.
+    // Different decks use different field names (e.g. Core 2k/6k uses "Vocabulary-Kanji",
+    // Lapis/Yomitan uses "Expression", etc.), so we try all common ones to avoid duplicates.
+    const COMMON_WORD_FIELDS = [
+      wordField,          // the user's configured field (highest priority)
+      'Expression',
+      'Vocabulary-Kanji',
+      'VocabKanji',
+      'Vocabulary',
+      'Word',
+      'Kanji',
+      'Front',
+      '表現',
+      'Japanese',
+      'Vocab',
+      'Reading',
+    ];
+    // De-duplicate while preserving order
+    const fieldsToTry = [...new Set(COMMON_WORD_FIELDS)];
+
+    let noteIds = null;
+    for (const field of fieldsToTry) {
+      const q = `"${field}:${word}"`;
+      const r = await ankiFetch('findNotes', { query: q });
+      if (r?.result && r.result.length > 0) {
+        noteIds = r.result;
+        console.log(`[Yoru] Found ${noteIds.length} note(s) for "${word}" in field "${field}"`);
+        break;
+      }
+    }
+
+
+    const matureCards = async (cIds) => {
+      if (!cIds || cIds.length === 0) return;
+      // Set ease to 2500 (normal) and interval to 30 days → card becomes "mature"
+      await ankiFetch('setEaseFactors', { cardIds: cIds, easeFactors: cIds.map(() => 2500) });
+      const today = Math.floor(Date.now() / 86400000); // Anki uses days-since-epoch
+      const dues = {};
+      cIds.forEach(id => { dues[String(id)] = today + 30; });
+      await ankiFetch('setSpecificCardInfo', { cards: cIds.map(id => ({ id, interval: 30, ease: 2500, lapses: 0, reviews: 1 })) });
+      console.log(`[Yoru] Matured ${cIds.length} card(s) for word: "${word}"`);
+    };
+
+    if (noteIds && noteIds.length > 0) {
+      // Cards exist → get their card IDs and mature them
+      const cardsResult = await ankiFetch('notesInfo', { notes: noteIds });
+      const cardIds = (cardsResult?.result || []).flatMap(n => n.cards || []);
+      await matureCards(cardIds);
+    } else {
+      // No card exists → create one with word data, then mature it
+      // Build minimal fields using configured mapping or sensible defaults
+      const noteFields = {};
+      const reading = wordData?.reading || word;
+      const meaning = wordData?.meaning || '';
+
+      for (const [fieldName, tmpl] of Object.entries(fields)) {
+        if (!tmpl) { noteFields[fieldName] = ''; continue; }
+        noteFields[fieldName] = tmpl
+          .replaceAll('{expression}', word)
+          .replaceAll('{furigana}', reading)
+          .replaceAll('{reading}', reading)
+          .replaceAll('{meaning}', meaning)
+          .replaceAll('{glossary}', meaning)
+          .replaceAll('{glossary-brief}', meaning)
+          .replaceAll('{glossary-first}', meaning)
+          .replaceAll('{bilingual}', meaning)
+          // clear media placeholders — we have no screenshot/audio in silent mode
+          .replaceAll('{audio}', '')
+          .replaceAll('{screenshot}', '')
+          .replaceAll('{sentence}', '')
+          .replaceAll('{sentence-furigana}', '')
+          .replaceAll('{sentence-audio}', '')
+          .replaceAll('{sentence-cloze}', '')
+          .replaceAll(/\{[^}]+\}/g, '');
+      }
+
+      // Fallback: if fields is empty use bare minimum
+      if (Object.keys(noteFields).length === 0) {
+        noteFields[wordField] = word;
+      }
+
+      const rawTags = ankiOpts.tags || 'yoru_reader';
+      const tagsList = rawTags.split(/[\s,]+/).filter(t => t.trim());
+      if (!tagsList.includes('yoru_reader')) tagsList.push('yoru_reader');
+      if (!tagsList.includes('auto_known')) tagsList.push('auto_known');
+
+      const addResult = await ankiFetch('addNote', {
+        note: {
+          deckName: deck,
+          modelName: noteType,
+          fields: noteFields,
+          options: { allowDuplicate: false, duplicateScope: 'deck' },
+          tags: tagsList
         }
-      } catch (err) {
-        console.error('Failed to auto-mature card in Anki:', err);
+      });
+
+      if (addResult?.result) {
+        // Get the card IDs for the newly created note and mature them
+        const newNoteInfo = await ankiFetch('notesInfo', { notes: [addResult.result] });
+        const newCardIds = (newNoteInfo?.result || []).flatMap(n => n.cards || []);
+        await matureCards(newCardIds);
+        console.log(`[Yoru] Created + matured card for word: "${word}"`);
+      } else {
+        console.warn('[Yoru] Could not create Anki card for:', word, addResult?.error);
       }
     }
   };
+
 
   // 7. Handle settings adjustments
   const handleSaveSettings = (newSettings) => {
     db.saveSettings(newSettings);
     setSettings(newSettings);
+    // Invalidar cachés de búsqueda: el usuario puede haber cambiado dicts activos/orden
+    clearYomitanCache();
   };
 
   // 8. Profiles Management Actions
@@ -550,12 +618,26 @@ export default function App() {
     setActiveProfileId(newProfile.id);
   };
 
-  const handleDeleteProfile = (profileId) => {
+  const handleDeleteProfile = async (profileId) => {
     if (profiles.length <= 1) {
-      alert(lang === 'es' ? "No puedes eliminar el único perfil." : "You cannot delete the only profile.");
+      await showConfirm({
+        title: lang === 'es' ? 'Acción no permitida' : 'Action not allowed',
+        message: lang === 'es' ? 'No puedes eliminar el único perfil.' : 'You cannot delete the only profile.',
+        type: 'warning',
+        confirmText: lang === 'es' ? 'Entendido' : 'OK',
+        cancelText: '',
+      });
       return;
     }
-    if (confirm(lang === 'es' ? "¿Estás seguro de que deseas eliminar este perfil? Se perderán todos sus libros e historial." : "Are you sure you want to delete this profile? All books and history will be lost.")) {
+    const ok = await showConfirm({
+      title: lang === 'es' ? '¿Eliminar perfil?' : 'Delete profile?',
+      message: lang === 'es'
+        ? '¿Estás seguro de que deseas eliminar este perfil? Se perderán todos sus libros e historial.'
+        : 'Are you sure you want to delete this profile? All books and history will be lost.',
+      type: 'danger',
+      confirmText: lang === 'es' ? 'Eliminar' : 'Delete',
+    });
+    if (ok) {
       const updatedProfiles = profiles.filter(p => p.id !== profileId);
       db.saveProfiles(updatedProfiles);
       setProfiles(updatedProfiles);
@@ -640,6 +722,9 @@ export default function App() {
           />
         )}
       </React.Suspense>
+
+      {/* Styled confirm modal (replaces native window.confirm) */}
+      {confirmModal}
     </div>
   );
 }
