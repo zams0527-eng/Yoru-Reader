@@ -8,5 +8,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const listener = (event, data) => callback(data);
     ipcRenderer.on('download-progress-event', listener);
     return () => ipcRenderer.off('download-progress-event', listener);
-  }
+  },
+  getReaderExtId: () => ipcRenderer.invoke('get-reader-extension-id'),
+  openReaderExtSettings: () => ipcRenderer.invoke('open-reader-extension-settings'),
+  onQueryWordStatuses: (callback) => {
+    const listener = (event, words) => callback(words);
+    ipcRenderer.on('query-word-statuses', listener);
+    return () => ipcRenderer.off('query-word-statuses', listener);
+  },
+  replyQueryWordStatuses: (result) => ipcRenderer.send('reply-query-word-statuses', result),
+  onSaveWordToSrs: (callback) => {
+    const listener = (event, wordData) => callback(wordData);
+    ipcRenderer.on('save-word-to-srs', listener);
+    return () => ipcRenderer.off('save-word-to-srs', listener);
+  },
+  replySaveWordToSrs: () => ipcRenderer.send('reply-save-word-to-srs'),
+  onUpdateWordStatus: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('update-word-status', listener);
+    return () => ipcRenderer.off('update-word-status', listener);
+  },
+  replyUpdateWordStatus: () => ipcRenderer.send('reply-update-word-status'),
+  onParseTextRequest: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('parse-text-request', listener);
+    return () => ipcRenderer.off('parse-text-request', listener);
+  },
+  replyParseText: (result) => ipcRenderer.send('reply-parse-text', result)
 });

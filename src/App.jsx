@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Library from './components/Library';
 import WelcomeScreen from './components/WelcomeScreen';
-const Reader = React.lazy(() => import('./components/Reader'));
-const SettingsModal = React.lazy(() => import('./components/SettingsModal'));
+import Reader from './components/Reader';
+import SettingsModal from './components/SettingsModal';
 import { db } from './utils/db';
-import { tokenizeText } from './utils/japanese';
-import { clearYomitanCache } from './utils/yomitanDB';
+import { tokenizeText, parseExtensionText } from './utils/japanese';
+import { clearYomitanCache, migrateEnglishDictName, migrateDictFlags, cleanOrphanedEntries } from './utils/yomitanDB';
 import { useConfirm } from './components/ConfirmModal';
 
 const SAMPLE_BOOKS = [
@@ -112,7 +112,13 @@ export default function App() {
   const [books, setBooks] = useState([]);
   const [activeBook, setActiveBook] = useState(null);
   const [wordStatuses, setWordStatuses] = useState({});
-  const [settings, setSettings] = useState(db.getSettings());
+  const [libraryTab, setLibraryTab] = useState('library');
+  const [settings, setSettings] = useState(() => {
+    const s = db.getSettings();
+    // Expose theme globally for iframe CSS injection
+    window.__yoruTheme = s.theme || 'dark';
+    return s;
+  });
   const lang = settings.appLanguage || 'es';
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [infoBook, setInfoBook] = useState(null);
@@ -120,6 +126,142 @@ export default function App() {
   const { showConfirm, confirmModal } = useConfirm();
 
   const uniqueWordsCacheRef = React.useRef({});
+
+  // Run background database maintenance tasks exactly once on app startup
+  useEffect(() => {
+    // Register Yoru extension local API bridge IPC listeners
+    let unsubscribeQuery = null;
+    let unsubscribeSave = null;
+    let unsubscribeParse = null;
+    let unsubscribeUpdateStatus = null;
+
+    if (window.electronAPI) {
+      // 1. Query word statuses (new/learning/known)
+      if (window.electronAPI.onQueryWordStatuses) {
+        unsubscribeQuery = window.electronAPI.onQueryWordStatuses((words) => {
+          const statuses = db.getWordStatuses();
+          const result = {};
+          words.forEach(w => {
+            result[w] = statuses[w] || 'unknown';
+          });
+          window.electronAPI.replyQueryWordStatuses(result);
+        });
+      }
+
+      // 2. Save word mined from Yoru extension to Yoru local database/SRS
+      if (window.electronAPI.onSaveWordToSrs) {
+        unsubscribeSave = window.electronAPI.onSaveWordToSrs((wordData) => {
+          console.log('[Yoru] Mining word from extension locally:', wordData);
+          // Set status as 'learning'
+          db.setWordStatus(wordData.word, 'learning');
+          
+          // Save card to native local SRS Spaced Repetition System
+          const existingCard = db.getSrsCard(wordData.word);
+          if (!existingCard) {
+            const newCard = {
+              word: wordData.word,
+              reading: wordData.reading || '',
+              sentence: wordData.sentence || '',
+              source: wordData.source || 'Yoru Reader Extension',
+              interval: 1,
+              ease: 2.5,
+              repetitions: 0,
+              dueDate: new Date().toISOString()
+            };
+            db.saveSrsCard(wordData.word, newCard);
+            console.log('[Yoru] Saved mined card to local SRS:', newCard);
+          }
+          
+          // Update local component state so it shows up instantly
+          setWordStatuses(db.getWordStatuses());
+          
+          // Reply to confirm success
+          window.electronAPI.replySaveWordToSrs();
+        });
+      }
+
+      // 2.5. Update word status from Yomitan (learning/known/ignored/new)
+      if (window.electronAPI.onUpdateWordStatus) {
+        unsubscribeUpdateStatus = window.electronAPI.onUpdateWordStatus((data) => {
+          const { word, state } = data;
+          console.log('[Yoru] Updating word status from extension:', word, state);
+          
+          let newStatus = 'new';
+          if (state === 'learning-add') {
+            newStatus = 'learning';
+            // Save SRS card if it doesn't exist
+            const existingCard = db.getSrsCard(word);
+            if (!existingCard) {
+              const now = new Date();
+              const newCard = {
+                word: word,
+                reading: '',
+                sentence: '',
+                source: 'Yoru Reader Extension',
+                interval: 1,
+                ease: 2.5,
+                repetitions: 0,
+                dueDate: now.toISOString(),
+                lastReview: now.toISOString(),
+                lapses: 0,
+                state: 0
+              };
+              db.saveSrsCard(word, newCard);
+            }
+          } else if (state === 'known-add') {
+            newStatus = 'known';
+            db.saveSrsCard(word, null);
+          } else if (state === 'ignored-add') {
+            newStatus = 'ignored';
+            db.saveSrsCard(word, null);
+          } else {
+            // learning-remove, known-remove, ignored-remove, forget-add, new-add
+            newStatus = 'new';
+            db.saveSrsCard(word, null);
+          }
+          
+          db.setWordStatus(word, newStatus);
+          setWordStatuses(db.getWordStatuses());
+          
+          window.electronAPI.replyUpdateWordStatus();
+        });
+      }
+
+      // 3. Parse text request from Yoru extension
+      if (window.electronAPI.onParseTextRequest) {
+        unsubscribeParse = window.electronAPI.onParseTextRequest(async ({ requestId, paragraphs }) => {
+          try {
+            console.log('[Yoru] Parsing text request from extension. Request ID:', requestId);
+            const result = await parseExtensionText(paragraphs);
+            window.electronAPI.replyParseText({ requestId, result });
+          } catch (err) {
+            console.error('[Yoru] Failed to parse extension text:', err);
+            window.electronAPI.replyParseText({ requestId, error: err.message });
+          }
+        });
+      }
+    }
+
+    const runMaintenance = async () => {
+      try {
+        console.log("[App] Running background yomitan database maintenance...");
+        await migrateEnglishDictName();
+        await migrateDictFlags();
+        await cleanOrphanedEntries();
+        console.log("[App] Yomitan database maintenance completed.");
+      } catch (err) {
+        console.warn("[App] Background maintenance failed:", err);
+      }
+    };
+    runMaintenance();
+
+    return () => {
+      if (unsubscribeQuery) unsubscribeQuery();
+      if (unsubscribeSave) unsubscribeSave();
+      if (unsubscribeParse) unsubscribeParse();
+      if (unsubscribeUpdateStatus) unsubscribeUpdateStatus();
+    };
+  }, []);
 
   // Calculate vocab stats ONLY for the currently active book being read
   useEffect(() => {
@@ -268,6 +410,7 @@ export default function App() {
 
   // 1. Initialize and reload data when active profile changes
   useEffect(() => {
+    setBooks([]); // Clear books state immediately to prevent ghost profile books rendering
     const loadBooksData = async () => {
       // Load books
       const loadedBooks = await db.getBooks();
@@ -442,6 +585,11 @@ export default function App() {
     }
   };
 
+  const handleClearDeletedBooks = async () => {
+    const updatedBooks = await db.clearDeletedBooks();
+    setBooks(updatedBooks);
+  };
+
   // 5b. Handle updating book details
   const handleUpdateBookDetails = async (bookId, data) => {
     const updatedBooks = await db.updateBookDetails(bookId, data);
@@ -603,11 +751,13 @@ export default function App() {
 
   // 8. Profiles Management Actions
   const handleSelectProfile = (profileId) => {
+    setBooks([]); // Reset books synchronously to avoid any ghost render/flashes
     db.setActiveProfileId(profileId);
     setActiveProfileId(profileId);
   };
 
   const handleAddProfile = (newProfile) => {
+    setBooks([]); // Reset books synchronously to avoid any ghost render/flashes
     const currentSettings = db.getSettings();
     const updatedProfiles = [...profiles, newProfile];
     db.saveProfiles(updatedProfiles);
@@ -638,6 +788,7 @@ export default function App() {
       confirmText: lang === 'es' ? 'Eliminar' : 'Delete',
     });
     if (ok) {
+      setBooks([]); // Reset books synchronously to avoid any ghost render/flashes
       const updatedProfiles = profiles.filter(p => p.id !== profileId);
       db.saveProfiles(updatedProfiles);
       setProfiles(updatedProfiles);
@@ -672,7 +823,14 @@ export default function App() {
         <React.Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: '#fff', fontSize: '1.2rem', fontFamily: 'var(--font-heading)' }}>{lang === 'es' ? 'Cargando lector...' : 'Loading reader...'}</div>}>
           <Reader 
             book={activeBook}
-            onBack={() => setActiveBook(null)}
+            onBack={(targetTab) => {
+              setActiveBook(null);
+              if (targetTab) {
+                setLibraryTab(targetTab);
+              } else {
+                setLibraryTab('library');
+              }
+            }}
             onUpdateProgress={handleUpdateProgress}
             onIncrementReadingStats={handleIncrementReadingStats}
             wordStatuses={wordStatuses}
@@ -699,9 +857,11 @@ export default function App() {
           onAddProfile={handleAddProfile}
           onDeleteProfile={handleDeleteProfile}
           onUpdateProfile={handleUpdateProfile}
+          onClearDeletedBooks={handleClearDeletedBooks}
           settings={settings}
           onSaveSettings={handleSaveSettings}
           wordStatuses={wordStatuses}
+          initialTab={libraryTab}
         />
       )}
 

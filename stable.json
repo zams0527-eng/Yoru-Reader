@@ -1,0 +1,6 @@
+{
+  "appVersion": "1.6.0",
+  "backendVersion": "1.1.0",
+  "url": "https://github.com/zams0527-eng/Yoru-Reader/releases/latest",
+  "description": "Fusión del motor de lectura directo nativo en React, reemplazando el iframe de Svelte. Se implementaron barras de navegación, configuración, marcadores directos y seguimiento de sesiones integrados."
+}

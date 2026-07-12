@@ -73,6 +73,7 @@ export function htmlToStructuredParagraphs(doc) {
       ].includes(tagName);
       
       if (isBlock && currentParagraph.length > 0) {
+        currentParagraph.tagName = tagName;
         paragraphs.push(currentParagraph);
         currentParagraph = [];
       }
@@ -99,7 +100,7 @@ export function htmlToStructuredParagraphs(doc) {
   }
   
   return paragraphs.map(p => {
-    return p.map(segment => {
+    const newP = p.map(segment => {
       if (typeof segment === 'string') {
         return segment.replace(/\s+/g, ' ');
       }
@@ -113,12 +114,16 @@ export function htmlToStructuredParagraphs(doc) {
       }
       return segment.text && segment.text.trim().length > 0;
     });
+    if (p.tagName) {
+      newP.tagName = p.tagName;
+    }
+    return newP;
   }).filter(p => p.length > 0);
 }
 
 // Helper to serialize structured paragraphs into a text format that preserves ruby blocks and images
 export function serializeStructuredParagraph(p) {
-  return p.map(segment => {
+  const content = p.map(segment => {
     if (typeof segment === 'string') {
       return segment;
     }
@@ -127,6 +132,11 @@ export function serializeStructuredParagraph(p) {
     }
     return `{${segment.text}|${segment.ruby}}`;
   }).join('');
+
+  if (p.tagName && ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(p.tagName)) {
+    return `{${p.tagName}:${content}}`;
+  }
+  return content;
 }
 
 // Helper to identify introductory metadata and front-matter sections
@@ -436,10 +446,105 @@ export async function parseEPUB(arrayBuffer) {
       spineIds.push(idref);
     }
   });
-  
+
   // Determine relative base folder inside ZIP for files listed in manifest
   const lastSlashIndex = opfPath.lastIndexOf('/');
   const baseDir = lastSlashIndex !== -1 ? opfPath.substring(0, lastSlashIndex + 1) : '';
+
+  // --- Extract Table of Contents (TOC) Map ---
+  const tocMap = {};
+  try {
+    // 1. EPUB 3 Nav TOC
+    let navHref = '';
+    opfDoc.querySelectorAll('item').forEach(item => {
+      const props = item.getAttribute('properties') || '';
+      if (props.split(/\s+/).includes('nav')) {
+        navHref = item.getAttribute('href');
+      }
+    });
+    // Fallback search if properties attribute is not found but ID or href hints it
+    if (!navHref) {
+      opfDoc.querySelectorAll('item').forEach(item => {
+        const id = (item.getAttribute('id') || '').toLowerCase();
+        const href = (item.getAttribute('href') || '').toLowerCase();
+        if (id === 'nav' || id === 'toc' || href.includes('nav.xhtml') || href.includes('toc.xhtml')) {
+          navHref = item.getAttribute('href');
+        }
+      });
+    }
+
+    if (navHref) {
+      const resolvedNavPath = resolveRelativePath(opfPath, navHref);
+      const navFile = zip.file(resolvedNavPath);
+      if (navFile) {
+        const navHtml = await navFile.async('text');
+        const navDoc = parser.parseFromString(navHtml, 'text/html');
+        navDoc.querySelectorAll('a').forEach(a => {
+          const href = a.getAttribute('href');
+          if (href) {
+            const cleanHref = decodeURIComponent(href.split('#')[0]);
+            const targetPath = resolveRelativePath(resolvedNavPath, cleanHref);
+            const label = a.textContent.trim();
+            if (label && !tocMap[targetPath]) {
+              tocMap[targetPath] = label;
+            }
+          }
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to parse EPUB 3 Nav TOC:", e);
+  }
+
+  // 2. EPUB 2 NCX TOC
+  if (Object.keys(tocMap).length === 0) {
+    try {
+      const spineEl = opfDoc.querySelector('spine') || opfDoc.querySelector('opf\\:spine');
+      const tocId = spineEl ? spineEl.getAttribute('toc') : null;
+      let ncxHref = '';
+      if (tocId) {
+        const ncxItem = opfDoc.getElementById(tocId) || opfDoc.querySelector(`item[id="${tocId}"]`);
+        if (ncxItem) {
+          ncxHref = ncxItem.getAttribute('href');
+        }
+      }
+      // Fallback if spine toc attribute is missing but there is an NCX file in manifest
+      if (!ncxHref) {
+        opfDoc.querySelectorAll('item').forEach(item => {
+          const mediaType = item.getAttribute('media-type') || '';
+          if (mediaType === 'application/x-dtbncx+xml' || (item.getAttribute('href') || '').endsWith('.ncx')) {
+            ncxHref = item.getAttribute('href');
+          }
+        });
+      }
+
+      if (ncxHref) {
+        const resolvedNcxPath = resolveRelativePath(opfPath, ncxHref);
+        const ncxFile = zip.file(resolvedNcxPath);
+        if (ncxFile) {
+          const ncxXml = await ncxFile.async('text');
+          const ncxDoc = parser.parseFromString(ncxXml, 'text/html');
+          ncxDoc.querySelectorAll('navpoint').forEach(point => {
+            const contentEl = point.querySelector('content');
+            const textEl = point.querySelector('navlabel text');
+            if (contentEl && textEl) {
+              const href = contentEl.getAttribute('src');
+              const label = textEl.textContent.trim();
+              if (href && label) {
+                const cleanHref = decodeURIComponent(href.split('#')[0]);
+                const targetPath = resolveRelativePath(resolvedNcxPath, cleanHref);
+                if (!tocMap[targetPath]) {
+                  tocMap[targetPath] = label;
+                }
+              }
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to parse EPUB 2 NCX TOC:", e);
+    }
+  }
   
   // --- Find and extract cover image ---
   let coverHref = null;
@@ -502,11 +607,8 @@ export async function parseEPUB(arrayBuffer) {
     }
   }
   
-  // 5. Read spine chapters with introductory/front-matter grouping
+  // 5. Read spine chapters
   const chapters = [];
-  let frontMatterContent = "";
-  let frontMatterTitle = "";
-  let inMainChapters = false;
   
   for (let i = 0; i < spineIds.length; i++) {
     const id = spineIds[i];
@@ -522,8 +624,59 @@ export async function parseEPUB(arrayBuffer) {
     const chapterHtml = await file.async('text');
     const doc = parser.parseFromString(chapterHtml, 'text/html');
     
-    const heading = doc.querySelector('h1, h2, h3, h4');
-    const chapterTitle = heading ? heading.textContent.trim() : `Capítulo ${chapters.length + 1}`;
+    // Determine the chapter title using resilient path-matching against the TOC map
+    let chapterTitle = '';
+    let isFromToc = false;
+    const getCleanPath = (p) => {
+      if (!p) return '';
+      return p.toLowerCase().replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\//, '');
+    };
+    const cleanResolved = getCleanPath(resolvedPath);
+    
+    // 1. Try exact normalized match in TOC
+    for (const k of Object.keys(tocMap)) {
+      if (getCleanPath(k) === cleanResolved) {
+        chapterTitle = tocMap[k];
+        isFromToc = true;
+        break;
+      }
+    }
+    
+    // 2. Try matching by filename if exact match fails (e.g. "OEBPS/xhtml/p-001.xhtml" matches "xhtml/p-001.xhtml")
+    if (!chapterTitle) {
+      const resolvedFilename = cleanResolved.split('/').pop();
+      for (const k of Object.keys(tocMap)) {
+        const kClean = getCleanPath(k);
+        const kFilename = kClean.split('/').pop();
+        if (resolvedFilename && resolvedFilename === kFilename) {
+          chapterTitle = tocMap[k];
+          isFromToc = true;
+          break;
+        }
+      }
+    }
+    
+    // 3. Fallback to heading tags inside HTML body
+    if (!chapterTitle) {
+      const heading = doc.querySelector('h1, h2, h3, h4');
+      if (heading) chapterTitle = heading.textContent.trim();
+    }
+    
+    // 4. Fallback to HTML title tag in head (only if not identical to book title)
+    if (!chapterTitle) {
+      const titleTag = doc.querySelector('title');
+      if (titleTag) {
+        const titleText = titleTag.textContent.trim();
+        if (titleText && titleText !== title && titleText.toLowerCase() !== 'untitled' && titleText.toLowerCase() !== 'untitled document') {
+          chapterTitle = titleText;
+        }
+      }
+    }
+    
+    // 5. Hard fallback
+    if (!chapterTitle) {
+      chapterTitle = chapters.length === 0 ? 'Portada' : `Capítulo ${chapters.length + 1}`;
+    }
     
     const structuredParagraphs = htmlToStructuredParagraphs(doc);
     if (structuredParagraphs.length === 0) continue;
@@ -551,37 +704,11 @@ export async function parseEPUB(arrayBuffer) {
       }
     }
     
-    const serializedContent = structuredParagraphs.map(serializeStructuredParagraph).join('\n');
-    
-    // Check if this file is front-matter / introductory metadata
-    const isIntro = isFrontMatter(chapterTitle, decodedHref) || (structuredParagraphs.length < 5 && !/第\d+章/i.test(chapterTitle));
-    
-    if (isIntro && !inMainChapters) {
-      if (!frontMatterTitle) {
-        frontMatterTitle = chapterTitle;
-      }
-      frontMatterContent += (frontMatterContent ? '\n' : '') + serializedContent;
-    } else {
-      // Once we reach a main/structured chapter, push the accumulated front-matter as the first page/chapter
-      if (frontMatterContent) {
-        chapters.push({
-          title: frontMatterTitle || 'Portada',
-          content: frontMatterContent
-        });
-        frontMatterContent = "";
-      }
-      inMainChapters = true;
-      chapters.push({
-        title: chapterTitle,
-        content: serializedContent
-      });
-    }
-  }
-  
-  if (frontMatterContent) {
+    // Keep the chapter unified without splitting on images to preserve continuous layout flow
     chapters.push({
-      title: frontMatterTitle || 'Portada',
-      content: frontMatterContent
+      title: chapterTitle || 'Portada',
+      content: structuredParagraphs.map(serializeStructuredParagraph).join('\n'),
+      isFromToc: isFromToc
     });
   }
   

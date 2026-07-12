@@ -1,0 +1,544 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { Calendar, Clock, Flame, BookOpen, RefreshCw } from 'lucide-react';
+
+interface Book {
+  id: number;
+  title: string;
+  cover?: string;
+  author?: string;
+}
+
+interface DbStatistic {
+  title: string;
+  dateKey: string;
+  charactersRead: number;
+  readingTime: number; // in seconds
+  lastStatisticModified: number;
+}
+
+interface ProgressDashboardProps {
+  books: Book[];
+  lang?: string;
+}
+
+export default function ProgressDashboard({ books, lang = 'es' }: ProgressDashboardProps) {
+  const [dbStats, setDbStats] = useState<DbStatistic[]>([]);
+  const [timeWindow, setTimeWindow] = useState<'7D' | '30D' | '90D' | 'All'>('30D');
+  const [hoveredDay, setHoveredDay] = useState<{ dateStr: string; time: number; chars: number } | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  const t = {
+    progress: lang === 'es' ? 'Progreso' : 'Progress',
+    subtitle: lang === 'es' ? 'Historial de sesiones y totales de lectura diaria.' : 'Session history and daily reading totals.',
+    sessionSync: lang === 'es' ? 'Sincronización de sesión' : 'Session sync',
+    sessionSyncDesc: lang === 'es' ? 'Sincronización manual de cuenta para el historial de lectura y progreso.' : 'Manual account sync for reading history and progress stats.',
+    signInSync: lang === 'es' ? 'Iniciar sesión para sincronizar' : 'Sign in to sync sessions.',
+    today: lang === 'es' ? 'HOY' : 'TODAY',
+    todaySpeed: lang === 'es' ? 'VELOCIDAD HOY' : 'TODAY SPEED',
+    streak: lang === 'es' ? 'RACHA' : 'STREAK',
+    chars: lang === 'es' ? 'caracteres' : 'chars',
+    charSpeed: lang === 'es' ? 'chars/h' : 'chars/h',
+    sessions: lang === 'es' ? 'sesiones' : 'sessions',
+    session: lang === 'es' ? 'sesión' : 'session',
+    consecutiveDays: lang === 'es' ? 'Días de lectura consecutivos' : 'Consecutive reading days',
+    heatmap: lang === 'es' ? 'Mapa de calor' : 'Heatmap',
+    heatmapDesc: lang === 'es' ? 'Tiempo de lectura diario a lo largo de la ventana seleccionada.' : 'Daily reading time across the selected window.',
+    recentSessions: lang === 'es' ? 'Sesiones recientes' : 'Recent sessions',
+    noSessions: lang === 'es' ? 'Aún no hay sesiones registradas. ¡Comienza a leer un libro!' : 'No sessions yet. Start reading a book!',
+    byBook: lang === 'es' ? 'Por libro' : 'By book',
+    bookTotalsDesc: lang === 'es' ? 'Los totales de cada libro aparecerán aquí.' : 'Book totals appear after you finish or pause sessions.',
+    shown: lang === 'es' ? 'mostrados' : 'shown',
+    allTime: lang === 'es' ? 'Todo el tiempo' : 'All Time',
+    days: lang === 'es' ? 'días' : 'days',
+    day: lang === 'es' ? 'día' : 'day',
+  };
+
+  const loadStatistics = async () => {
+    setLoading(true);
+    try {
+      const dbStatsList = await new Promise<DbStatistic[]>((resolve) => {
+        const request = indexedDB.open('books');
+        request.onsuccess = (e: any) => {
+          const dbInstance = e.target.result;
+          if (!dbInstance.objectStoreNames.contains('statistic')) {
+            resolve([]);
+            return;
+          }
+          const tx = dbInstance.transaction('statistic', 'readonly');
+          const store = tx.objectStore('statistic');
+          const req = store.getAll();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => resolve([]);
+        };
+        request.onerror = () => resolve([]);
+      });
+      setDbStats(dbStatsList);
+    } catch (err) {
+      console.error('Failed to load db statistics:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadStatistics();
+  }, []);
+
+  // Format YYYY-MM-DD local date string
+  const todayStr = useMemo(() => new Date().toLocaleDateString('sv').slice(0, 10), []);
+
+  // 1. TODAY'S TOTALS
+  const todayStats = useMemo(() => dbStats.filter((s) => s.dateKey === todayStr), [dbStats, todayStr]);
+  const todayChars = useMemo(() => todayStats.reduce((acc, s) => acc + (s.charactersRead || 0), 0), [todayStats]);
+  const todaySeconds = useMemo(() => todayStats.reduce((acc, s) => acc + (s.readingTime || 0), 0), [todayStats]);
+
+  const formatDuration = (totalSecs: number) => {
+    const hrs = Math.floor(totalSecs / 3600);
+    const mins = Math.floor((totalSecs % 3600) / 60);
+    const secs = totalSecs % 60;
+    return [hrs, mins, secs].map((v) => v.toString().padStart(2, '0')).join(':');
+  };
+
+  const todayTimeStr = useMemo(() => formatDuration(todaySeconds), [todaySeconds]);
+  const todaySpeedVal = useMemo(() => (todaySeconds > 0 ? Math.round((todayChars / todaySeconds) * 3600) : 0), [todayChars, todaySeconds]);
+  const todaySessionsCount = useMemo(() => todayStats.length, [todayStats]);
+
+  // 2. STREAK CALCULATION
+  const streakDays = useMemo(() => {
+    const readDates = new Set(dbStats.filter((s) => (s.charactersRead || 0) > 0 || (s.readingTime || 0) > 0).map((s) => s.dateKey));
+    if (readDates.size === 0) return 0;
+
+    let streak = 0;
+    const checkDate = new Date();
+    let checkDateStr = checkDate.toLocaleDateString('sv').slice(0, 10);
+
+    // If no reading today, allow check starting from yesterday
+    if (!readDates.has(checkDateStr)) {
+      checkDate.setDate(checkDate.getDate() - 1);
+      checkDateStr = checkDate.toLocaleDateString('sv').slice(0, 10);
+    }
+
+    while (readDates.has(checkDateStr)) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+      checkDateStr = checkDate.toLocaleDateString('sv').slice(0, 10);
+    }
+    return streak;
+  }, [dbStats]);
+
+  // 3. TIME WINDOW DATA FILTERING
+  const windowDaysLimit = useMemo(() => {
+    if (timeWindow === '7D') return 7;
+    if (timeWindow === '30D') return 30;
+    if (timeWindow === '90D') return 90;
+    return 365; // 'All' defaults to 1 year calendar
+  }, [timeWindow]);
+
+  const windowStartDateStr = useMemo(() => {
+    const start = new Date();
+    start.setDate(start.getDate() - (windowDaysLimit - 1));
+    return start.toLocaleDateString('sv').slice(0, 10);
+  }, [windowDaysLimit]);
+
+  const windowStats = useMemo(() => {
+    if (timeWindow === 'All') return dbStats;
+    return dbStats.filter((s) => s.dateKey >= windowStartDateStr && s.dateKey <= todayStr);
+  }, [dbStats, timeWindow, windowStartDateStr, todayStr]);
+
+  const windowChars = useMemo(() => windowStats.reduce((acc, s) => acc + (s.charactersRead || 0), 0), [windowStats]);
+  const windowSeconds = useMemo(() => windowStats.reduce((acc, s) => acc + (s.readingTime || 0), 0), [windowStats]);
+  const windowTimeStr = useMemo(() => formatDuration(windowSeconds), [windowSeconds]);
+
+  // 4. HEATMAP GRID CELL GENERATION
+  const heatmapCells = useMemo(() => {
+    const cells = [];
+    const end = new Date();
+    const start = new Date();
+    
+    if (timeWindow === 'All') {
+      // Show full year calendar grid (53 columns of 7 days)
+      const startOfYear = new Date(end.getFullYear(), 0, 1);
+      const dayOfWeek = startOfYear.getDay();
+      const startOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      start.setTime(startOfYear.getTime() + startOffset * 24 * 60 * 60 * 1000);
+      
+      const totalDays = 53 * 7;
+      for (let i = 0; i < totalDays; i++) {
+        const currentDate = new Date(start);
+        currentDate.setDate(start.getDate() + i);
+        const dateKey = currentDate.toLocaleDateString('sv').slice(0, 10);
+        
+        const dayStats = dbStats.filter((s) => s.dateKey === dateKey);
+        const chars = dayStats.reduce((acc, s) => acc + (s.charactersRead || 0), 0);
+        const time = dayStats.reduce((acc, s) => acc + (s.readingTime || 0), 0);
+        
+        cells.push({ dateKey, chars, time });
+      }
+    } else {
+      // Show exactly 7, 30 or 90 days grid
+      start.setDate(end.getDate() - (windowDaysLimit - 1));
+      for (let i = 0; i < windowDaysLimit; i++) {
+        const currentDate = new Date(start);
+        currentDate.setDate(start.getDate() + i);
+        const dateKey = currentDate.toLocaleDateString('sv').slice(0, 10);
+        
+        const dayStats = dbStats.filter((s) => s.dateKey === dateKey);
+        const chars = dayStats.reduce((acc, s) => acc + (s.charactersRead || 0), 0);
+        const time = dayStats.reduce((acc, s) => acc + (s.readingTime || 0), 0);
+        
+        cells.push({ dateKey, chars, time });
+      }
+    }
+    return cells;
+  }, [dbStats, timeWindow, windowDaysLimit]);
+
+  const getCellColor = (chars: number) => {
+    if (chars === 0) return 'var(--border-light)';
+    if (chars < 500) return 'rgba(255, 224, 0, 0.18)';
+    if (chars < 1500) return 'rgba(255, 224, 0, 0.45)';
+    if (chars < 3000) return 'rgba(255, 224, 0, 0.75)';
+    return '#ffe000';
+  };
+
+  // 5. RECENT SESSIONS LIST
+  const recentSessionsList = useMemo(() => {
+    const list = dbStats
+      .filter((s) => s.charactersRead > 0 || s.readingTime > 0)
+      .map((s) => {
+        const bookObj = books.find((b) => b.title === s.title);
+        return {
+          title: s.title,
+          cover: bookObj?.cover,
+          author: bookObj?.author || (lang === 'es' ? 'Desconocido' : 'Unknown'),
+          dateKey: s.dateKey,
+          chars: s.charactersRead,
+          time: s.readingTime,
+          modified: s.lastStatisticModified,
+        };
+      })
+      .sort((a, b) => b.modified - a.modified || b.dateKey.localeCompare(a.dateKey));
+    return list.slice(0, 10);
+  }, [dbStats, books, lang]);
+
+  // 6. BY BOOK AGGREGATION LIST
+  const byBookList = useMemo(() => {
+    const map = new Map<string, { chars: number; time: number }>();
+    dbStats.forEach((s) => {
+      const cur = map.get(s.title) || { chars: 0, time: 0 };
+      map.set(s.title, {
+        chars: cur.chars + (s.charactersRead || 0),
+        time: cur.time + (s.readingTime || 0),
+      });
+    });
+
+    const list = Array.from(map.entries())
+      .map(([title, val]) => {
+        const bookObj = books.find((b) => b.title === title);
+        return {
+          title,
+          cover: bookObj?.cover,
+          author: bookObj?.author || (lang === 'es' ? 'Desconocido' : 'Unknown'),
+          chars: val.chars,
+          time: val.time,
+        };
+      })
+      .sort((a, b) => b.chars - a.chars);
+    return list;
+  }, [dbStats, books, lang]);
+
+  return (
+    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', color: '#f1f5f9', background: '#0b0c0e', minHeight: '100vh', fontFamily: "'Outfit', 'Inter', sans-serif" }}>
+      {/* HEADER SECTION */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+        <div>
+          <h1 style={{ fontSize: '2rem', fontWeight: 800, margin: 0, color: '#ffffff', letterSpacing: '-0.02em' }}>{t.progress}</h1>
+          <p style={{ fontSize: '0.9rem', color: '#94a3b8', margin: '4px 0 0 0' }}>{t.subtitle}</p>
+        </div>
+
+        {/* TIME WINDOW PICKER */}
+        <div style={{ display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.04)', padding: '4px', borderRadius: '8px' }}>
+          {(['7D', '30D', '90D', 'All'] as const).map((opt) => {
+            const active = timeWindow === opt;
+            return (
+              <button
+                key={opt}
+                onClick={() => setTimeWindow(opt)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  border: 'none',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  background: active ? '#ffe000' : 'transparent',
+                  color: active ? '#000000' : '#94a3b8',
+                }}
+              >
+                {opt === 'All' ? t.allTime : opt}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* SESSION SYNC BANNER */}
+      <div
+        style={{
+          background: '#13151a',
+          border: '1px solid rgba(255,255,255,0.06)',
+          borderRadius: '12px',
+          padding: '16px 20px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '20px',
+        }}
+      >
+        <div>
+          <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#ffffff', fontWeight: 700 }}>{t.sessionSync}</h4>
+          <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: '#94a3b8' }}>{t.sessionSyncDesc}</p>
+        </div>
+        <button
+          style={{
+            background: 'transparent',
+            border: '1px solid rgba(255,255,255,0.15)',
+            color: '#ffe000',
+            padding: '8px 16px',
+            borderRadius: '8px',
+            fontSize: '0.8rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+          }}
+        >
+          {t.signInSync}
+        </button>
+      </div>
+
+      {/* GRID OF 4 CARDS */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '20px' }}>
+        {/* CARD 1: TODAY */}
+        <div style={{ background: '#13151a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.72rem', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.05em' }}>
+            <Clock size={14} style={{ color: '#ffe000' }} />
+            <span>{t.today}</span>
+          </div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffffff', margin: '8px 0' }}>{todayTimeStr}</div>
+          <div style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
+            {todayChars.toLocaleString()} <span style={{ color: 'rgba(255,255,255,0.4)' }}>{t.chars}</span>
+          </div>
+        </div>
+
+        {/* CARD 2: TODAY SPEED */}
+        <div style={{ background: '#13151a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.72rem', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.05em' }}>
+            <RefreshCw size={14} style={{ color: '#ffe000' }} />
+            <span>{t.todaySpeed}</span>
+          </div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffffff', margin: '8px 0' }}>
+            {todaySpeedVal} <span style={{ fontSize: '0.9rem', color: '#ffe000', fontWeight: 700 }}>{t.charSpeed}</span>
+          </div>
+          <div style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
+            {todaySessionsCount} <span style={{ color: 'rgba(255,255,255,0.4)' }}>{todaySessionsCount === 1 ? t.session : t.sessions}</span>
+          </div>
+        </div>
+
+        {/* CARD 3: STREAK */}
+        <div style={{ background: '#13151a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.72rem', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.05em' }}>
+            <Flame size={14} style={{ color: '#ffe000' }} />
+            <span>{t.streak}</span>
+          </div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffffff', margin: '8px 0' }}>
+            {streakDays} <span style={{ fontSize: '0.9rem', color: '#ffe000', fontWeight: 700 }}>{streakDays === 1 ? t.day : t.days}</span>
+          </div>
+          <div style={{ fontSize: '0.82rem', color: '#94a3b8' }}>{t.consecutiveDays}</div>
+        </div>
+
+        {/* CARD 4: WINDOW TIME */}
+        <div style={{ background: '#13151a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.72rem', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.05em' }}>
+            <Calendar size={14} style={{ color: '#ffe000' }} />
+            <span>{timeWindow === 'All' ? t.allTime.toUpperCase() : `${timeWindow} TIME`}</span>
+          </div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffffff', margin: '8px 0' }}>{windowTimeStr}</div>
+          <div style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
+            {windowChars.toLocaleString()} <span style={{ color: 'rgba(255,255,255,0.4)' }}>{t.chars}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* HEATMAP PANEL */}
+      <div style={{ background: '#13151a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>{t.heatmap}</h3>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: '#94a3b8' }}>{t.heatmapDesc}</p>
+          </div>
+          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ffe000', padding: '4px 10px', background: 'rgba(255,224,0,0.08)', borderRadius: '6px' }}>
+            {hoveredDay ? (
+              `${hoveredDay.dateStr}: ${formatDuration(hoveredDay.time)} — ${hoveredDay.chars.toLocaleString()} ${t.chars}`
+            ) : (
+              lang === 'es' ? 'Pasa el cursor sobre un día' : 'Hover a day for details'
+            )}
+          </div>
+        </div>
+
+        {/* Heatmap Grid rendering */}
+        <div style={{ overflowX: 'auto', display: 'flex', gap: '2px', padding: '8px 0' }}>
+          {timeWindow === 'All' ? (
+            // Full 53-week layout columns
+            <div style={{ display: 'flex', gap: '3px' }}>
+              {Array.from({ length: 53 }).map((_, wIdx) => (
+                <div key={wIdx} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  {Array.from({ length: 7 }).map((_, dIdx) => {
+                    const cellIdx = wIdx * 7 + dIdx;
+                    const cell = heatmapCells[cellIdx];
+                    if (!cell) return null;
+                    return (
+                      <div
+                        key={dIdx}
+                        onMouseEnter={() => setHoveredDay({ dateStr: cell.dateKey, time: cell.time, chars: cell.chars })}
+                        onMouseLeave={() => setHoveredDay(null)}
+                        style={{
+                          width: '12px',
+                          height: '12px',
+                          borderRadius: '2px',
+                          background: getCellColor(cell.chars),
+                          cursor: 'pointer',
+                          transition: 'all 0.1s',
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          ) : (
+            // Linear grid representation for 7D, 30D, 90D
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', width: '100%' }}>
+              {heatmapCells.map((cell, idx) => (
+                <div
+                  key={idx}
+                  onMouseEnter={() => setHoveredDay({ dateStr: cell.dateKey, time: cell.time, chars: cell.chars })}
+                  onMouseLeave={() => setHoveredDay(null)}
+                  style={{
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '4px',
+                    background: getCellColor(cell.chars),
+                    cursor: 'pointer',
+                    transition: 'all 0.1s',
+                  }}
+                  title={`${cell.dateKey}: ${cell.chars.toLocaleString()} chars`}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* TWO COLUMNS: RECENT SESSIONS & BY BOOK */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+        {/* COLUMN 1: RECENT SESSIONS */}
+        <div style={{ background: '#13151a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>{t.recentSessions}</h3>
+            <span style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '10px', color: '#94a3b8' }}>
+              {recentSessionsList.length} {t.shown}
+            </span>
+          </div>
+
+          {recentSessionsList.length === 0 ? (
+            <p style={{ fontSize: '0.85rem', color: '#64748b', textAlign: 'center', padding: '30px 0' }}>{t.noSessions}</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {recentSessionsList.map((session, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingBottom: '12px',
+                    borderBottom: idx < recentSessionsList.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {session.cover ? (
+                      <img src={session.cover} alt="" style={{ width: '36px', height: '50px', objectFit: 'cover', borderRadius: '4px' }} />
+                    ) : (
+                      <div style={{ width: '36px', height: '50px', background: 'rgba(255,255,255,0.04)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <BookOpen size={14} style={{ color: 'rgba(255,255,255,0.2)' }} />
+                      </div>
+                    )}
+                    <div>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ffffff', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {session.title}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '2px' }}>{session.dateKey}</div>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ffe000' }}>+{session.chars.toLocaleString()} chars</div>
+                    <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{formatDuration(session.time)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* COLUMN 2: BY BOOK */}
+        <div style={{ background: '#13151a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>{t.byBook}</h3>
+            <span style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '10px', color: '#94a3b8' }}>
+              {byBookList.length} {t.shown}
+            </span>
+          </div>
+
+          {byBookList.length === 0 ? (
+            <p style={{ fontSize: '0.85rem', color: '#64748b', textAlign: 'center', padding: '30px 0' }}>{t.bookTotalsDesc}</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {byBookList.map((book, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingBottom: '12px',
+                    borderBottom: idx < byBookList.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {book.cover ? (
+                      <img src={book.cover} alt="" style={{ width: '36px', height: '50px', objectFit: 'cover', borderRadius: '4px' }} />
+                    ) : (
+                      <div style={{ width: '36px', height: '50px', background: 'rgba(255,255,255,0.04)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <BookOpen size={14} style={{ color: 'rgba(255,255,255,0.2)' }} />
+                      </div>
+                    )}
+                    <div>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ffffff', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {book.title}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '2px' }}>{book.author}</div>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ffe000' }}>{book.chars.toLocaleString()} chars</div>
+                    <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{formatDuration(book.time)}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

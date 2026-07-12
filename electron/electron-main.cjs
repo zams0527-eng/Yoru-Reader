@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, ipcMain, session, protocol, net, webContents } = require('electron');
 const path = require('path');
 const http = require('http');
 const url = require('url');
@@ -6,6 +6,10 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const { synthesizeEdgeTts } = require('./edgeTts.cjs');
+
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'yoru-reader-ext', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }
+]);
 
 // Override console.log and console.error to write to a log file
 let logPath;
@@ -40,6 +44,11 @@ console.error = function(...args) {
 let oauthServer = null;
 
 function createWindow() {
+  // Clear HTTP cache on startup to ensure we don't load old compiled reader assets
+  if (session && session.defaultSession) {
+    session.defaultSession.clearCache().catch(e => console.error("Failed to clear cache:", e));
+  }
+
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -53,10 +62,29 @@ function createWindow() {
     title: "Yoru Reader"
   });
 
+  if (!app.isPackaged) {
+    win.webContents.openDevTools();
+  }
+
   // Open external links in default browser
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http:') || url.startsWith('https:')) {
       shell.openExternal(url);
+      return { action: 'deny' };
+    }
+    if (url.startsWith('chrome-extension://')) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 900,
+          height: 700,
+          autoHideMenuBar: true,
+          webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true
+          }
+        }
+      };
     }
     return { action: 'deny' };
   });
@@ -66,6 +94,11 @@ function createWindow() {
       event.preventDefault();
       shell.openExternal(url);
     }
+  });
+
+  win.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    const sourceFile = (sourceId && typeof sourceId === 'string') ? path.basename(sourceId) : 'unknown';
+    console.log(`[RENDERER CONSOLE] (${sourceFile}:${line}): ${message}`);
   });
 
   // Load the compiled index.html (moved up one folder)
@@ -306,7 +339,488 @@ ipcMain.handle('speak-text', async (event, { text, voice, rate }) => {
   }
 });
 
-app.whenReady().then(createWindow);
+const READER_EXT_SHARED_API_KEY = "ak_CXDEL1S6z4jy998v1Qx_HdaU9laoTILD8mwJp5p3VjA";
+let readerExtensionId = null;
+
+ipcMain.handle('get-reader-extension-id', () => {
+  return readerExtensionId;
+});
+
+ipcMain.handle('open-reader-extension-settings', () => {
+  try {
+    console.log(`[main] open-reader-extension-settings invoked. Extension ID: ${readerExtensionId}`);
+    if (!readerExtensionId) {
+      console.error("[main] readerExtensionId is null!");
+      return false;
+    }
+    const settingsUrl = `chrome-extension://${readerExtensionId}/views/settings.html`;
+    console.log(`[main] Loading settings URL: ${settingsUrl}`);
+    
+    const settingsWin = new BrowserWindow({
+      width: 900,
+      height: 700,
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true
+      },
+      autoHideMenuBar: true,
+      title: "Ajustes de la Extensión Yoru Reader"
+    });
+    
+    settingsWin.loadURL(settingsUrl);
+    return true;
+  } catch (err) {
+    console.error("[main] Error opening extension settings window:", err);
+    return false;
+  }
+});
+
+
+let extWordMap = {};
+const pendingParses = new Map();
+let parseRequestCounter = 0;
+
+ipcMain.on('reply-parse-text', (event, { requestId, result, error }) => {
+  const pending = pendingParses.get(requestId);
+  if (pending) {
+    if (error) {
+      pending.reject(new Error(error));
+    } else {
+      pending.resolve(result);
+    }
+    pendingParses.delete(requestId);
+  }
+});
+
+function queryLocalWordStatuses(words) {
+  return new Promise((resolve) => {
+    if (!mainWindow) {
+      resolve({});
+      return;
+    }
+    const replyChannel = 'reply-query-word-statuses';
+    const listener = (event, statuses) => {
+      ipcMain.off(replyChannel, listener);
+      resolve(statuses);
+    };
+    ipcMain.on(replyChannel, listener);
+    mainWindow.webContents.send('query-word-statuses', words);
+  });
+}
+
+function saveWordToLocalSrs(wordData) {
+  return new Promise((resolve) => {
+    if (!mainWindow) {
+      resolve();
+      return;
+    }
+    const replyChannel = 'reply-save-word-to-srs';
+    const listener = () => {
+      ipcMain.off(replyChannel, listener);
+      resolve();
+    };
+    ipcMain.on(replyChannel, listener);
+    mainWindow.webContents.send('save-word-to-srs', wordData);
+  });
+}
+
+function updateWordStatusInApp(data) {
+  return new Promise((resolve) => {
+    if (!mainWindow) {
+      resolve();
+      return;
+    }
+    const replyChannel = 'reply-update-word-status';
+    const listener = () => {
+      ipcMain.off(replyChannel, listener);
+      resolve();
+    };
+    ipcMain.on(replyChannel, listener);
+    mainWindow.webContents.send('update-word-status', data);
+  });
+}
+
+// Start local HTTP server for extension requests
+let localExtServer = null;
+
+function startLocalExtServer() {
+  localExtServer = http.createServer(async (req, res) => {
+    // Enable CORS
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(200);
+      res.end();
+      return;
+    }
+
+    const reqUrl = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
+    let pathName = reqUrl.pathname;
+    // Normalize path by stripping /api/ prefix if present
+    if (pathName.startsWith('/api/')) {
+      pathName = pathName.slice(5);
+    } else if (pathName.startsWith('/')) {
+      pathName = pathName.slice(1);
+    }
+
+    console.log(`[local-ext-server] Request path: ${pathName}`);
+
+    // Read POST body
+    let bodyText = '';
+    await new Promise((resolve) => {
+      req.on('data', chunk => { bodyText += chunk; });
+      req.on('end', resolve);
+    });
+
+    let payload = {};
+    try {
+      if (bodyText) payload = JSON.parse(bodyText);
+    } catch (e) {}
+
+    res.setHeader('Content-Type', 'application/json');
+
+    try {
+      if (pathName === 'reader/parse') {
+        if (!mainWindow) throw new Error("Main window not available");
+        
+        const requestId = ++parseRequestCounter;
+        const resultPromise = new Promise((resolve, reject) => {
+          pendingParses.set(requestId, { resolve, reject });
+          setTimeout(() => {
+            if (pendingParses.has(requestId)) {
+              pendingParses.delete(requestId);
+              reject(new Error("Parse request timed out"));
+            }
+          }, 20000);
+        });
+        
+        mainWindow.webContents.send('parse-text-request', { requestId, paragraphs: payload.text });
+        const data = await resultPromise;
+        
+        if (data && Array.isArray(data.vocabulary)) {
+          data.vocabulary.forEach(v => {
+            extWordMap[v.wordId] = v.spelling;
+          });
+        }
+        res.writeHead(200);
+        res.end(JSON.stringify(data));
+        return;
+      }
+
+      if (pathName === 'reader/lookup-vocabulary') {
+        const results = [];
+        const deckIds = [];
+        const wordsList = [];
+
+        if (payload.words && Array.isArray(payload.words)) {
+          payload.words.forEach(([wordId, readingIndex]) => {
+            const spelling = extWordMap[wordId] || '';
+            wordsList.push(spelling);
+          });
+
+          const localStatuses = await queryLocalWordStatuses(wordsList);
+
+          payload.words.forEach(([wordId, readingIndex]) => {
+            const spelling = extWordMap[wordId];
+            const status = localStatuses[spelling];
+            
+            let state = [0]; // New
+            if (status === 'known') state = [2]; // Mature
+            else if (status === 'learning') state = [1]; // Young
+            
+            results.push(state);
+            deckIds.push([1]);
+          });
+        }
+
+        res.writeHead(200);
+        res.end(JSON.stringify({ result: results, decks: deckIds }));
+        return;
+      }
+
+      if (pathName === 'srs/reader-study-decks') {
+        res.writeHead(200);
+        res.end(JSON.stringify({
+          success: true,
+          result: [{ id: 1, name: "Yoru Local SRS", wordCount: 0 }]
+        }));
+        return;
+      }
+
+      if (pathName === 'srs/set-vocabulary-state') {
+        const wordIdStr = String(payload.wordId || '');
+        let spelling = payload.spelling || payload.word;
+        if (!spelling && wordIdStr.includes(':')) {
+          spelling = wordIdStr.split(':')[0];
+        }
+        if (!spelling && payload.wordId) {
+          spelling = extWordMap[payload.wordId];
+        }
+
+        if (spelling) {
+          await updateWordStatusInApp({
+            word: spelling,
+            state: payload.state
+          });
+        }
+        res.writeHead(200);
+        res.end(JSON.stringify({ success: true }));
+        return;
+      }
+
+      if (pathName.startsWith('srs/study-decks/')) {
+        const wordIdStr = String(payload.wordId || '');
+        let spelling = payload.spelling || payload.word;
+        if (!spelling && wordIdStr.includes(':')) {
+          spelling = wordIdStr.split(':')[0];
+        }
+        if (!spelling && payload.wordId) {
+          spelling = extWordMap[payload.wordId];
+        }
+
+        let reading = payload.reading || '';
+        if (!reading && wordIdStr.includes(':')) {
+          reading = wordIdStr.split(':')[1];
+        }
+
+        if (spelling) {
+          await saveWordToLocalSrs({
+            word: spelling,
+            reading: reading,
+            sentence: payload.sentence || '',
+            source: payload.source || ''
+          });
+        }
+        res.writeHead(200);
+        res.end(JSON.stringify({ success: true }));
+        return;
+      }
+
+      res.writeHead(404);
+      res.end(JSON.stringify({ error: "Not found" }));
+    } catch (err) {
+      console.error(`[local-ext-server] Error handling ${pathName}:`, err);
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: err.message }));
+    }
+  });
+
+  localExtServer.listen(23280, '127.0.0.1', () => {
+    console.log('[local-ext-server] Listening on http://127.0.0.1:23280');
+  });
+}
+
+app.whenReady().then(async () => {
+  startLocalExtServer();
+  // Register custom protocol handler for yoru-reader-ext
+  protocol.handle('yoru-reader-ext', async (request) => {
+    const url = new URL(request.url);
+    const pathName = url.pathname.slice(1);
+    console.log(`[yoru-reader-ext] Intercepted path: ${pathName}`);
+
+    if (pathName === 'reader/parse') {
+      try {
+        const bodyText = await request.text();
+        const payload = JSON.parse(bodyText);
+        
+        if (!mainWindow) {
+          throw new Error("Main window not available");
+        }
+        
+        const requestId = ++parseRequestCounter;
+        const resultPromise = new Promise((resolve, reject) => {
+          pendingParses.set(requestId, { resolve, reject });
+          setTimeout(() => {
+            if (pendingParses.has(requestId)) {
+              pendingParses.delete(requestId);
+              reject(new Error("Parse request timed out"));
+            }
+          }, 20000);
+        });
+        
+        mainWindow.webContents.send('parse-text-request', { requestId, paragraphs: payload.text });
+        
+        const data = await resultPromise;
+        
+        if (data && Array.isArray(data.vocabulary)) {
+          data.vocabulary.forEach(v => {
+            extWordMap[v.wordId] = v.spelling;
+          });
+        }
+
+        return new Response(JSON.stringify(data), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        console.error('[yoru-reader-ext] Error during native reader/parse:', err);
+        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+      }
+    }
+
+    if (pathName === 'reader/lookup-vocabulary') {
+      try {
+        const bodyText = await request.text();
+        const payload = JSON.parse(bodyText);
+        
+        const results = [];
+        const deckIds = [];
+        const wordsList = [];
+
+        payload.words.forEach(([wordId, readingIndex]) => {
+          const spelling = extWordMap[wordId] || '';
+          wordsList.push(spelling);
+        });
+
+        const localStatuses = await queryLocalWordStatuses(wordsList);
+
+        payload.words.forEach(([wordId, readingIndex]) => {
+          const spelling = extWordMap[wordId];
+          const status = localStatuses[spelling];
+          
+          let state = [0]; // New
+          if (status === 'known') state = [2]; // Mature
+          else if (status === 'learning') state = [1]; // Young
+          
+          results.push(state);
+          deckIds.push([1]); // Mock deck ID
+        });
+
+        return new Response(JSON.stringify({ result: results, decks: deckIds }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        console.error('[yoru-reader-ext] Error during lookup-vocabulary:', err);
+        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+      }
+    }
+
+    if (pathName === 'srs/reader-study-decks') {
+      return new Response(JSON.stringify({
+        success: true,
+        result: [{ id: 1, name: "Yoru Local SRS", wordCount: 0 }]
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (pathName === 'srs/set-vocabulary-state') {
+      try {
+        const bodyText = await request.text();
+        const payload = JSON.parse(bodyText);
+        const wordIdStr = String(payload.wordId || '');
+        let spelling = payload.spelling || payload.word;
+        if (!spelling && wordIdStr.includes(':')) {
+          spelling = wordIdStr.split(':')[0];
+        }
+        if (!spelling && payload.wordId) {
+          spelling = extWordMap[payload.wordId];
+        }
+
+        if (spelling) {
+          await updateWordStatusInApp({
+            word: spelling,
+            state: payload.state
+          });
+        }
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        console.error('[yoru-reader-ext] Error during set-vocabulary-state:', err);
+        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+      }
+    }
+
+    if (pathName.startsWith('srs/study-decks/')) {
+      try {
+        const bodyText = await request.text();
+        const payload = JSON.parse(bodyText);
+        const wordIdStr = String(payload.wordId || '');
+        let spelling = payload.spelling || payload.word;
+        if (!spelling && wordIdStr.includes(':')) {
+          spelling = wordIdStr.split(':')[0];
+        }
+        if (!spelling && payload.wordId) {
+          spelling = extWordMap[payload.wordId];
+        }
+
+        let reading = payload.reading || '';
+        if (!reading && wordIdStr.includes(':')) {
+          reading = wordIdStr.split(':')[1];
+        }
+
+        if (spelling) {
+          await saveWordToLocalSrs({
+            word: spelling,
+            reading: reading,
+            sentence: payload.sentence || '',
+            source: payload.source || ''
+          });
+        }
+        return new Response(JSON.stringify({ success: true }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (err) {
+        console.error('[yoru-reader-ext] Error during study-decks words add:', err);
+        return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+      }
+    }
+
+    return new Response(JSON.stringify({ success: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  });
+
+  try {
+    try {
+      await session.defaultSession.clearStorageData({ storages: ['serviceworkers'] });
+      console.log('[main] Cleared service worker cache.');
+    } catch (e) {
+      console.warn('[main] Failed to clear service worker cache:', e);
+    }
+    const extensionPath = path.join(__dirname, 'reader-ext');
+    const ext = await session.defaultSession.loadExtension(extensionPath, { allowFileAccess: true });
+    readerExtensionId = ext.id;
+    console.log(`[main] Loaded Yoru Reader Extension natively: ${ext.name} (${ext.id})`);
+
+    // Auto-inject shared API key into extension storage
+    try {
+      const allWebContents = webContents.getAllWebContents();
+      const extWebContents = allWebContents.find(wc => 
+        wc.getURL().startsWith(`chrome-extension://${readerExtensionId}`)
+      );
+      if (extWebContents) {
+        await extWebContents.executeJavaScript(`chrome.storage.local.set({ yoruApiKey: "${READER_EXT_SHARED_API_KEY}", yoruApiEndpoint: "http://127.0.0.1:23280/api" })`);
+        console.log('[main] Auto-configured extension with shared key.');
+      } else {
+        const tempWin = new BrowserWindow({
+          show: false,
+          webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true
+          }
+        });
+        await tempWin.loadURL(`chrome-extension://${readerExtensionId}/views/settings.html`);
+        await tempWin.webContents.executeJavaScript(`chrome.storage.local.set({ yoruApiKey: "${READER_EXT_SHARED_API_KEY}", yoruApiEndpoint: "http://127.0.0.1:23280/api" })`);
+        tempWin.close();
+        console.log('[main] Pre-configured extension via temp window.');
+      }
+    } catch (e) {
+      console.warn('[main] Failed to auto-configure extension:', e);
+    }
+  } catch (err) {
+    console.error('[main] Failed to load Yoru Reader Extension natively:', err);
+  }
+  createWindow();
+});
 
 
 

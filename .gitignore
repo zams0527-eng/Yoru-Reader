@@ -34,6 +34,74 @@ voices/
 dist-electron-installer
 dist-android
 
+# Releases - ignore binaries but keep folder structure
+releases/dev/*
+releases/stable/*
+releases/mobile/*
+!releases/dev/.gitkeep
+!releases/stable/.gitkeep
+!releases/mobile/.gitkeep
+
+# Temp diff files
+diff_reader.txt
+
 # Certificates
 build/*.pfx
 build/*.cer
+
+
+# ====================================================================
+# DEPENDENCIAS Y NODOS
+# ====================================================================
+node_modules/
+.pnpm-store/
+.yarn/
+
+# ====================================================================
+# COMPILACIONES Y ENTREGABLES (ESCRITORIO / WEB / ANDROID)
+# ====================================================================
+dist/
+dist-android/
+dist-electron/
+releases/
+yoru-reader-*/
+
+# Carpetas de compilación nativa de Android
+android/.gradle/
+android/app/build/
+android/build/
+
+# Archivos pesados internos de Chrome que empaqueta Electron
+chrome_100_percent.pak
+chrome_200_percent.pak
+resources/
+locales/
+
+# ====================================================================
+# AGENTES, ARCHIVOS LOCALES Y DESCARGAS
+# ====================================================================
+downloads/
+.agents/
+test_db.js
+test_db.cjs
+public/yoru-reader/
+
+# ====================================================================
+# SEGURIDAD (¡MUY IMPORTANTE!)
+# No subas tus certificados, instaladores privados ni llaves de firma
+# ====================================================================
+*.pfx
+*.cer
+*.keystore
+*.jks
+instalar-certificado*
+android/local.properties
+
+# ====================================================================
+# LOGS Y TEMPORALES DE SISTEMA
+# ====================================================================
+electron_debug.log*
+*.log
+.DS_Store
+Thumbs.db
+.vscode/

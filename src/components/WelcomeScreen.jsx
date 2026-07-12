@@ -20,6 +20,12 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
   const [customAvatarUrl, setCustomAvatarUrl] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const fileInputRef = useRef(null);
+  const localBackupInputRef = useRef(null);
+
+  const activeTheme = settings.theme || 'dark';
+  const driveColor = activeTheme === 'dark' ? '#34d399' : '#059669';
+  const driveBg = activeTheme === 'dark' ? 'rgba(52, 211, 153, 0.05)' : 'rgba(5, 150, 105, 0.05)';
+  const driveBorder = activeTheme === 'dark' ? '1px solid rgba(52, 211, 153, 0.2)' : '1px solid rgba(5, 150, 105, 0.25)';
 
   const { showConfirm, confirmModal } = useConfirm();
 
@@ -408,23 +414,69 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
   return (
     <div className="welcome-screen-container">
       <div className="welcome-card">
-        {/* Language Switcher at Entry */}
-        <div style={{ display: 'flex', justifyContent: 'flex-start', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-          <Globe size={16} style={{ color: 'rgba(255,255,255,0.6)' }} />
-          <select 
-            value={lang}
-            onChange={(e) => {
-              const selectedLang = e.target.value;
-              localStorage.setItem('app_language', selectedLang);
-              onSaveSettings({ ...settings, appLanguage: selectedLang });
-            }}
-            className="migaku-select"
-            style={{ width: '130px', fontSize: '0.82rem', padding: '6px 10px', background: '#1c1c20', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', color: '#fff', outline: 'none' }}
-          >
-            <option value="en">English (US)</option>
-            <option value="es">Español</option>
-          </select>
+        {/* Header toolbar: Language Switcher & Theme Switcher */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+          {/* Language Switcher */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Globe size={14} style={{ color: 'var(--text-muted)' }} />
+            <select 
+              value={lang}
+              onChange={(e) => {
+                const selectedLang = e.target.value;
+                localStorage.setItem('app_language', selectedLang);
+                onSaveSettings({ ...settings, appLanguage: selectedLang });
+              }}
+              className="migaku-select"
+              style={{ 
+                width: '110px', 
+                fontSize: '0.78rem', 
+                padding: '5px 8px', 
+                background: 'var(--bg-app)', 
+                border: '1px solid var(--border-light)', 
+                borderRadius: '6px', 
+                color: 'var(--text-main)', 
+                outline: 'none' 
+              }}
+            >
+              <option value="en">English (US)</option>
+              <option value="es">Español</option>
+            </select>
+          </div>
+
+          {/* Theme Switcher */}
+          <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-app)', border: '1px solid var(--border-light)', padding: '3px', borderRadius: '8px' }}>
+            {['light', 'sepia', 'dark'].map((tMode) => {
+              const isActive = (settings.theme || 'dark') === tMode;
+              const modeLabel = tMode === 'light' ? (lang === 'es' ? 'Claro' : 'Light') : (tMode === 'sepia' ? (lang === 'es' ? 'Sepia' : 'Sepia') : (lang === 'es' ? 'Oscuro' : 'Dark'));
+              const emoji = tMode === 'light' ? '☀️' : (tMode === 'sepia' ? '📜' : '🌙');
+              const activeBg = 'var(--primary)';
+              const activeColor = tMode === 'dark' ? '#000000' : '#ffffff';
+              
+              return (
+                <button
+                  key={tMode}
+                  type="button"
+                  onClick={() => onSaveSettings({ ...settings, theme: tMode })}
+                  style={{
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '5px 10px',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    background: isActive ? activeBg : 'transparent',
+                    color: isActive ? activeColor : 'var(--text-muted)'
+                  }}
+                  title={modeLabel}
+                >
+                  {emoji} {modeLabel}
+                </button>
+              );
+            })}
+          </div>
         </div>
+
 
         <div className="welcome-header">
           <h1 className="welcome-title">{t('welcomeTitle', lang)}</h1>
@@ -535,34 +587,41 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
         </div>
 
         <div style={{ display: 'flex', gap: '10px' }}>
+          {/* hidden input for local restore */}
+          <input 
+            type="file" 
+            ref={localBackupInputRef}
+            accept=".json,.zip"
+            onChange={handleImportLocalBackup}
+            style={{ display: 'none' }}
+          />
+
           {/* Restaurar Local */}
-          <label 
+          <button 
+            type="button"
+            onClick={() => localBackupInputRef.current.click()}
             className="welcome-submit-btn" 
             style={{ 
               flex: 1,
-              background: 'rgba(255,255,255,0.03)', 
-              border: '1px solid rgba(255,255,255,0.08)', 
-              color: '#fff', 
+              background: 'var(--bg-app)', 
+              border: '1px solid var(--border-light)', 
+              color: 'var(--text-main)', 
               fontSize: '0.78rem', 
-              padding: '10px 6px', 
-              display: 'inline-flex', 
+              padding: '10px 12px', 
+              display: 'flex', 
               alignItems: 'center', 
               justifyContent: 'center', 
               gap: '6px', 
               cursor: 'pointer',
               textTransform: 'none',
               boxShadow: 'none',
-              margin: 0
+              margin: 0,
+              borderRadius: '8px',
+              fontWeight: 600
             }}
           >
             💾 {lang === 'es' ? 'Local' : 'Local'}
-            <input 
-              type="file" 
-              accept=".json,.zip"
-              onChange={handleImportLocalBackup}
-              style={{ display: 'none' }}
-            />
-          </label>
+          </button>
 
           {/* Restaurar Google Drive */}
           <button 
@@ -572,23 +631,25 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
             className="welcome-submit-btn" 
             style={{ 
               flex: 1,
-              background: 'rgba(52, 211, 153, 0.05)', 
-              border: '1px solid rgba(52, 211, 153, 0.2)', 
-              color: '#34d399', 
+              background: driveBg, 
+              border: driveBorder, 
+              color: driveColor, 
               fontSize: '0.78rem', 
-              padding: '10px 6px', 
-              display: 'inline-flex', 
+              padding: '10px 12px', 
+              display: 'flex', 
               alignItems: 'center', 
               justifyContent: 'center', 
               gap: '6px', 
               cursor: 'pointer',
               textTransform: 'none',
               boxShadow: 'none',
-              margin: 0
+              margin: 0,
+              borderRadius: '8px',
+              fontWeight: 600
             }}
           >
             ☁️ {isSyncing 
-              ? (lang === 'es' ? 'Wait...' : 'Wait...') 
+              ? (lang === 'es' ? 'Sincronizando...' : 'Syncing...') 
               : (lang === 'es' ? 'Google Drive' : 'Google Drive')}
           </button>
         </div>

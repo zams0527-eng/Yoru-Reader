@@ -261,7 +261,7 @@ export default function SrsReviewModal({ isOpen, onClose }) {
     }
   }, [currentIndex, dueCards]);
 
-  // Keyboard Shortcuts — 100% matched to Jiten & request
+  // Keyboard Shortcuts — 100% matched to native specifications
   useEffect(() => {
     if (!isOpen || isFinished || dueCards.length === 0) return;
 
@@ -423,28 +423,34 @@ export default function SrsReviewModal({ isOpen, onClose }) {
   const srsCardData = currentWord ? db.getSrsCard(currentWord) : null;
   const intervals = calculateSrsIntervals(srsCardData);
 
+  const newCardsCount = dueCards.filter(w => {
+    const card = db.getSrsCard(w);
+    return !card || !card.repetitions || card.repetitions === 0;
+  }).length;
+  const reviewCardsCount = dueCards.length - newCardsCount;
+
   return (
-    <div className="modal-overlay" style={{ zIndex: 1400, display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(0,0,0,0.92)' }}>
-      <div className="yomitan-anki-modal" style={{ width: '680px', maxWidth: '95vw', height: '800px', display: 'flex', flexDirection: 'column', background: '#09090b', overflow: 'hidden', border: '1px solid #1f1f23', borderRadius: '12px', boxShadow: '0 10px 40px rgba(0,0,0,0.8)' }}>
+    <div className="modal-overlay" style={{ zIndex: 1400, display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(0,0,0,0.6)' }}>
+      <div className="yomitan-anki-modal" style={{ width: '600px', maxWidth: '95vw', height: '580px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-app)', overflow: 'hidden', border: '1px solid var(--border-light)', borderRadius: '12px', boxShadow: '0 10px 40px rgba(0,0,0,0.15)' }}>
         
-        {/* Jiten-style Top Navigation Bar */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', background: '#09090b', borderBottom: '1px solid rgba(255,255,255,0.06)', position: 'relative' }}>
+        {/* Native Top Navigation Bar */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', background: 'var(--bg-card)', borderBottom: '1px solid var(--border-light)', position: 'relative' }}>
           {/* Left: Study counters */}
           <div style={{ display: 'flex', gap: '8px' }}>
             <span style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.25)', fontSize: '0.74rem', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
-              0 new
+              {newCardsCount} new
             </span>
             <span style={{ background: 'rgba(34, 197, 94, 0.1)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.25)', fontSize: '0.74rem', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
-              {dueCards.length} review
+              {reviewCardsCount} review
             </span>
           </div>
-
+ 
           {/* Center: Counter & Timer */}
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#fff', letterSpacing: '0.02em' }}>
-              <span style={{ color: 'var(--primary)' }}>{currentIndex + 1}</span> / {dueCards.length}
+            <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '0.02em' }}>
+              <span style={{ color: 'var(--primary)' }}>{dueCards.length > 0 ? currentIndex + 1 : 0}</span> / {dueCards.length}
             </div>
-            <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600, marginTop: '1px' }}>
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, marginTop: '1px' }}>
               {formatTimer(timerSeconds)}
             </div>
           </div>
@@ -453,9 +459,7 @@ export default function SrsReviewModal({ isOpen, onClose }) {
           <div style={{ display: 'flex', gap: '6px' }}>
             <button
               onClick={onClose}
-              style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '6px', color: '#a1a1aa', padding: '6px 10px', fontSize: '0.74rem', fontWeight: 650, display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', transition: 'all 0.15s' }}
-              onMouseEnter={e => e.currentTarget.style.color = '#fff'}
-              onMouseLeave={e => e.currentTarget.style.color = '#a1a1aa'}
+              style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-light)', borderRadius: '6px', color: 'var(--text-main)', padding: '6px 10px', fontSize: '0.74rem', fontWeight: 650, display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer', transition: 'all 0.15s' }}
             >
               <X size={14} /> <span>{lang === 'es' ? 'Salir' : 'Exit'}</span>
             </button>
@@ -463,16 +467,16 @@ export default function SrsReviewModal({ isOpen, onClose }) {
         </div>
 
         {/* Content Area */}
-        <div style={{ flex: 1, padding: '24px', display: 'flex', flexDirection: 'column', background: '#09090b', overflowY: 'auto' }}>
+        <div style={{ flex: 1, padding: '24px', display: 'flex', flexDirection: 'column', background: 'var(--bg-app)', overflowY: 'auto' }}>
           
           {dueCards.length === 0 ? (
             /* No reviews due */
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: 'var(--text-muted)' }}>
               <div style={{ fontSize: '4rem', marginBottom: '20px' }}>🏆</div>
-              <h3 style={{ fontSize: '1.4rem', color: '#fff', marginBottom: '8px', fontWeight: 800 }}>
+              <h3 style={{ fontSize: '1.4rem', color: 'var(--text-main)', marginBottom: '8px', fontWeight: 800 }}>
                 {lang === 'es' ? '¡Estás al día!' : 'Zero reviews due!'}
               </h3>
-              <p style={{ fontSize: '0.85rem', maxWidth: '340px', margin: '0 auto', lineHeight: '1.6', textAlign: 'center' }}>
+              <p style={{ fontSize: '0.85rem', maxWidth: '340px', margin: '0 auto', lineHeight: '1.6', textAlign: 'center', color: 'var(--text-muted)' }}>
                 {lang === 'es' 
                   ? 'No tienes palabras pendientes de repaso en este momento. Sigue leyendo para encontrar nuevas palabras.' 
                   : 'You have no words due for review right now. Keep reading to find new words.'}
@@ -490,10 +494,10 @@ export default function SrsReviewModal({ isOpen, onClose }) {
             /* Completed stats screen */
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: 'var(--text-muted)' }}>
               <div style={{ fontSize: '4rem', marginBottom: '20px' }}>🎉</div>
-              <h3 style={{ fontSize: '1.4rem', color: '#fff', marginBottom: '8px', fontWeight: 800 }}>
+              <h3 style={{ fontSize: '1.4rem', color: 'var(--text-main)', marginBottom: '8px', fontWeight: 800 }}>
                 {lang === 'es' ? '¡Sesión Completada!' : 'Session Completed!'}
               </h3>
-              <p style={{ fontSize: '0.85rem', marginBottom: '24px', textAlign: 'center' }}>
+              <p style={{ fontSize: '0.85rem', marginBottom: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
                 {lang === 'es' 
                   ? `Has repasado ${sessionCount} palabras en esta sesión.` 
                   : `You reviewed ${sessionCount} words in this session.`}
@@ -514,7 +518,7 @@ export default function SrsReviewModal({ isOpen, onClose }) {
                 <button 
                   type="button" 
                   onClick={initSession} 
-                  style={{ padding: '10px 24px', background: 'rgba(255,255,255,0.03)', color: '#fff', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}
+                  style={{ padding: '10px 24px', background: 'var(--bg-card-hover)', color: 'var(--text-main)', border: '1px solid var(--border-light)', borderRadius: '8px', fontWeight: 700, cursor: 'pointer' }}
                 >
                   {lang === 'es' ? 'Repetir' : 'Restart'}
                 </button>
@@ -528,20 +532,20 @@ export default function SrsReviewModal({ isOpen, onClose }) {
               </div>
             </div>
           ) : (
-            /* Jiten-style Study Card Layout */
+            /* Native Study Card Layout */
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
               
               {/* Outer Card with border and background matching screenshot */}
-              <div style={{ background: '#121214', border: '1px solid #27272a', borderRadius: '12px', padding: '30px', flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', boxShadow: '0 4px 20px rgba(0,0,0,0.5)' }}>
+              <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '30px', flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
                 
                 {/* Card index and info at top right */}
-                <div style={{ position: 'absolute', right: '20px', top: '16px', display: 'flex', alignItems: 'center', gap: '8px', color: 'rgba(255,255,255,0.3)', fontSize: '0.74rem' }}>
+                <div style={{ position: 'absolute', right: '20px', top: '16px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', fontSize: '0.74rem' }}>
                   <span>#{currentIndex + 1}</span>
                   <span style={{ cursor: 'pointer' }}>•••</span>
                 </div>
 
                 {/* Subtitle "REVIEW" */}
-                <div style={{ textAlign: 'center', fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '14px' }}>
+                <div style={{ textAlign: 'center', fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '14px' }}>
                   Review
                 </div>
 
@@ -555,25 +559,23 @@ export default function SrsReviewModal({ isOpen, onClose }) {
                     {/* Word display (Kanji or Kana) */}
                     <div style={{ textAlign: 'center', marginBottom: '20px' }}>
                       {showAnswer && currentEntry?.reading && (
-                        <div style={{ fontSize: '1.2rem', color: 'rgba(255,255,255,0.5)', fontWeight: 500, marginBottom: '6px', fontFamily: 'var(--font-japanese)' }}>
+                        <div style={{ fontSize: '1.2rem', color: 'var(--text-muted)', fontWeight: 500, marginBottom: '6px', fontFamily: 'var(--font-japanese)' }}>
                           {currentEntry.reading}
                         </div>
                       )}
-                      <h2 style={{ fontSize: '3.6rem', fontWeight: 800, color: '#fff', letterSpacing: '0.01em', display: 'inline-flex', alignItems: 'center', gap: '14px', margin: 0, fontFamily: 'var(--font-japanese)' }}>
+                      <h2 style={{ fontSize: '3.6rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '0.01em', display: 'inline-flex', alignItems: 'center', gap: '14px', margin: 0, fontFamily: 'var(--font-japanese)' }}>
                         {currentWord}
                         <button
                           type="button"
                           onClick={() => playWordTts(currentWord, currentEntry?.reading)}
-                          style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '50%', width: '36px', height: '36px', display: 'inline-flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', color: '#38bdf8', transition: 'all 0.15s' }}
-                          onMouseEnter={e => e.currentTarget.style.background = 'rgba(56, 189, 248, 0.08)'}
-                          onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.03)'}
+                          style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-light)', borderRadius: '50%', width: '36px', height: '36px', display: 'inline-flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', color: '#38bdf8', transition: 'all 0.15s' }}
                         >
                           <Volume2 size={18} />
                         </button>
                       </h2>
                     </div>
 
-                    <div style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', width: '100%', marginBottom: '20px' }}></div>
+                    <div style={{ borderBottom: '1px solid var(--border-light)', width: '100%', marginBottom: '20px' }}></div>
 
                     {/* Answer Area */}
                     {showAnswer ? (
@@ -590,7 +592,7 @@ export default function SrsReviewModal({ isOpen, onClose }) {
                         )}
 
                         {/* Translation lines */}
-                        <div style={{ color: '#fff', fontSize: '0.94rem', lineHeight: '1.6' }}>
+                        <div style={{ color: 'var(--text-main)', fontSize: '0.94rem', lineHeight: '1.6' }}>
                           {currentEntry?.definitions && currentEntry.definitions.length > 0 ? (
                             <ol style={{ paddingLeft: '20px', margin: 0 }}>
                               {currentEntry.definitions.slice(0, 4).map((def, i) => (
@@ -600,7 +602,7 @@ export default function SrsReviewModal({ isOpen, onClose }) {
                               ))}
                             </ol>
                           ) : (
-                            <p style={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', fontSize: '0.85rem' }}>
+                            <p style={{ color: 'var(--text-dark)', fontStyle: 'italic', fontSize: '0.85rem' }}>
                               {lang === 'es' ? 'Sin traducción' : 'No translation available'}
                             </p>
                           )}
@@ -619,14 +621,12 @@ export default function SrsReviewModal({ isOpen, onClose }) {
                         )}
                       </div>
                     ) : (
-                      /* Big Show Answer interactive trigger block matching Jiten */
+                      /* Big Show Answer interactive trigger block matching specifications */
                       <div 
                         onClick={() => setShowAnswer(true)}
-                        style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px dashed rgba(255,255,255,0.06)', borderRadius: '8px', cursor: 'pointer', background: 'rgba(255,255,255,0.01)', transition: 'all 0.15s' }}
-                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(56, 189, 248, 0.3)'; e.currentTarget.style.background = 'rgba(56, 189, 248, 0.01)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; e.currentTarget.style.background = 'rgba(255,255,255,0.01)'; }}
+                        style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px dashed var(--border-light)', borderRadius: '8px', cursor: 'pointer', background: 'var(--bg-app)', transition: 'all 0.15s' }}
                       >
-                        <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.35)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ textAlign: 'center', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
                           <Eye size={22} style={{ opacity: 0.5 }} />
                           <span style={{ fontSize: '0.82rem', fontWeight: 650 }}>
                             {lang === 'es' ? 'Haz clic o pulsa [Espacio] para mostrar la respuesta' : 'Click or press [Space] to reveal'}
@@ -638,7 +638,7 @@ export default function SrsReviewModal({ isOpen, onClose }) {
                 )}
               </div>
 
-              {/* Jiten-style Bottom Grading & Actions Row */}
+              {/* Native Bottom Grading & Actions Row */}
               {showAnswer ? (
                 <div style={{ marginTop: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                   
@@ -744,28 +744,24 @@ export default function SrsReviewModal({ isOpen, onClose }) {
                     <button
                       type="button"
                       onClick={handleToggleBlacklist}
-                      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#a1a1aa', padding: '6px 14px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#fff'; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; e.currentTarget.style.color = '#a1a1aa'; }}
+                      style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-light)', borderRadius: '6px', color: 'var(--text-main)', padding: '6px 14px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                     >
-                      Blacklist <span style={{ opacity: 0.5, fontSize: '0.66rem', border: '1px solid rgba(255,255,255,0.15)', padding: '1px 4px', borderRadius: '3px' }}>B</span>
+                      Blacklist <span style={{ opacity: 0.5, fontSize: '0.66rem', border: '1px solid var(--border-light)', padding: '1px 4px', borderRadius: '3px' }}>B</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={handleToggleMaster}
-                      style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#a1a1aa', padding: '6px 14px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = '#fff'; }}
-                      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; e.currentTarget.style.color = '#a1a1aa'; }}
+                      style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-light)', borderRadius: '6px', color: 'var(--text-main)', padding: '6px 14px', fontSize: '0.76rem', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                     >
-                      ★ Master <span style={{ opacity: 0.5, fontSize: '0.66rem', border: '1px solid rgba(255,255,255,0.15)', padding: '1px 4px', borderRadius: '3px' }}>M</span>
+                      ★ Master <span style={{ opacity: 0.5, fontSize: '0.66rem', border: '1px solid var(--border-light)', padding: '1px 4px', borderRadius: '3px' }}>M</span>
                     </button>
                   </div>
 
                 </div>
               ) : (
                 /* Tip footer when card is hidden */
-                <div style={{ marginTop: '18px', textAlign: 'center', color: 'rgba(255,255,255,0.25)', fontSize: '0.74rem' }}>
+                <div style={{ marginTop: '18px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.74rem' }}>
                   {lang === 'es' 
                     ? 'Tip: Pulsa [Espacio] para mostrar respuesta, y [1] [2] [3] [4] para calificar.' 
                     : 'Tip: Press [Space] to show answer, and [1] [2] [3] [4] to grade.'}

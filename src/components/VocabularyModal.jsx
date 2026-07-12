@@ -847,7 +847,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
           </div>
 
           {/* Tab Navigation */}
-          <div style={{ display: 'flex', background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div style={{ display: 'flex', background: 'var(--bg-card-hover)', borderBottom: '1px solid var(--border-light)' }}>
             {[
               { id: 'summary', label: lang === 'es' ? 'Resumen' : 'Summary' },
               { id: 'import', label: lang === 'es' ? 'Importar' : 'Import' },
@@ -862,7 +862,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
                   background: activeTab === t.id ? 'rgba(255, 224, 0, 0.05)' : 'none',
                   border: 'none',
                   borderBottom: activeTab === t.id ? '2px solid var(--primary)' : '2px solid transparent',
-                  color: activeTab === t.id ? 'var(--primary)' : 'rgba(255,255,255,0.6)',
+                  color: activeTab === t.id ? 'var(--primary)' : 'var(--text-muted)',
                   padding: '12px',
                   fontSize: '0.82rem',
                   fontWeight: 700,
@@ -881,14 +881,14 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
             {/* 1. SUMMARY TAB */}
             {activeTab === 'summary' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
+                <div style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px', textAlign: 'center' }}>
                   <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     {lang === 'es' ? 'Palabras Totales Registradas' : 'Total Tracked Words'}
                   </div>
-                  <div style={{ fontSize: '3rem', fontWeight: 800, color: '#fff', margin: '10px 0' }}>
+                  <div style={{ fontSize: '3rem', fontWeight: 800, color: 'var(--text-main)', margin: '10px 0' }}>
                     {stats.total.toLocaleString()}
                   </div>
-                  <div style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)' }}>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                     {lang === 'es' ? 'Estadísticas del vocabulario acumulado en la base de datos local' : 'Aggregated stats from your local database'}
                   </div>
                 </div>
@@ -900,8 +900,8 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
                     { label: lang === 'es' ? 'Destacadas' : 'Starred', count: stats.starred, color: '#ab47bc' },
                     { label: lang === 'es' ? 'Ignoradas' : 'Ignored', count: stats.ignored, color: 'var(--text-muted)' }
                   ].map(c => (
-                    <div key={c.label} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'rgba(255,255,255,0.7)' }}>{c.label}</span>
+                    <div key={c.label} style={{ background: 'var(--bg-card-hover)', border: '1px solid var(--border-light)', borderRadius: '10px', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>{c.label}</span>
                       <span style={{ fontSize: '1.25rem', fontWeight: 800, color: c.color }}>{c.count.toLocaleString()}</span>
                     </div>
                   ))}

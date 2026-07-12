@@ -312,3 +312,115 @@ export async function tokenizeText(text) {
   
   return resultParagraphs;
 }
+
+export async function parseExtensionText(paragraphs) {
+  const tokenizer = await initTokenizer();
+  
+  const tokens = [];
+  const vocabularyMap = new Map();
+  const dbModule = await import('./db');
+  const db = dbModule.default || dbModule;
+  const wordStatuses = db && db.getWordStatuses ? db.getWordStatuses() : {};
+  
+  for (const para of paragraphs) {
+    if (!para) {
+      tokens.push([]);
+      continue;
+    }
+    
+    let rawTokens = [];
+    try {
+      rawTokens = tokenizer.tokenize(para);
+    } catch (e) {
+      console.error("Local tokenization failed for paragraph:", para, e);
+      tokens.push([]);
+      continue;
+    }
+    
+    const paraTokens = [];
+    let tempIdx = 0;
+    
+    for (const rawToken of rawTokens) {
+      const surface = rawToken.surface_form;
+      const start = tempIdx;
+      const end = start + surface.length;
+      tempIdx = end;
+      
+      const pos = rawToken.pos;
+      const isPunc = pos === '記号';
+      
+      let wordId = null;
+      if (!isPunc) {
+        const basicForm = rawToken.basic_form && rawToken.basic_form !== '*' ? rawToken.basic_form : surface;
+        const katakanaReading = rawToken.reading || '';
+        const reading = katakanaToHiragana(katakanaReading) || surface;
+        
+        const key = `${basicForm}:${reading}`;
+        wordId = key;
+        
+        if (!vocabularyMap.has(key)) {
+          const yomitanDB = await import('./yomitanDB');
+          let dictEntry = null;
+          try {
+            dictEntry = await yomitanDB.searchYomitanDB(basicForm, reading);
+          } catch (err) {
+            console.error("Yomitan DB search failed inside extension parser:", err);
+          }
+          
+          let partsOfSpeech = [pos];
+          let meaningsChunks = [[]];
+          let meaningsPartOfSpeech = [[]];
+          let frequencyRank = 999999;
+          let pitchAccents = [];
+          
+          if (dictEntry) {
+            partsOfSpeech = dictEntry.partsOfSpeech || [pos];
+            meaningsChunks = [dictEntry.definitions || []];
+            meaningsPartOfSpeech = [dictEntry.partsOfSpeech || []];
+            pitchAccents = dictEntry.pitches ? dictEntry.pitches.map(p => typeof p === 'object' ? p.accent : p) : [];
+            if (dictEntry.frequencies && dictEntry.frequencies.length > 0) {
+              const ranks = dictEntry.frequencies.map(f => typeof f === 'object' ? f.rank : f).filter(r => typeof r === 'number');
+              if (ranks.length > 0) {
+                frequencyRank = Math.min(...ranks);
+              }
+            }
+          }
+          
+          const status = wordStatuses[basicForm] || 'new';
+          let knownState = [0];
+          if (status === 'known') knownState = [2];
+          else if (status === 'learning') knownState = [1];
+          else if (status === 'ignored') knownState = [3];
+          
+          vocabularyMap.set(key, {
+            wordId: key,
+            readingIndex: 0,
+            spelling: basicForm,
+            reading: reading,
+            frequencyRank,
+            partsOfSpeech,
+            meaningsChunks,
+            meaningsPartOfSpeech,
+            knownState,
+            pitchAccents,
+            studyDeckIds: []
+          });
+        }
+      }
+      
+      paraTokens.push({
+        start,
+        end,
+        wordId,
+        readingIndex: 0
+      });
+    }
+    
+    tokens.push(paraTokens);
+  }
+  
+  return {
+    tokens,
+    vocabulary: Array.from(vocabularyMap.values())
+  };
+}

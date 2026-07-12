@@ -338,6 +338,21 @@ export const db = {
     return updatedBooks;
   },
 
+  async saveBookBookmarks(bookId, bookmarks) {
+    const books = await this.getBooks();
+    const updatedBooks = books.map(book => {
+      if (book.id === bookId) {
+        return {
+          ...book,
+          bookmarks
+        };
+      }
+      return book;
+    });
+    await this.saveBooks(updatedBooks);
+    return updatedBooks;
+  },
+
   async deleteBook(bookId) {
     const books = await this.getBooks();
     const settings = this.getSettings();
@@ -360,6 +375,13 @@ export const db = {
     } else {
       updatedBooks = books.filter(b => !bookIds.includes(b.id));
     }
+    await this.saveBooks(updatedBooks);
+    return updatedBooks;
+  },
+
+  async clearDeletedBooks() {
+    const books = await this.getBooks();
+    const updatedBooks = books.filter(b => !b.isDeleted);
     await this.saveBooks(updatedBooks);
     return updatedBooks;
   },
