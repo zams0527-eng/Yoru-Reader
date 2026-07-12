@@ -85,6 +85,9 @@
       "dist/**/*",
       "backend/**/*",
       "package.json"
+    ],
+    "asarUnpack": [
+      "backend/reader-ext/**/*"
     ]
   }
 }

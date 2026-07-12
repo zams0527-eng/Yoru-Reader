@@ -465,49 +465,50 @@ const YoruParserSettings: React.FC<YoruParserSettingsProps> = ({
     if (!isOpen) return;
     setLoaded(false);
     readSettings(SETTING_KEYS).then((vals) => {
+      const safeVals = vals || {};
       let loadedConfig = DEFAULTS.wordStyleConfig;
-      if (vals.wordStyleConfig) {
+      if (safeVals.wordStyleConfig) {
         try {
-          loadedConfig = typeof vals.wordStyleConfig === 'string'
-            ? JSON.parse(vals.wordStyleConfig)
-            : vals.wordStyleConfig;
+          loadedConfig = typeof safeVals.wordStyleConfig === 'string'
+            ? JSON.parse(safeVals.wordStyleConfig)
+            : safeVals.wordStyleConfig;
         } catch (_) {}
       }
 
       setSettings({
-        themeBgColour: (vals.themeBgColour as string) || DEFAULTS.themeBgColour,
-        themeAccentColour: (vals.themeAccentColour as string) || DEFAULTS.themeAccentColour,
-        skipFurigana: parseBool(vals.skipFurigana, DEFAULTS.skipFurigana),
-        generatePitch: parseBool(vals.generatePitch, DEFAULTS.generatePitch),
-        showPopupOnHover: parseBool(vals.showPopupOnHover, DEFAULTS.showPopupOnHover),
-        hidePopupAutomatically: parseBool(vals.hidePopupAutomatically, DEFAULTS.hidePopupAutomatically),
-        hidePopupDelay: parseNum(vals.hidePopupDelay, DEFAULTS.hidePopupDelay),
-        popupWidth: parseNum(vals.popupWidth, DEFAULTS.popupWidth),
-        popupHeight: parseNum(vals.popupHeight, DEFAULTS.popupHeight),
-        showConjugations: parseBool(vals.showConjugations, DEFAULTS.showConjugations),
-        showPitchDiagrams: parseBool(vals.showPitchDiagrams, DEFAULTS.showPitchDiagrams),
-        touchscreenSupport: parseBool(vals.touchscreenSupport, DEFAULTS.touchscreenSupport),
-        renderCloseButton: parseBool(vals.renderCloseButton, DEFAULTS.renderCloseButton),
-        disableFadeAnimation: parseBool(vals.disableFadeAnimation, DEFAULTS.disableFadeAnimation),
-        ttsVoice: (vals.ttsVoice as string) || DEFAULTS.ttsVoice,
-        ttsAutoPlay: parseBool(vals.ttsAutoPlay, DEFAULTS.ttsAutoPlay),
-        massReviewNew: parseBool(vals.massReviewNew, DEFAULTS.massReviewNew),
-        massReviewDue: parseBool(vals.massReviewDue, DEFAULTS.massReviewDue),
-        massReviewYoung: parseBool(vals.massReviewYoung, DEFAULTS.massReviewYoung),
-        massReviewMature: parseBool(vals.massReviewMature, DEFAULTS.massReviewMature),
-        massReviewCooldownHours: parseNum(vals.massReviewCooldownHours, DEFAULTS.massReviewCooldownHours),
-        massReviewRequireConfirm: parseBool(vals.massReviewRequireConfirm, DEFAULTS.massReviewRequireConfirm),
-        jitenAddToForq: parseBool(vals.jitenAddToForq, DEFAULTS.jitenAddToForq),
-        setSentences: parseBool(vals.setSentences, DEFAULTS.setSentences),
-        jitenDisableReviews: parseBool(vals.jitenDisableReviews, DEFAULTS.jitenDisableReviews),
-        jitenUseTwoGrades: parseBool(vals.jitenUseTwoGrades, DEFAULTS.jitenUseTwoGrades),
-        jitenAutoMineOnReview: parseBool(vals.jitenAutoMineOnReview, DEFAULTS.jitenAutoMineOnReview),
-        parseKey: parseKeybindDisplay(vals.parseKey, DEFAULTS.parseKey),
-        showPopupKey: parseKeybindDisplay(vals.showPopupKey, DEFAULTS.showPopupKey),
-        lookupSelectionKey: parseKeybindDisplay(vals.lookupSelectionKey, DEFAULTS.lookupSelectionKey),
-        fsrsRetentionRate: parseNum(vals.fsrsRetentionRate, DEFAULTS.fsrsRetentionRate),
-        fsrsMaxInterval: parseNum(vals.fsrsMaxInterval, DEFAULTS.fsrsMaxInterval),
-        fsrsEnableFuzz: parseBool(vals.fsrsEnableFuzz, DEFAULTS.fsrsEnableFuzz),
+        themeBgColour: (safeVals.themeBgColour as string) || DEFAULTS.themeBgColour,
+        themeAccentColour: (safeVals.themeAccentColour as string) || DEFAULTS.themeAccentColour,
+        skipFurigana: parseBool(safeVals.skipFurigana, DEFAULTS.skipFurigana),
+        generatePitch: parseBool(safeVals.generatePitch, DEFAULTS.generatePitch),
+        showPopupOnHover: parseBool(safeVals.showPopupOnHover, DEFAULTS.showPopupOnHover),
+        hidePopupAutomatically: parseBool(safeVals.hidePopupAutomatically, DEFAULTS.hidePopupAutomatically),
+        hidePopupDelay: parseNum(safeVals.hidePopupDelay, DEFAULTS.hidePopupDelay),
+        popupWidth: parseNum(safeVals.popupWidth, DEFAULTS.popupWidth),
+        popupHeight: parseNum(safeVals.popupHeight, DEFAULTS.popupHeight),
+        showConjugations: parseBool(safeVals.showConjugations, DEFAULTS.showConjugations),
+        showPitchDiagrams: parseBool(safeVals.showPitchDiagrams, DEFAULTS.showPitchDiagrams),
+        touchscreenSupport: parseBool(safeVals.touchscreenSupport, DEFAULTS.touchscreenSupport),
+        renderCloseButton: parseBool(safeVals.renderCloseButton, DEFAULTS.renderCloseButton),
+        disableFadeAnimation: parseBool(safeVals.disableFadeAnimation, DEFAULTS.disableFadeAnimation),
+        ttsVoice: (safeVals.ttsVoice as string) || DEFAULTS.ttsVoice,
+        ttsAutoPlay: parseBool(safeVals.ttsAutoPlay, DEFAULTS.ttsAutoPlay),
+        massReviewNew: parseBool(safeVals.massReviewNew, DEFAULTS.massReviewNew),
+        massReviewDue: parseBool(safeVals.massReviewDue, DEFAULTS.massReviewDue),
+        massReviewYoung: parseBool(safeVals.massReviewYoung, DEFAULTS.massReviewYoung),
+        massReviewMature: parseBool(safeVals.massReviewMature, DEFAULTS.massReviewMature),
+        massReviewCooldownHours: parseNum(safeVals.massReviewCooldownHours, DEFAULTS.massReviewCooldownHours),
+        massReviewRequireConfirm: parseBool(safeVals.massReviewRequireConfirm, DEFAULTS.massReviewRequireConfirm),
+        jitenAddToForq: parseBool(safeVals.jitenAddToForq, DEFAULTS.jitenAddToForq),
+        setSentences: parseBool(safeVals.setSentences, DEFAULTS.setSentences),
+        jitenDisableReviews: parseBool(safeVals.jitenDisableReviews, DEFAULTS.jitenDisableReviews),
+        jitenUseTwoGrades: parseBool(safeVals.jitenUseTwoGrades, DEFAULTS.jitenUseTwoGrades),
+        jitenAutoMineOnReview: parseBool(safeVals.jitenAutoMineOnReview, DEFAULTS.jitenAutoMineOnReview),
+        parseKey: parseKeybindDisplay(safeVals.parseKey, DEFAULTS.parseKey),
+        showPopupKey: parseKeybindDisplay(safeVals.showPopupKey, DEFAULTS.showPopupKey),
+        lookupSelectionKey: parseKeybindDisplay(safeVals.lookupSelectionKey, DEFAULTS.lookupSelectionKey),
+        fsrsRetentionRate: parseNum(safeVals.fsrsRetentionRate, DEFAULTS.fsrsRetentionRate),
+        fsrsMaxInterval: parseNum(safeVals.fsrsMaxInterval, DEFAULTS.fsrsMaxInterval),
+        fsrsEnableFuzz: parseBool(safeVals.fsrsEnableFuzz, DEFAULTS.fsrsEnableFuzz),
         wordStyleConfig: loadedConfig,
       });
       setLoaded(true);

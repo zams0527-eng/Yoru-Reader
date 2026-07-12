@@ -817,7 +817,10 @@ app.whenReady().then(async () => {
     } catch (e) {
       console.warn('[main] Failed to clear service worker cache:', e);
     }
-    const extensionPath = path.join(__dirname, 'reader-ext');
+    let extensionPath = path.join(__dirname, 'reader-ext');
+    if (extensionPath.includes('app.asar')) {
+      extensionPath = extensionPath.replace('app.asar', 'app.asar.unpacked');
+    }
     const ext = await session.defaultSession.loadExtension(extensionPath, { allowFileAccess: true });
     readerExtensionId = ext.id;
     console.log(`[main] Loaded Yoru Reader Extension natively: ${ext.name} (${ext.id})`);
