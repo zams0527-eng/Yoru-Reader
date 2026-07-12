@@ -80,7 +80,6 @@ locales/
 # ====================================================================
 # AGENTES, ARCHIVOS LOCALES Y DESCARGAS
 # ====================================================================
-downloads/
 .agents/
 test_db.js
 test_db.cjs
