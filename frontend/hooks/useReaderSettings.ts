@@ -14,9 +14,12 @@ export interface ReaderSettingsState {
   paginated: boolean;
   showFurigana: boolean;
   disableCss: boolean;
+  theme: 'light' | 'sepia' | 'dark';
+  showProgressLine: boolean;
+  direction: 'auto' | 'vertical' | 'horizontal';
 }
 
-const LS_KEYS = {
+const LS_KEYS: Record<keyof ReaderSettingsState, string> = {
   fontSize: 'reader:fontSize',
   lineHeight: 'reader:lineHeight',
   fontFamily: 'reader:fontFamily',
@@ -26,6 +29,9 @@ const LS_KEYS = {
   paginated: 'reader:paginated',
   showFurigana: 'reader:showFurigana',
   disableCss: 'reader:disableCss',
+  theme: 'reader:theme',
+  showProgressLine: 'reader:showProgressLine',
+  direction: 'reader:direction',
 };
 
 function getNumber(key: string, fallback: number): number {
@@ -62,6 +68,9 @@ function loadSettings(): ReaderSettingsState {
     paginated: getBool(LS_KEYS.paginated, true),
     showFurigana: getBool(LS_KEYS.showFurigana, true),
     disableCss: getBool(LS_KEYS.disableCss, false),
+    theme: getString(LS_KEYS.theme, 'dark') as 'light' | 'sepia' | 'dark',
+    showProgressLine: getBool(LS_KEYS.showProgressLine, true),
+    direction: getString(LS_KEYS.direction, 'auto') as 'auto' | 'vertical' | 'horizontal',
   };
 }
 

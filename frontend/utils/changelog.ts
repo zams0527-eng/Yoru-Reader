@@ -1,4 +1,13 @@
-export const CHANGELOG = [
+export interface ChangelogEntry {
+  version: string;
+  date: string;
+  changes: {
+    es: string[];
+    en: string[];
+  };
+}
+
+export const CHANGELOG: ChangelogEntry[] = [
   {
     version: '1.0.3',
     date: '2026-07-09',
@@ -28,7 +37,6 @@ export const CHANGELOG = [
     }
   },
   {
-
     version: '1.0.1',
     date: '2026-07-08',
     changes: {

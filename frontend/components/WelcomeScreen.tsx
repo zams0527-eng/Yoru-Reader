@@ -6,21 +6,32 @@ import { db } from '../utils/db';
 import { googleDriveService } from '../utils/googleDriveService';
 import { Browser } from '@capacitor/browser';
 import { App as CapacitorApp } from '@capacitor/app';
-import { importAllDictionaryData } from '../utils/yomitanDB';
 import { useConfirm } from './ConfirmModal';
+
+declare global {
+  interface Window {
+    electronAPI: any;
+  }
+}
 
 const PRESET_AVATARS = [
   { avatar: 'linear-gradient(135deg, #ff5e62 0%, #ff9966 100%)', emoji: '🦊' }
 ];
 
-export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSettings }) {
+interface WelcomeScreenProps {
+  onCreateProfile: (profile: any) => void;
+  settings: any;
+  onSaveSettings: (settings: any) => void;
+}
+
+export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSettings }: WelcomeScreenProps) {
   const lang = settings.appLanguage || 'en';
   const [name, setName] = useState('');
   const [selectedPresetIdx, setSelectedPresetIdx] = useState(0);
-  const [customAvatarUrl, setCustomAvatarUrl] = useState(null);
+  const [customAvatarUrl, setCustomAvatarUrl] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
-  const fileInputRef = useRef(null);
-  const localBackupInputRef = useRef(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const localBackupInputRef = useRef<HTMLInputElement>(null);
 
   const activeTheme = settings.theme || 'dark';
   const driveColor = activeTheme === 'dark' ? '#34d399' : '#059669';
@@ -31,9 +42,9 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
 
   // Custom themed toast notifications
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
-  const toastTimerRef = useRef(null);
+  const toastTimerRef = useRef<any>(null);
 
-  const showToast = React.useCallback((message, type = 'success') => {
+  const showToast = React.useCallback((message: string, type = 'success') => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ show: true, message, type });
     toastTimerRef.current = setTimeout(() => {
@@ -41,14 +52,14 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
     }, 4000);
   }, []);
 
-  const handleImportLocalBackup = async (e) => {
-    const file = e.target.files[0];
+  const handleImportLocalBackup = async (e: any) => {
+    const file = e.target.files?.[0];
     if (!file) return;
 
     try {
       document.body.style.cursor = 'wait';
-      let importData = null;
-      let zip = null;
+      let importData: any = null;
+      let zip: JSZip | null = null;
       const isZip = file.name.toLowerCase().endsWith('.zip');
 
       if (isZip) {
@@ -62,9 +73,9 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
         importData = JSON.parse(metaStr);
       } else {
         // Legacy JSON backup support
-        const text = await new Promise((resolve, reject) => {
+        const text = await new Promise<string>((resolve, reject) => {
           const r = new FileReader();
-          r.onload = (evt) => resolve(evt.target.result);
+          r.onload = (evt) => resolve(evt.target?.result as string);
           r.onerror = (err) => reject(err);
           r.readAsText(file);
         });
@@ -92,7 +103,6 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
       });
 
       if (ok) {
-        
         // 1. Restore active profile ID
         if (importData.activeProfileId) {
           localStorage.setItem('migaku_reader_active_profile_id', importData.activeProfileId);
@@ -173,7 +183,7 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
           window.location.reload();
         }, 1500);
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
       showToast((lang === 'es' ? 'Error al importar la biblioteca: ' : 'Error importing library: ') + (e.message || String(e)), 'error');
     } finally {
@@ -186,7 +196,7 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
     const ANDROID_CLIENT_ID = '658624509601-fbje3dvug1pkle2a4c5fc49ssr0numf2.apps.googleusercontent.com';
     const REDIRECT_URI = 'com.googleusercontent.apps.658624509601-fbje3dvug1pkle2a4c5fc49ssr0numf2:/oauth2redirect';
 
-    const handleAppUrlOpen = async (event) => {
+    const handleAppUrlOpen = async (event: any) => {
       const url = event.url || '';
       if (!url.startsWith('com.googleusercontent.apps.658624509601-fbje3dvug1pkle2a4c5fc49ssr0numf2')) return;
 
@@ -199,7 +209,6 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
       try { await Browser.close(); } catch (_) {}
 
       const clientId = (localStorage.getItem('gdrive_client_id') || ANDROID_CLIENT_ID).trim();
-      // Android clients are public — no client_secret needed
       const clientSecret = localStorage.getItem('gdrive_client_secret') || '';
 
       setIsSyncing(true);
@@ -229,7 +238,7 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
         }
         const fileObj = new File([zipBlob], 'yoru_reader_full_backup.zip', { type: 'application/zip' });
         await handleImportLocalBackup({ target: { files: [fileObj] } });
-      } catch (err) {
+      } catch (err: any) {
         console.error(err);
         showToast((lang === 'es' ? 'Error al restaurar desde Drive: ' : 'Error restoring from Drive: ') + err.message, 'error');
       } finally {
@@ -238,7 +247,7 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
       }
     };
 
-    let listenerHandle = null;
+    let listenerHandle: any = null;
     CapacitorApp.addListener('appUrlOpen', handleAppUrlOpen).then(h => {
       listenerHandle = h;
     }).catch(() => {
@@ -256,8 +265,9 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
 
   // Handle F shortcut for Fullscreen
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
       if (e.key === 'f' || e.key === 'F') {
         e.preventDefault();
         if (!document.fullscreenElement) {
@@ -357,7 +367,7 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
       const fileObj = new File([zipBlob], 'yoru_reader_full_backup.zip', { type: 'application/zip' });
       await handleImportLocalBackup({ target: { files: [fileObj] } });
 
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
       showToast((lang === 'es' ? 'Error al restaurar desde Drive: ' : 'Error restoring from Drive: ') + e.message, 'error');
     } finally {
@@ -366,12 +376,12 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
     }
   };
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
+  const handleFileChange = (e: any) => {
+    const file = e.target.files?.[0];
     if (!file) return;
     
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = (event: any) => {
       setCustomAvatarUrl(event.target.result);
       setSelectedPresetIdx(-1);
     };
@@ -387,7 +397,7 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
     reader.readAsDataURL(file);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
@@ -477,7 +487,6 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
           </div>
         </div>
 
-
         <div className="welcome-header">
           <h1 className="welcome-title">{t('welcomeTitle', lang)}</h1>
           <p className="welcome-subtitle">{t('welcomeSubtitle', lang)}</p>
@@ -498,7 +507,7 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
               {customAvatarUrl ? (
                 <div 
                   className="welcome-avatar-preview custom"
-                  onClick={() => fileInputRef.current.click()}
+                  onClick={() => fileInputRef.current?.click()}
                   title={lang === 'es' ? 'Cambiar foto de perfil' : 'Change profile photo'}
                 >
                   <img src={customAvatarUrl} alt="Avatar" className="welcome-custom-img" />
@@ -510,7 +519,7 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
                 <div 
                   className="welcome-avatar-preview preset"
                   style={{ background: PRESET_AVATARS[selectedPresetIdx].avatar }}
-                  onClick={() => fileInputRef.current.click()}
+                  onClick={() => fileInputRef.current?.click()}
                   title={lang === 'es' ? 'Subir foto personalizada' : 'Upload custom photo'}
                 >
                   <span className="welcome-avatar-emoji">
@@ -525,7 +534,7 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
             <button 
               type="button" 
               className="welcome-upload-btn"
-              onClick={() => fileInputRef.current.click()}
+              onClick={() => fileInputRef.current?.click()}
             >
               {t('uploadPhoto', lang)}
             </button>
@@ -599,7 +608,7 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
           {/* Restaurar Local */}
           <button 
             type="button"
-            onClick={() => localBackupInputRef.current.click()}
+            onClick={() => localBackupInputRef.current?.click()}
             className="welcome-submit-btn" 
             style={{ 
               flex: 1,

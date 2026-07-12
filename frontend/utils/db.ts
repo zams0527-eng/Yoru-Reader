@@ -1,5 +1,48 @@
 // LocalStorage DB manager for the Migaku-style Japanese Reader
 
+export interface Book {
+  id: string;
+  title: string;
+  author: string;
+  cover: string;
+  chapters: any[];
+  progress: {
+    currentChapter: number;
+    currentPage: number;
+    percent: number;
+    charactersRead: number;
+    secondsRead: number;
+  };
+  status: 'unread' | 'reading' | 'completed';
+  createdAt: string;
+  lastRead?: string;
+  bookmarks?: any[];
+  isDeleted?: boolean;
+}
+
+export interface Settings {
+  fontSize: number;
+  theme: string;
+  showFurigana: string;
+  showTranslation: boolean;
+  autoTTS: boolean;
+  showLearningStatus: boolean;
+  sentenceHover: boolean;
+  pitchAccent: string;
+  appLanguage: string;
+  audioSpeed: string;
+  audioGender: string;
+  audioVoiceOption: string;
+  readingOrientation: string;
+  keepStatsOnDelete?: boolean;
+}
+
+export interface Profile {
+  id: string;
+  name: string;
+  avatar?: string;
+}
+
 const STORAGE_KEYS = {
   BOOKS: 'migaku_reader_books',
   WORD_STATUS: 'migaku_reader_word_status',
@@ -8,7 +51,7 @@ const STORAGE_KEYS = {
   ACTIVE_PROFILE: 'migaku_reader_active_profile_id'
 };
 
-const DEFAULT_SETTINGS = {
+const DEFAULT_SETTINGS: Settings = {
   fontSize: 22, // default to 22px matching reference app scale
   theme: 'dark', // 'dark', 'light', 'sepia'
   showFurigana: 'unknown-only', // default to 'unknown-only' (Palabras desconocidas)
@@ -24,32 +67,32 @@ const DEFAULT_SETTINGS = {
   readingOrientation: 'horizontal'
 };
 
-const DEFAULT_PROFILES = [];
+const DEFAULT_PROFILES: Profile[] = [];
 
 // Simple IndexedDB key-value wrapper to support unlimited storage (bypassing localStorage 5MB limit)
 const idb = {
-  dbPromise: null,
+  dbPromise: null as Promise<IDBDatabase> | null,
 
-  _getDb() {
+  _getDb(): Promise<IDBDatabase> {
     if (this.dbPromise) return this.dbPromise;
     this.dbPromise = new Promise((resolve, reject) => {
       const request = indexedDB.open('YoruReaderStore', 1);
-      request.onupgradeneeded = (e) => {
+      request.onupgradeneeded = (e: any) => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains('keyvalue')) {
           db.createObjectStore('keyvalue');
         }
       };
-      request.onsuccess = (e) => resolve(e.target.result);
-      request.onerror = (e) => reject(e.target.error);
+      request.onsuccess = (e: any) => resolve(e.target.result);
+      request.onerror = (e: any) => reject(e.target.error);
     });
     return this.dbPromise;
   },
 
-  async get(key) {
-    const db = await this._getDb();
+  async get(key: string): Promise<any> {
+    const dbInstance = await this._getDb();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction('keyvalue', 'readonly');
+      const tx = dbInstance.transaction('keyvalue', 'readonly');
       const store = tx.objectStore('keyvalue');
       const request = store.get(key);
       request.onsuccess = () => resolve(request.result);
@@ -57,10 +100,10 @@ const idb = {
     });
   },
 
-  async set(key, value) {
-    const db = await this._getDb();
+  async set(key: string, value: any): Promise<void> {
+    const dbInstance = await this._getDb();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction('keyvalue', 'readwrite');
+      const tx = dbInstance.transaction('keyvalue', 'readwrite');
       const store = tx.objectStore('keyvalue');
       const request = store.put(value, key);
       request.onsuccess = () => resolve();
@@ -68,7 +111,7 @@ const idb = {
     });
   },
 
-  async close() {
+  async close(): Promise<void> {
     if (this.dbPromise) {
       const dbInstance = await this.dbPromise;
       dbInstance.close();
@@ -83,7 +126,7 @@ export const db = {
   },
 
   // --- Profiles Management ---
-  getProfiles() {
+  getProfiles(): Profile[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.PROFILES);
       return data ? JSON.parse(data) : DEFAULT_PROFILES;
@@ -93,7 +136,7 @@ export const db = {
     }
   },
 
-  saveProfiles(profiles) {
+  saveProfiles(profiles: Profile[]) {
     try {
       localStorage.setItem(STORAGE_KEYS.PROFILES, JSON.stringify(profiles));
     } catch (e) {
@@ -101,7 +144,7 @@ export const db = {
     }
   },
 
-  getActiveProfileId() {
+  getActiveProfileId(): string | null {
     try {
       const id = localStorage.getItem(STORAGE_KEYS.ACTIVE_PROFILE);
       if (id) return id;
@@ -112,7 +155,7 @@ export const db = {
     }
   },
 
-  setActiveProfileId(id) {
+  setActiveProfileId(id: string) {
     try {
       localStorage.setItem(STORAGE_KEYS.ACTIVE_PROFILE, id);
     } catch (e) {
@@ -121,7 +164,7 @@ export const db = {
   },
 
   // Helper to segment keys per profile with backward compatibility
-  _getKey(baseKey) {
+  _getKey(baseKey: string): string {
     const profileId = this.getActiveProfileId();
     const segmentedKey = `${baseKey}_${profileId}`;
     
@@ -137,7 +180,7 @@ export const db = {
   },
 
   // --- Settings Management ---
-  getSettings() {
+  getSettings(): Settings {
     try {
       const data = localStorage.getItem(this._getKey(STORAGE_KEYS.SETTINGS));
       const globalLang = localStorage.getItem('app_language') || 'es';
@@ -150,7 +193,7 @@ export const db = {
     }
   },
 
-  saveSettings(settings) {
+  saveSettings(settings: Settings) {
     try {
       if (settings && settings.appLanguage) {
         localStorage.setItem('app_language', settings.appLanguage);
@@ -162,7 +205,7 @@ export const db = {
   },
 
   // --- Books Management (IndexedDB powered) ---
-  async getBooks() {
+  async getBooks(): Promise<Book[]> {
     try {
       const key = this._getKey(STORAGE_KEYS.BOOKS);
       let books = await idb.get(key);
@@ -201,7 +244,7 @@ export const db = {
     }
   },
 
-  async saveBooks(books) {
+  async saveBooks(books: Book[]): Promise<void> {
     try {
       const key = this._getKey(STORAGE_KEYS.BOOKS);
       await idb.set(key, books);
@@ -210,7 +253,7 @@ export const db = {
     }
   },
 
-  async addBook(book) {
+  async addBook(book: Partial<Book>): Promise<Book[]> {
     const books = await this.getBooks();
     // Check if book already exists by title
     const existingIdx = books.findIndex(b => b.title === book.title);
@@ -223,9 +266,9 @@ export const db = {
       }
       return books;
     }
-    const newBook = {
+    const newBook: Book = {
       id: `book-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      title: book.title,
+      title: book.title || 'Libro sin título',
       author: book.author || 'Desconocido',
       cover: book.cover || 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
       chapters: book.chapters || [],
@@ -244,7 +287,7 @@ export const db = {
     return books;
   },
 
-  async addBooks(booksList) {
+  async addBooks(booksList: Partial<Book>[]): Promise<Book[]> {
     const books = await this.getBooks();
     console.log("db.addBooks - Libros existentes en DB:", books.map(b => b.title));
     console.log("db.addBooks - Libros nuevos a añadir:", booksList.map(b => b.title));
@@ -265,9 +308,9 @@ export const db = {
         }
         continue;
       }
-      const newBook = {
+      const newBook: Book = {
         id: `book-${now}-${i}-${Math.random().toString(36).substr(2, 9)}`,
-        title: book.title,
+        title: book.title || 'Libro sin título',
         author: book.author || 'Desconocido',
         cover: book.cover || 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
         chapters: book.chapters || [],
@@ -292,7 +335,7 @@ export const db = {
     return books;
   },
 
-  async updateBookProgress(bookId, currentChapter, currentPage, percent) {
+  async updateBookProgress(bookId: string, currentChapter: number, currentPage: number, percent: number): Promise<Book[]> {
     const books = await this.getBooks();
     const updatedBooks = books.map(book => {
       if (book.id === bookId) {
@@ -305,7 +348,7 @@ export const db = {
             currentPage, 
             percent 
           },
-          status: newStatus,
+          status: newStatus as 'unread' | 'reading' | 'completed',
           lastRead: new Date().toISOString()
         };
       }
@@ -315,7 +358,7 @@ export const db = {
     return updatedBooks;
   },
 
-  async incrementReadingStats(bookId, charsToAdd, secondsToAdd) {
+  async incrementReadingStats(bookId: string, charsToAdd: number, secondsToAdd: number): Promise<Book[]> {
     const books = await this.getBooks();
     const updatedBooks = books.map(book => {
       if (book.id === bookId) {
@@ -338,7 +381,7 @@ export const db = {
     return updatedBooks;
   },
 
-  async saveBookBookmarks(bookId, bookmarks) {
+  async saveBookBookmarks(bookId: string, bookmarks: any[]): Promise<Book[]> {
     const books = await this.getBooks();
     const updatedBooks = books.map(book => {
       if (book.id === bookId) {
@@ -353,10 +396,10 @@ export const db = {
     return updatedBooks;
   },
 
-  async deleteBook(bookId) {
+  async deleteBook(bookId: string): Promise<Book[]> {
     const books = await this.getBooks();
     const settings = this.getSettings();
-    let updatedBooks;
+    let updatedBooks: Book[];
     if (settings.keepStatsOnDelete !== false) {
       updatedBooks = books.map(b => b.id === bookId ? { ...b, isDeleted: true, chapters: [] } : b);
     } else {
@@ -366,10 +409,10 @@ export const db = {
     return updatedBooks;
   },
 
-  async deleteBooks(bookIds) {
+  async deleteBooks(bookIds: string[]): Promise<Book[]> {
     const books = await this.getBooks();
     const settings = this.getSettings();
-    let updatedBooks;
+    let updatedBooks: Book[];
     if (settings.keepStatsOnDelete !== false) {
       updatedBooks = books.map(b => bookIds.includes(b.id) ? { ...b, isDeleted: true, chapters: [] } : b);
     } else {
@@ -379,14 +422,14 @@ export const db = {
     return updatedBooks;
   },
 
-  async clearDeletedBooks() {
+  async clearDeletedBooks(): Promise<Book[]> {
     const books = await this.getBooks();
     const updatedBooks = books.filter(b => !b.isDeleted);
     await this.saveBooks(updatedBooks);
     return updatedBooks;
   },
 
-  async updateBookDetails(bookId, data) {
+  async updateBookDetails(bookId: string, data: Partial<Book>): Promise<Book[]> {
     const books = await this.getBooks();
     const updatedBooks = books.map(b => b.id === bookId ? { ...b, ...data, updatedAt: new Date().toISOString() } : b);
     await this.saveBooks(updatedBooks);
@@ -394,7 +437,7 @@ export const db = {
   },
 
   // --- Word Status Management (Migaku state: 'new' | 'learning' | 'known') ---
-  getWordStatuses() {
+  getWordStatuses(): Record<string, string> {
     try {
       const data = localStorage.getItem(this._getKey(STORAGE_KEYS.WORD_STATUS));
       return data ? JSON.parse(data) : {};
@@ -404,7 +447,7 @@ export const db = {
     }
   },
 
-  saveWordStatuses(statuses) {
+  saveWordStatuses(statuses: Record<string, string>) {
     try {
       localStorage.setItem(this._getKey(STORAGE_KEYS.WORD_STATUS), JSON.stringify(statuses));
     } catch (e) {
@@ -412,7 +455,7 @@ export const db = {
     }
   },
 
-  setWordStatus(word, status) {
+  setWordStatus(word: string, status: string | null) {
     const statuses = this.getWordStatuses();
     if (!status || status === 'unknown') {
       delete statuses[word]; // default is 'unknown' (or 'new' in Migaku term)
@@ -425,7 +468,7 @@ export const db = {
   },
 
   // --- SRS Spaced Repetition System Management ---
-  getSrsData() {
+  getSrsData(): Record<string, any> {
     try {
       const data = localStorage.getItem(this._getKey('yoru_reader_srs_data'));
       return data ? JSON.parse(data) : {};
@@ -435,7 +478,7 @@ export const db = {
     }
   },
 
-  saveSrsData(srsData) {
+  saveSrsData(srsData: Record<string, any>) {
     try {
       localStorage.setItem(this._getKey('yoru_reader_srs_data'), JSON.stringify(srsData));
     } catch (e) {
@@ -443,12 +486,12 @@ export const db = {
     }
   },
 
-  getSrsCard(word) {
+  getSrsCard(word: string): any {
     const srsData = this.getSrsData();
     return srsData[word] || null;
   },
 
-  saveSrsCard(word, cardData) {
+  saveSrsCard(word: string, cardData: any) {
     const srsData = this.getSrsData();
     if (!cardData) {
       delete srsData[word];
@@ -459,11 +502,11 @@ export const db = {
   },
 
   // --- Export/Import Database for Cloud/Google Drive Sync ---
-  async exportFullDatabase() {
+  async exportFullDatabase(): Promise<any> {
     const profiles = this.getProfiles();
     const activeProfileId = this.getActiveProfileId();
     
-    const dbExport = {
+    const dbExport: any = {
       version: 2,
       exportDate: new Date().toISOString(),
       activeProfileId,
@@ -503,7 +546,7 @@ export const db = {
     return dbExport;
   },
 
-  async importFullDatabase(dbExport) {
+  async importFullDatabase(dbExport: any): Promise<void> {
     if (!dbExport || !dbExport.profiles || !Array.isArray(dbExport.profiles)) {
       throw new Error("Invalid backup format");
     }
@@ -544,11 +587,13 @@ export const db = {
     }
   },
 
-  async idbGet(key) {
+  async idbGet(key: string): Promise<any> {
     return await idb.get(key);
   },
 
-  async idbSet(key, value) {
+  async idbSet(key: string, value: any): Promise<void> {
     return await idb.set(key, value);
   }
 };
+
+export default db;

@@ -8,6 +8,19 @@ const VocabularyModal = React.lazy(() => import('./VocabularyModal'));
 
 const FONT_SIZE_STEPS = [16, 20, 24, 28, 32];
 
+interface SettingsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  settings: any;
+  onSaveSettings: (settings: any) => void;
+  mode?: 'settings' | 'info';
+  book?: any;
+  onUpdateBookDetails?: (bookId: string, data: any) => void;
+  libraryViewProps?: any;
+  onExportLibrary?: () => void;
+  onTriggerImportBackup?: () => void;
+}
+
 export default function SettingsModal({ 
   isOpen, 
   onClose, 
@@ -19,22 +32,22 @@ export default function SettingsModal({
   libraryViewProps, // Opcional, para controlar las tarjetas de la biblioteca
   onExportLibrary,
   onTriggerImportBackup
-}) {
+}: SettingsModalProps) {
   if (!isOpen) return null;
   const [isVocabModalOpen, setIsVocabModalOpen] = useState(false);
   const [activeSection, setActiveSection] = useState('text-style');
   const [searchQuery, setSearchQuery] = useState('');
 
   const { showConfirm, confirmModal } = useConfirm();
-  const [mobileSubView, setMobileSubView] = useState('menu'); // 'menu' o 'content'
+  const [mobileSubView, setMobileSubView] = useState<'menu' | 'content'>('menu');
   
   const lang = settings.appLanguage || 'es';
 
   // Modal de información del libro (mode === 'info')
   if (mode === 'info') {
     if (!book) return null;
-    const charsCount = (book.chapters || []).reduce((acc, c) => acc + (c.content || '').length, 0);
-    const formatDate = (dateStr) => {
+    const charsCount = (book.chapters || []).reduce((acc: number, c: any) => acc + (c.content || '').length, 0);
+    const formatDate = (dateStr: string) => {
       if (!dateStr) return '-';
       return new Date(dateStr).toLocaleDateString(lang === 'es' ? 'es-ES' : 'en-US', {
         year: 'numeric',
@@ -64,7 +77,9 @@ export default function SettingsModal({
                 style={{ fontWeight: 600, color: '#fff', cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,0.3)' }}
                 onClick={() => {
                   const title = prompt(lang === 'es' ? "Título del libro:" : "Book title:", book.title || '');
-                  if (title !== null && title.trim()) onUpdateBookDetails(book.id, { title: title.trim() });
+                  if (title !== null && title.trim() && onUpdateBookDetails) {
+                    onUpdateBookDetails(book.id, { title: title.trim() });
+                  }
                 }}
                 title={lang === 'es' ? "Haz clic para editar" : "Click to edit"}
               >
@@ -78,7 +93,9 @@ export default function SettingsModal({
                 style={{ fontWeight: 500, color: '#fff', cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,0.3)' }}
                 onClick={() => {
                   const author = prompt(lang === 'es' ? "Autor del libro:" : "Book author:", book.author || '');
-                  if (author !== null) onUpdateBookDetails(book.id, { author: author.trim() });
+                  if (author !== null && onUpdateBookDetails) {
+                    onUpdateBookDetails(book.id, { author: author.trim() });
+                  }
                 }}
                 title={lang === 'es' ? "Haz clic para editar" : "Click to edit"}
               >
@@ -92,7 +109,9 @@ export default function SettingsModal({
                 style={{ fontWeight: 500, color: '#fff', cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,0.3)' }} 
                 onClick={() => {
                   const s = prompt(lang === 'es' ? "Nombre de la serie:" : "Series name:", book.series || '');
-                  if (s !== null) onUpdateBookDetails(book.id, { series: s });
+                  if (s !== null && onUpdateBookDetails) {
+                    onUpdateBookDetails(book.id, { series: s });
+                  }
                 }}
                 title={lang === 'es' ? "Haz clic para editar" : "Click to edit"}
               >
@@ -106,7 +125,9 @@ export default function SettingsModal({
                 style={{ fontWeight: 500, color: '#fff', cursor: 'pointer', borderBottom: '1px dashed rgba(255,255,255,0.3)' }} 
                 onClick={() => {
                   const sn = prompt(lang === 'es' ? "Número de volumen/serie:" : "Volume/Series number:", book.seriesNumber || '');
-                  if (sn !== null) onUpdateBookDetails(book.id, { seriesNumber: sn });
+                  if (sn !== null && onUpdateBookDetails) {
+                    onUpdateBookDetails(book.id, { seriesNumber: sn });
+                  }
                 }}
                 title={lang === 'es' ? "Haz clic para editar" : "Click to edit"}
               >
@@ -139,7 +160,7 @@ export default function SettingsModal({
     );
   }
 
-  const updateSetting = (key, value) => {
+  const updateSetting = (key: string, value: any) => {
     onSaveSettings({
       ...settings,
       [key]: value
@@ -150,7 +171,6 @@ export default function SettingsModal({
     return settings.fontSize || 36;
   };
 
-  // Estructura de menú idéntica al screenshot del usuario (con emojis)
   const menuStructure = [
     {
       category: 'GENERAL',
@@ -225,7 +245,6 @@ export default function SettingsModal({
     <div className="settings-panel-section">
       <h4 className="settings-panel-title">{lang === 'es' ? 'Estilo de texto' : 'Text Style'}</h4>
       
-      {/* Tamaño del texto (Zoom de lectura) */}
       <div className="migaku-row" style={{ marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'stretch' }}>
         <span className="migaku-label" style={{ fontSize: '0.72rem', fontWeight: 800, color: '#ff6b4a', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           {lang === 'es' ? 'AJUSTES DE PANTALLA' : 'DISPLAY SETTINGS'}
@@ -253,7 +272,6 @@ export default function SettingsModal({
         </div>
       </div>
 
-      {/* Furigana */}
       <div className="migaku-row" style={{ marginBottom: '14px' }}>
         <span className="migaku-label">Furigana</span>
         <select 
@@ -267,7 +285,6 @@ export default function SettingsModal({
         </select>
       </div>
 
-      {/* Dirección de lectura (Horizontal / Vertical) */}
       <div className="migaku-row" style={{ marginBottom: '14px' }}>
         <span className="migaku-label">{lang === 'es' ? 'Dirección de lectura' : 'Reading direction'}</span>
         <select 
@@ -276,18 +293,16 @@ export default function SettingsModal({
           className="migaku-select"
         >
           <option value="horizontal">Horizontal (Yokogaki)</option>
-          <option value="vertical">{lang === 'es' ? 'Vertical (Tategaki)' : 'Vertical (Tategaki)'}</option>
+          <option value="vertical">Vertical (Tategaki)</option>
         </select>
       </div>
 
-      {/* Si se proveen configuraciones de biblioteca (Library View Settings) */}
       {libraryViewProps && (
         <div style={{ marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             {lang === 'es' ? 'Ajustes de Biblioteca' : 'Library Card Settings'}
           </div>
 
-          {/* Tamaño de tarjetas */}
           <div className="drawer-section">
             <span className="migaku-label" style={{ fontSize: '0.85rem' }}>{lang === 'es' ? 'Ancho de tarjetas' : 'Card Width'} ({libraryViewProps.cardWidth}px)</span>
             <input 
@@ -301,7 +316,6 @@ export default function SettingsModal({
             />
           </div>
 
-          {/* Ajuste de portada */}
           <div className="migaku-row">
             <span className="migaku-label">{lang === 'es' ? 'Imagen de portada' : 'Cover Image'}</span>
             <select 
@@ -314,7 +328,6 @@ export default function SettingsModal({
             </select>
           </div>
 
-          {/* Checkboxes de detalles */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
             <span className="migaku-label" style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>
               {lang === 'es' ? 'Detalles a mostrar:' : 'Details to display:'}
@@ -395,7 +408,7 @@ export default function SettingsModal({
       <h4 className="settings-panel-title">{lang === 'es' ? 'Gestión de Vocabulario y Anki' : 'Vocabulary & Anki Management'}</h4>
       <div className="migaku-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '8px' }}>
         <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-          {lang === 'es' ? 'Configura la conexión con tu cliente de AnkiConnect para minar vocabulario e importar tus palabras desde Anki, JPDB, archivos locales o listas de frecuencia.' : 'Configure connection to AnkiConnect client for mining vocabulary, and import your words from Anki, JPDB, local files, or frequency lists.'}
+          {lang === 'es' ? 'Configura la conexión con tu cliente de AnkiConnect para minar vocabulario e importar tus palabras desde Anki, JPDB, archivos locales o listas de frecuencia.' : 'Configure connection to AnkiConnect client for vocabulary mining, and import your words from Anki, JPDB, local files, or frequency lists.'}
         </span>
         <button
           className="anki-open-settings-btn"
@@ -412,14 +425,12 @@ export default function SettingsModal({
 
   // 6. DATOS / Copias de seguridad
   const renderBackupsContent = () => {
-    // Si la app corre con Google Drive, mostramos un resumen rápido del estado
     const gDriveActive = localStorage.getItem('yoru_gdrive_tokens') !== null;
     return (
       <div className="settings-panel-section">
         <h4 className="settings-panel-title">{lang === 'es' ? 'Copias de seguridad' : 'Backups'}</h4>
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {/* Resumen Google Drive */}
           <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
               <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}>GOOGLE DRIVE</span>
@@ -432,7 +443,6 @@ export default function SettingsModal({
             </p>
           </div>
 
-          {/* Exportación/Importación Local */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
             <span className="migaku-label" style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>
               {lang === 'es' ? 'Copias Locales (Archivo ZIP)' : 'Local Backups (ZIP File)'}
@@ -444,9 +454,9 @@ export default function SettingsModal({
                   if (onExportLibrary) {
                     onExportLibrary();
                   } else if (window.electronAPI && window.electronAPI.exportLibrary) {
-                    window.electronAPI.exportLibrary().then(res => {
+                    window.electronAPI.exportLibrary().then((res: any) => {
                       if (res) alert(lang === 'es' ? 'Copia de seguridad guardada con éxito.' : 'Backup saved successfully.');
-                    }).catch(e => alert(e.message));
+                    }).catch((e: any) => alert(e.message));
                   } else {
                     alert(lang === 'es' ? 'La copia local no está disponible.' : 'Local backup is not available.');
                   }
@@ -510,7 +520,6 @@ export default function SettingsModal({
             });
             if (ok) {
               localStorage.clear();
-              // Borrar IndexedDB de forma rápida
               const req = indexedDB.deleteDatabase('yoru-reader-db');
               req.onsuccess = async () => {
                 await showConfirm({
@@ -564,7 +573,7 @@ export default function SettingsModal({
                   <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{item.date}</span>
                 </div>
                 <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.78rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.5 }}>
-                  {(item.changes[lang] || item.changes['en']).map((change, cIdx) => (
+                  {((item.changes as any)[lang] || (item.changes as any)['en']).map((change: string, cIdx: number) => (
                     <li key={cIdx} style={{ marginBottom: '4px' }}>{change}</li>
                   ))}
                 </ul>
@@ -576,7 +585,6 @@ export default function SettingsModal({
     </div>
   );
 
-  // Muestra el panel según la sección seleccionada
   const renderActiveContent = () => {
     switch (activeSection) {
       case 'theme':
@@ -602,7 +610,6 @@ export default function SettingsModal({
     }
   };
 
-  // Lógica de filtrado de búsqueda
   const allSettingsItems = [
     { id: 'theme', keywords: 'theme tema dark light sepia fondo background', render: renderThemeContent },
     { id: 'display', keywords: 'display visualizacion interfaz idioma language interfaces spanish english pantalla', render: renderDisplayContent },
@@ -632,7 +639,6 @@ export default function SettingsModal({
             </button>
           </div>
 
-          {/* Buscador de Ajustes */}
           <div className="settings-search-box">
             <Search size={14} className="search-icon-prefix" />
             <input 
@@ -645,7 +651,6 @@ export default function SettingsModal({
             <span className="search-shortcut-badge">CTRL F</span>
           </div>
 
-          {/* Menú de categorías */}
           {!searchQuery.trim() && (
             <div className="settings-sidebar-menu-list">
               {menuStructure.map((group, idx) => (

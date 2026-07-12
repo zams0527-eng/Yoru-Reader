@@ -1,7 +1,24 @@
+export interface GoogleTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
+export interface GoogleDriveUserInfo {
+  email: string;
+  displayName: string;
+}
+
 export const googleDriveService = {
   // Exchange code for tokens
-  async exchangeCodeForTokens(code, redirectUri, clientId, clientSecret = '', codeVerifier = '') {
-    const params = {
+  async exchangeCodeForTokens(
+    code: string, 
+    redirectUri: string, 
+    clientId: string, 
+    clientSecret: string = '', 
+    codeVerifier: string = ''
+  ): Promise<GoogleTokens> {
+    const params: Record<string, string> = {
       code,
       client_id: clientId,
       redirect_uri: redirectUri,
@@ -36,8 +53,8 @@ export const googleDriveService = {
   },
 
   // Refresh active token
-  async refreshAccessToken(refreshToken, clientId, clientSecret = '') {
-    const params = {
+  async refreshAccessToken(refreshToken: string, clientId: string, clientSecret: string = ''): Promise<{ accessToken: string; expiresAt: number }> {
+    const params: Record<string, string> = {
       refresh_token: refreshToken,
       client_id: clientId,
       grant_type: 'refresh_token',
@@ -66,7 +83,7 @@ export const googleDriveService = {
   },
 
   // Get active token (refresh if expired)
-  async getValidToken(tokens, clientId, clientSecret = '') {
+  async getValidToken(tokens: GoogleTokens, clientId: string, clientSecret: string = ''): Promise<string> {
     if (!tokens) {
       throw new Error('No tokens available');
     }
@@ -87,7 +104,7 @@ export const googleDriveService = {
   },
 
   // Upload/Update file in Google Drive
-  async uploadSyncFile(tokens, clientId, content, clientSecret = '') {
+  async uploadSyncFile(tokens: GoogleTokens, clientId: string, content: any, clientSecret: string = ''): Promise<any> {
     const accessToken = await this.getValidToken(tokens, clientId, clientSecret);
     
     // 1. Search for existing yoru_reader_sync.json file
@@ -100,7 +117,7 @@ export const googleDriveService = {
       }
     );
 
-    let fileId = null;
+    let fileId: string | null = null;
     if (searchRes.ok) {
       const data = await searchRes.json();
       if (data.files && data.files.length > 0) {
@@ -150,7 +167,7 @@ export const googleDriveService = {
   },
 
   // Download sync file from Google Drive
-  async downloadSyncFile(tokens, clientId, clientSecret = '') {
+  async downloadSyncFile(tokens: GoogleTokens, clientId: string, clientSecret: string = ''): Promise<any> {
     const accessToken = await this.getValidToken(tokens, clientId, clientSecret);
 
     // 1. Search for yoru_reader_sync.json file
@@ -192,7 +209,7 @@ export const googleDriveService = {
   },
 
   // Get connected user information (email & display name)
-  async getUserInfo(tokens, clientId, clientSecret = '') {
+  async getUserInfo(tokens: GoogleTokens, clientId: string, clientSecret: string = ''): Promise<GoogleDriveUserInfo> {
     const accessToken = await this.getValidToken(tokens, clientId, clientSecret);
     const response = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
       headers: {
@@ -225,7 +242,14 @@ export const googleDriveService = {
   },
 
   // Upload a binary Blob (e.g. ZIP) to Google Drive
-  async uploadBlobFile(tokens, clientId, blob, fileName, mimeType, clientSecret = '') {
+  async uploadBlobFile(
+    tokens: GoogleTokens, 
+    clientId: string, 
+    blob: Blob, 
+    fileName: string, 
+    mimeType: string, 
+    clientSecret: string = ''
+  ): Promise<any> {
     const accessToken = await this.getValidToken(tokens, clientId, clientSecret);
 
     // 1. Search for existing file with the same name
@@ -234,7 +258,7 @@ export const googleDriveService = {
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
 
-    let fileId = null;
+    let fileId: string | null = null;
     if (searchRes.ok) {
       const searchData = await searchRes.json();
       if (searchData.files && searchData.files.length > 0) {
@@ -285,7 +309,7 @@ export const googleDriveService = {
   },
 
   // Download a binary file (e.g. ZIP) from Google Drive by name
-  async downloadBlobFile(tokens, clientId, fileName, clientSecret = '') {
+  async downloadBlobFile(tokens: GoogleTokens, clientId: string, fileName: string, clientSecret: string = ''): Promise<Blob | null> {
     const accessToken = await this.getValidToken(tokens, clientId, clientSecret);
 
     // Search for the file by name
@@ -311,4 +335,3 @@ export const googleDriveService = {
     return await downloadRes.blob();
   }
 };
-

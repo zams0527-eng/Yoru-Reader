@@ -1,13 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { X, Database, Upload, Download, RefreshCw, Layers, Check, AlertTriangle, FileText, BarChart3, HelpCircle } from 'lucide-react';
+import { X, Database, Upload, Download, RefreshCw, FileText, BarChart3, AlertTriangle } from 'lucide-react';
 import { db } from '../utils/db';
 import { tokenizeText } from '../utils/japanese';
 import { useConfirm } from './ConfirmModal';
 import { getInstalledDictionaries, getTopWordsFromFrequencyDict } from '../utils/yomitanDB';
 
-export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary', initialImportMethod = 'anki-connect' }) {
-  const [activeTab, setActiveTab] = useState(initialTab); // 'summary' | 'import' | 'export' | 'actions' | 'danger'
-  const [importMethod, setImportMethod] = useState(initialImportMethod); // 'anki-connect' | 'jpdb' | 'anki-file' | 'frequency' | 'backup'
+interface VocabularyModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  initialTab?: string;
+  initialImportMethod?: string;
+}
+
+export default function VocabularyModal({ 
+  isOpen, 
+  onClose, 
+  initialTab = 'summary', 
+  initialImportMethod = 'anki-connect' 
+}: VocabularyModalProps) {
+  const [activeTab, setActiveTab] = useState(initialTab);
+  const [importMethod, setImportMethod] = useState(initialImportMethod);
   
   const { showConfirm, confirmModal } = useConfirm();
   const lang = db.getSettings().appLanguage || 'es';
@@ -21,31 +33,32 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
     const defaults = {
       host: 'http://127.0.0.1:8765',
       apiKey: '',
-      expression: { deck: 'sentence mining' },
+      expression: { deck: 'sentence mining', noteType: '' },
       importWordField: '',
       importReadingField: '',
       importMinInterval: 21,
-      importParseWords: true
+      importParseWords: true,
+      tags: ''
     };
     return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
   });
-  const [availableDecks, setAvailableDecks] = useState([]);
-  const [availableModels, setAvailableModels] = useState([]);
+  const [availableDecks, setAvailableDecks] = useState<string[]>([]);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [isCardsModalOpen, setIsCardsModalOpen] = useState(false);
-  const [expressionFields, setExpressionFields] = useState([]);
-  const [connectionStatus, setConnectionStatus] = useState('disconnected'); // 'connected' | 'error' | 'testing' | 'disconnected'
+  const [expressionFields, setExpressionFields] = useState<string[]>([]);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'error' | 'testing' | 'disconnected'>('disconnected');
 
   // JPDB settings
   const [jpdbApiKey, setJpdbApiKey] = useState(() => localStorage.getItem('jpdb_api_key') || '');
-  const [jpdbReviewsFile, setJpdbReviewsFile] = useState(null);
+  const [jpdbReviewsFile, setJpdbReviewsFile] = useState<File | null>(null);
   const [jpdbOverwrite, setJpdbOverwrite] = useState(true);
 
   // File import settings
-  const [vocabFile, setVocabFile] = useState(null);
+  const [vocabFile, setVocabFile] = useState<File | null>(null);
   const [fileParseWords, setFileParseWords] = useState(true);
 
   // Frequency import settings
-  const [availableFreqDicts, setAvailableFreqDicts] = useState([]);
+  const [availableFreqDicts, setAvailableFreqDicts] = useState<any[]>([]);
   const [selectedFreqDict, setSelectedFreqDict] = useState('');
   const [freqMaxRank, setFreqMaxRank] = useState(2000);
 
@@ -96,7 +109,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
   const testAnkiConnection = async () => {
     setConnectionStatus('testing');
     try {
-      const body = { action: 'version', version: 6 };
+      const body: any = { action: 'version', version: 6 };
       if (ankiSettings.apiKey) body.key = ankiSettings.apiKey;
       const res = await fetch(ankiSettings.host, {
         method: 'POST',
@@ -106,7 +119,6 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
       const data = await res.json();
       if (data.result) {
         setConnectionStatus('connected');
-        // Fetch decks and models
         const [deckRes, modelRes] = await Promise.all([
           fetch(ankiSettings.host, {
             method: 'POST',
@@ -131,7 +143,6 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
     }
   };
 
-  // Fetch field names when deck changes (or noteType changes)
   useEffect(() => {
     let active = true;
     async function fetchFields() {
@@ -162,12 +173,12 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
     return () => { active = false; };
   }, [connectionStatus, ankiSettings.expression?.noteType, ankiSettings.host, ankiSettings.apiKey]);
 
-  const saveAnkiSettings = (newSetts) => {
+  const saveAnkiSettings = (newSetts: any) => {
     setAnkiSettings(newSetts);
     localStorage.setItem('anki_settings_v2', JSON.stringify(newSetts));
   };
 
-  const cleanWord = (val) => {
+  const cleanWord = (val: string) => {
     if (!val) return '';
     let s = val.replace(/<[^>]*>/g, '');
     s = s.replace(/\[[^\]]*\]/g, '')
@@ -210,7 +221,6 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
       let data = await res.json();
       
       if (minInterval > 0 && (!data.result || data.result.length === 0)) {
-        // Alt ivl parameter fallback
         const resAlt = await fetch(ankiSettings.host, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -225,7 +235,6 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
       }
 
       if (minInterval > 0 && (!data.result || data.result.length === 0)) {
-        // Fallback to studied
         const resStudied = await fetch(ankiSettings.host, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -267,7 +276,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
       if (!infoData.result) throw new Error('Failed to retrieve card info.');
 
       setProgressMsg(lang === 'es' ? 'Procesando y extrayendo vocabulario...' : 'Processing and extracting vocabulary...');
-      const words = [];
+      const words: string[] = [];
       for (const card of infoData.result) {
         const fields = card.fields;
         if (fields) {
@@ -284,7 +293,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
                 cleaned.includes('、') || 
                 cleaned.includes('？') || 
                 cleaned.includes('！') ||
-                /[\u3040-\u309F]/.test(cleaned) && (cleaned.includes('は') || cleaned.includes('が') || cleaned.includes('を') || cleaned.includes('ni') || cleaned.includes('で'))
+                /[\u3040-\u309F]/.test(cleaned) && (cleaned.includes('は') || cleaned.includes('    ') || cleaned.includes('を') || cleaned.includes('で'))
               );
               
               if (isSentence && cleaned.length > 3) {
@@ -342,7 +351,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
           cancelText: ''
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       await showConfirm({
         title: 'Error',
@@ -364,7 +373,6 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
     try {
       if (jpdbApiKey) {
         localStorage.setItem('jpdb_api_key', jpdbApiKey);
-        // 1. Fetch user decks
         setProgressMsg(lang === 'es' ? 'Obteniendo mazos de JPDB...' : 'Fetching decks from JPDB...');
         const decksRes = await fetch('https://jpdb.io/api/v1/list-user-decks', {
           method: 'POST',
@@ -377,7 +385,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
         if (!decksRes.ok) throw new Error(lang === 'es' ? 'Error al autenticar clave API de JPDB.' : 'Invalid JPDB API Key.');
         const decksData = await decksRes.json();
         
-        const words = new Set();
+        const words = new Set<string>();
         if (decksData.decks && decksData.decks.length > 0) {
           for (let i = 0; i < decksData.decks.length; i++) {
             const d = decksData.decks[i];
@@ -393,7 +401,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
             if (vocabRes.ok) {
               const vocabData = await vocabRes.json();
               if (vocabData.vocabulary && vocabData.vocabulary.length > 0) {
-                vocabData.vocabulary.forEach(item => {
+                vocabData.vocabulary.forEach((item: any) => {
                   if (item.spelling) words.add(item.spelling);
                 });
               }
@@ -437,7 +445,6 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
           });
         }
       } else if (jpdbReviewsFile) {
-        // Parse reviews.json file
         setProgressMsg(lang === 'es' ? 'Procesando archivo de reseñas...' : 'Processing reviews file...');
         const text = await jpdbReviewsFile.text();
         const data = JSON.parse(text);
@@ -454,8 +461,8 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
           return;
         }
         
-        const words = [];
-        vocabCards.forEach(c => {
+        const words: string[] = [];
+        vocabCards.forEach((c: any) => {
           if (c.spelling && (c.reviews && c.reviews.length > 0 || !jpdbOverwrite)) {
             words.push(c.spelling);
           }
@@ -499,7 +506,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
       } else {
         throw new Error(lang === 'es' ? 'Proporciona una clave API de JPDB o selecciona un archivo reviews.json.' : 'Please provide a JPDB API Key or select a reviews.json file.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       await showConfirm({
         title: 'Error',
@@ -522,7 +529,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
     try {
       const text = await vocabFile.text();
       const lines = text.split(/\r?\n/);
-      const rawWords = [];
+      const rawWords: string[] = [];
       lines.forEach(l => {
         const cleanL = l.trim();
         if (cleanL && !cleanL.startsWith('#')) {
@@ -545,7 +552,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
       }
 
       setProgressMsg(lang === 'es' ? 'Analizando palabras...' : 'Analyzing words...');
-      const words = [];
+      const words: string[] = [];
       for (const w of rawWords) {
         const cleaned = cleanWord(w);
         if (cleaned) {
@@ -597,7 +604,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
           cancelText: ''
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       await showConfirm({
         title: 'Error',
@@ -654,7 +661,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
           cancelText: ''
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       await showConfirm({
         title: 'Error',
@@ -670,7 +677,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
   };
 
   // --- Vocabulary Backup JSON ---
-  const handleImportBackup = async (e) => {
+  const handleImportBackup = async (e: any) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setIsLoading(true);
@@ -700,7 +707,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
           cancelText: ''
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
       await showConfirm({
         title: 'Error',
@@ -727,7 +734,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
     URL.revokeObjectURL(url);
   };
 
-  const handleExportTXT = (onlyKnown) => {
+  const handleExportTXT = (onlyKnown: boolean) => {
     const statuses = db.getWordStatuses();
     const words = Object.keys(statuses).filter(w => !onlyKnown || statuses[w] === 'known');
     const blob = new Blob([words.join('\n')], { type: 'text/plain;charset=utf-8' });
@@ -746,7 +753,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
     try {
       const current = db.getWordStatuses();
       const known = Object.keys(current).filter(w => current[w] === 'known');
-      const added = new Set();
+      const added = new Set<string>();
       
       for (const word of known) {
         if (word.length > 1) {
@@ -798,7 +805,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
           cancelText: ''
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -1087,8 +1094,6 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
                 {/* 2b. JPDB Panel */}
                 {importMethod === 'jpdb' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    
-                    {/* API option */}
                     <div>
                       <h4 style={{ fontSize: '0.84rem', fontWeight: 700, color: '#fff', marginBottom: '8px' }}>{lang === 'es' ? 'Importación por API' : 'API Import'}</h4>
                       <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: '1.4', marginBottom: '8px' }}>
@@ -1107,7 +1112,6 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
 
                     <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '4px 0' }} />
 
-                    {/* File Upload Option */}
                     <div>
                       <h4 style={{ fontSize: '0.84rem', fontWeight: 700, color: '#fff', marginBottom: '8px' }}>{lang === 'es' ? 'Importación por Archivo reviews.json' : 'Reviews.json File Import'}</h4>
                       <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: '1.4', marginBottom: '8px' }}>
@@ -1161,7 +1165,6 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
                       <Download size={14} />
                       <span>{lang === 'es' ? 'Importar de JPDB' : 'Import from JPDB'}</span>
                     </button>
-
                   </div>
                 )}
 
@@ -1350,14 +1353,13 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
               </div>
             )}
 
-            {/* 4. ACTIONS & DANGER TAB */}
+            {/* 4. ACTIONS TAB */}
             {activeTab === 'actions' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 
-                {/* Composition */}
                 <div className="settings-section-card" style={{ margin: 0 }}>
                   <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#fff', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <BarChart3 size={15} style={{ color: 'var(--primary)' }} />
+                    <Database size={15} style={{ color: 'var(--primary)' }} />
                     <span>{lang === 'es' ? 'Marcar palabras conocidas mediante composición' : 'Mark Words as Known via Composition'}</span>
                   </h4>
                   <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: '1.4', marginBottom: '12px' }}>
@@ -1377,7 +1379,6 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
 
                 <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)' }} />
 
-                {/* Danger Zone */}
                 <div className="settings-section-card" style={{ margin: 0, borderColor: 'rgba(239, 68, 68, 0.3)', background: 'rgba(239, 68, 68, 0.02)' }}>
                   <h4 style={{ fontSize: '0.9rem', fontWeight: 700, color: '#f87171', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <AlertTriangle size={15} style={{ color: '#ef4444' }} />
@@ -1403,7 +1404,7 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
 
           </div>
 
-          {/* Bottom Progress Bar / Loading State */}
+          {/* Bottom Progress Bar */}
           {isLoading && (
             <div style={{ padding: '16px 20px', background: 'rgba(0,0,0,0.4)', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: '12px' }}>
               <RefreshCw size={16} className="spin" style={{ color: 'var(--primary)' }} />
@@ -1420,14 +1421,13 @@ export default function VocabularyModal({ isOpen, onClose, initialTab = 'summary
           settings={ankiSettings}
           availableDecks={availableDecks}
           availableModels={availableModels}
-          onSave={updated => {
+          onSave={(updated: any) => {
             const newSetts = { ...ankiSettings, ...updated };
             setAnkiSettings(newSetts);
             localStorage.setItem('anki_settings_v2', JSON.stringify(newSetts));
-            // Sync legacy keys
             const tab = newSetts.expression || {};
             const fields = tab.fields || {};
-            const findField = token => Object.keys(fields).find(k => fields[k] === token) || '';
+            const findField = (token: string) => Object.keys(fields).find(k => fields[k] === token) || '';
             localStorage.setItem('anki_settings', JSON.stringify({
               host: newSetts.host,
               deck: tab.deck || '',
@@ -1495,7 +1495,7 @@ const AVAILABLE_TOKENS = [
   '{url}',
 ];
 
-const getAutoMappedToken = (fName) => {
+const getAutoMappedToken = (fName: string) => {
   const lower = fName.toLowerCase().replace(/[-_]/g, '');
   
   if (lower.includes('furigana')) {
@@ -1585,18 +1585,27 @@ const getAutoMappedToken = (fName) => {
   return '';
 };
 
-function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableModels, lang }) {
-  const [activeTab, setActiveTab] = useState('expression');
-  const [local, setLocal] = useState(settings);
-  const [modelFields, setModelFields] = useState([]);
+interface AnkiCardsModalProps {
+  settings: any;
+  onSave: (settings: any) => void;
+  onClose: () => void;
+  availableDecks: string[];
+  availableModels: string[];
+  lang: string;
+}
+
+function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableModels, lang }: AnkiCardsModalProps) {
+  const [activeTab, setActiveTab] = useState<'expression' | 'reading' | 'kanji'>('expression');
+  const [local, setLocal] = useState<any>(settings);
+  const [modelFields, setModelFields] = useState<string[]>([]);
 
   const tab = local[activeTab] || { deck: '', noteType: '', fields: {} };
 
-  const setTabField = (key, value) =>
-    setLocal(s => ({ ...s, [activeTab]: { ...s[activeTab], [key]: value } }));
+  const setTabField = (key: string, value: any) =>
+    setLocal((s: any) => ({ ...s, [activeTab]: { ...s[activeTab], [key]: value } }));
 
-  const setFieldToken = (fieldName, token) =>
-    setLocal(s => ({
+  const setFieldToken = (fieldName: string, token: string) =>
+    setLocal((s: any) => ({
       ...s,
       [activeTab]: {
         ...s[activeTab],
@@ -1606,8 +1615,8 @@ function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableMo
 
   const handleAutoMapFields = () => {
     if (!modelFields || modelFields.length === 0) return;
-    setLocal(s => {
-      const updatedFields = {};
+    setLocal((s: any) => {
+      const updatedFields: any = {};
       modelFields.forEach(fName => {
         updatedFields[fName] = getAutoMappedToken(fName);
       });
@@ -1640,11 +1649,11 @@ function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableMo
         if (data && data.result && active) {
           setModelFields(data.result);
           
-          setLocal(s => {
+          setLocal((s: any) => {
             const currentFields = s[activeTab]?.fields || {};
-            const updatedFields = {};
+            const updatedFields: any = {};
             let changed = false;
-            data.result.forEach(fName => {
+            data.result.forEach((fName: string) => {
               if (currentFields[fName] !== undefined) {
                 const lower = fName.toLowerCase();
                 const isSentenceFurigana = (lower.includes('sentence') || lower.includes('frase') || lower.includes('oracion') || lower.includes('contexto')) && lower.includes('furigana');
@@ -1698,7 +1707,7 @@ function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableMo
             <button
               key={t}
               className={`yomitan-cards-tab ${activeTab === t ? 'active' : ''}`}
-              onClick={() => setActiveTab(t)}
+              onClick={() => setActiveTab(t as any)}
             >
               {t === 'expression' ? (lang === 'es' ? 'Expresión' : 'Expression') :
                t === 'reading' ? (lang === 'es' ? 'Lectura' : 'Reading') :
@@ -1773,9 +1782,6 @@ function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableMo
                 e.currentTarget.style.transform = 'none';
                 e.currentTarget.style.boxShadow = '0 4px 14px rgba(255, 224, 0, 0.25)';
               }}
-              onMouseDown={e => {
-                e.currentTarget.style.transform = 'translateY(0.5px)';
-              }}
             >
               <span>✨ {lang === 'es' ? 'Auto-mapear campos' : 'Auto-map fields'}</span>
             </button>
@@ -1792,7 +1798,7 @@ function AnkiCardsModal({ settings, onSave, onClose, availableDecks, availableMo
               <div className="yomitan-cards-input-wrap">
                 <select
                   className="yomitan-cards-select"
-                  value={token}
+                  value={token as string}
                   onChange={e => setFieldToken(fieldName, e.target.value)}
                 >
                   {AVAILABLE_TOKENS.map(t => (

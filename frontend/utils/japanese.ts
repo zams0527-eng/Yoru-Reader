@@ -1,10 +1,16 @@
 // Japanese tokenization and furigana alignment utility
 
-let tokenizerInstance = null;
-let initPromise = null;
+declare global {
+  interface Window {
+    kuromoji: any;
+  }
+}
+
+let tokenizerInstance: any = null;
+let initPromise: Promise<any> | null = null;
 
 // Initialize the Kuromoji tokenizer
-export function initTokenizer() {
+export function initTokenizer(): Promise<any> {
   if (initPromise) return initPromise;
   
   initPromise = new Promise((resolve, reject) => {
@@ -35,7 +41,7 @@ export function initTokenizer() {
     function build() {
       window.kuromoji.builder({
         dicPath: "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/"
-      }).build((err, tokenizer) => {
+      }).build((err: any, tokenizer: any) => {
         if (err) {
           console.error("Error building kuromoji tokenizer:", err);
           reject(err);
@@ -51,30 +57,30 @@ export function initTokenizer() {
 }
 
 // Convert Katakana to Hiragana
-export function katakanaToHiragana(src) {
+export function katakanaToHiragana(src: string): string {
   if (!src) return '';
   return src.replace(/[\u30a1-\u30f6]/g, function (match) {
-    var chr = match.charCodeAt(0) - 0x60;
+    const chr = match.charCodeAt(0) - 0x60;
     return String.fromCharCode(chr);
   });
 }
 
 // Check if character is Kanji
-export function isKanji(ch) {
+export function isKanji(ch: string): boolean {
   if (!ch) return false;
   const code = ch.charCodeAt(0);
   return (code >= 0x4e00 && code <= 0x9faf) || (code >= 0x3400 && code <= 0x4dbf);
 }
 
 // Check if character is Kana
-export function isKana(ch) {
+export function isKana(ch: string): boolean {
   if (!ch) return false;
   const code = ch.charCodeAt(0);
   return (code >= 0x3040 && code <= 0x309f) || (code >= 0x30a0 && code <= 0x30ff);
 }
 
 // Check if string contains Kanji
-export function hasKanji(str) {
+export function hasKanji(str: string): boolean {
   if (!str) return false;
   for (let i = 0; i < str.length; i++) {
     if (isKanji(str[i])) return true;
@@ -82,8 +88,14 @@ export function hasKanji(str) {
   return false;
 }
 
+export interface FuriganaAlignment {
+  type: 'kana' | 'kanji';
+  text: string;
+  ruby?: string;
+}
+
 // Align kanji surface form with reading to generate furigana splits
-export function alignFurigana(surface, reading) {
+export function alignFurigana(surface: string, reading: string): FuriganaAlignment[] | null {
   if (!surface || !reading) return null;
   
   // If no kanji, no alignment needed
@@ -91,7 +103,7 @@ export function alignFurigana(surface, reading) {
     return [{ type: 'kana', text: surface }];
   }
 
-  function align(sIndex, rIndex) {
+  function align(sIndex: number, rIndex: number): FuriganaAlignment[] | null {
     if (sIndex === surface.length && rIndex === reading.length) return [];
     if (sIndex === surface.length || rIndex === reading.length) return null;
 
@@ -139,10 +151,17 @@ export function alignFurigana(surface, reading) {
   return result;
 }
 
+export interface EncodedTextSegment {
+  type: 'text' | 'ruby';
+  content?: string;
+  text?: string;
+  ruby?: string;
+}
+
 // Decode encoded ruby segments from stored markup (e.g. "{日本|にほん}")
-export function parseEncodedText(text) {
+export function parseEncodedText(text: string): EncodedTextSegment[] {
   const regex = /\{([^|]+)\|([^}]+)\}/g;
-  const segments = [];
+  const segments: EncodedTextSegment[] = [];
   let lastIndex = 0;
   let match;
   
@@ -163,13 +182,27 @@ export function parseEncodedText(text) {
   return segments;
 }
 
+export interface TokenInfo {
+  surface: string;
+  reading?: string;
+  basicForm?: string;
+  pos?: string;
+  alignment?: FuriganaAlignment[];
+  isWord?: boolean;
+  isPunctuation?: boolean;
+  isLineBreak?: boolean;
+  type?: string;
+  src?: string;
+  isImage?: boolean;
+}
+
 // Tokenize text into paragraphs of tokenized words, handling unified ruby tokens
-export async function tokenizeText(text) {
+export async function tokenizeText(text: string): Promise<TokenInfo[][]> {
   const tokenizer = await initTokenizer();
   if (!text) return [];
   
   const paragraphs = text.split('\n');
-  const resultParagraphs = [];
+  const resultParagraphs: TokenInfo[][] = [];
   
   for (const para of paragraphs) {
     const trimmed = para.trim();
@@ -208,7 +241,7 @@ export async function tokenizeText(text) {
     plainText += para.slice(lastIndex);
     
     // 2. Tokenize plain text as a single string for full context
-    let rawTokens = [];
+    let rawTokens: any[] = [];
     try {
       rawTokens = tokenizer.tokenize(plainText);
     } catch (e) {
@@ -234,7 +267,7 @@ export async function tokenizeText(text) {
       return { token, start, end };
     });
     
-    const processedTokens = [];
+    const processedTokens: TokenInfo[] = [];
     let tokenIdx = 0;
     
     // 3. Map/merge tokens based on overlapping original rubies
@@ -282,7 +315,7 @@ export async function tokenizeText(text) {
         const katakanaReading = token.reading || '';
         const hiraganaReading = katakanaToHiragana(katakanaReading) || surface;
         
-        let alignment = [];
+        let alignment: FuriganaAlignment[] = [];
         if (hasKanji(surface)) {
           const aligned = alignFurigana(surface, hiraganaReading);
           alignment = aligned || [{ type: 'kanji', text: surface, ruby: hiraganaReading }];
@@ -313,13 +346,39 @@ export async function tokenizeText(text) {
   return resultParagraphs;
 }
 
-export async function parseExtensionText(paragraphs) {
+export interface ExtensionToken {
+  start: number;
+  end: number;
+  wordId: string | null;
+  readingIndex: number;
+}
+
+export interface ExtensionVocabulary {
+  wordId: string;
+  readingIndex: number;
+  spelling: string;
+  reading: string;
+  frequencyRank: number;
+  partsOfSpeech: string[];
+  meaningsChunks: string[][];
+  meaningsPartOfSpeech: string[][];
+  knownState: number[];
+  pitchAccents: string[];
+  studyDeckIds: any[];
+}
+
+export interface ExtensionParseResult {
+  tokens: ExtensionToken[][];
+  vocabulary: ExtensionVocabulary[];
+}
+
+export async function parseExtensionText(paragraphs: string[]): Promise<ExtensionParseResult> {
   const tokenizer = await initTokenizer();
   
-  const tokens = [];
-  const vocabularyMap = new Map();
+  const tokens: ExtensionToken[][] = [];
+  const vocabularyMap = new Map<string, ExtensionVocabulary>();
   const dbModule = await import('./db');
-  const db = dbModule.default || dbModule;
+  const db = (dbModule as any).default || dbModule;
   const wordStatuses = db && db.getWordStatuses ? db.getWordStatuses() : {};
   
   for (const para of paragraphs) {
@@ -328,7 +387,7 @@ export async function parseExtensionText(paragraphs) {
       continue;
     }
     
-    let rawTokens = [];
+    let rawTokens: any[] = [];
     try {
       rawTokens = tokenizer.tokenize(para);
     } catch (e) {
@@ -337,7 +396,7 @@ export async function parseExtensionText(paragraphs) {
       continue;
     }
     
-    const paraTokens = [];
+    const paraTokens: ExtensionToken[] = [];
     let tempIdx = 0;
     
     for (const rawToken of rawTokens) {
@@ -349,7 +408,7 @@ export async function parseExtensionText(paragraphs) {
       const pos = rawToken.pos;
       const isPunc = pos === '記号';
       
-      let wordId = null;
+      let wordId: string | null = null;
       if (!isPunc) {
         const basicForm = rawToken.basic_form && rawToken.basic_form !== '*' ? rawToken.basic_form : surface;
         const katakanaReading = rawToken.reading || '';
@@ -360,7 +419,7 @@ export async function parseExtensionText(paragraphs) {
         
         if (!vocabularyMap.has(key)) {
           const yomitanDB = await import('./yomitanDB');
-          let dictEntry = null;
+          let dictEntry: any = null;
           try {
             dictEntry = await yomitanDB.searchYomitanDB(basicForm, reading);
           } catch (err) {
@@ -368,18 +427,18 @@ export async function parseExtensionText(paragraphs) {
           }
           
           let partsOfSpeech = [pos];
-          let meaningsChunks = [[]];
-          let meaningsPartOfSpeech = [[]];
+          let meaningsChunks = [[]] as string[][];
+          let meaningsPartOfSpeech = [[]] as string[][];
           let frequencyRank = 999999;
-          let pitchAccents = [];
+          let pitchAccents: string[] = [];
           
           if (dictEntry) {
             partsOfSpeech = dictEntry.partsOfSpeech || [pos];
             meaningsChunks = [dictEntry.definitions || []];
             meaningsPartOfSpeech = [dictEntry.partsOfSpeech || []];
-            pitchAccents = dictEntry.pitches ? dictEntry.pitches.map(p => typeof p === 'object' ? p.accent : p) : [];
+            pitchAccents = dictEntry.pitches ? dictEntry.pitches.map((p: any) => typeof p === 'object' ? p.accent : p) : [];
             if (dictEntry.frequencies && dictEntry.frequencies.length > 0) {
-              const ranks = dictEntry.frequencies.map(f => typeof f === 'object' ? f.rank : f).filter(r => typeof r === 'number');
+              const ranks = dictEntry.frequencies.map((f: any) => typeof f === 'object' ? f.rank : f).filter((r: any) => typeof r === 'number');
               if (ranks.length > 0) {
                 frequencyRank = Math.min(...ranks);
               }

@@ -1,16 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Volume2, ArrowRight, Zap, Eye, Calendar, Sparkles, Smile, ShieldAlert, CheckCircle, Info, ChevronDown } from 'lucide-react';
+import { X, Volume2, Eye } from 'lucide-react';
 import { db } from '../utils/db';
 import { lookupWord } from '../utils/dictionary';
 
 // Extract morae helper
-const getMorae = (reading) => {
+const getMorae = (reading: string): string[] => {
   if (!reading) return [];
-  return reading.match(/[ぁ-んァ-ンぃぅぇぉゃゅょィゥェォャュョ]?[っッぁ-んァ-ン]?/g).filter(Boolean);
+  return (reading.match(/[ぁ-んァ-ンぃぅぇぉゃゅょィゥェォャュョ]?[っッぁ-んァ-ン]?/g) || []).filter(Boolean);
 };
 
+interface PitchAccentGraphProps {
+  reading: string;
+  position: number;
+}
+
 // Beautiful Interactive SVG Pitch Accent Graph
-function PitchAccentGraph({ reading, position }) {
+function PitchAccentGraph({ reading, position }: PitchAccentGraphProps) {
   const morae = getMorae(reading);
   if (morae.length === 0) return null;
 
@@ -21,14 +26,13 @@ function PitchAccentGraph({ reading, position }) {
 
   // Determine height level (high/low) for each mora index (0-based)
   // position: 0 (heiban), 1 (atamadaka), 2+ (nakadaka/odaka)
-  const getLevel = (idx) => {
+  const getLevel = (idx: number) => {
     const moraNum = idx + 1; // 1-based index
     if (position === 0) {
       return moraNum === 1 ? 0 : 1; // Low, then High...
     } else if (position === 1) {
       return moraNum === 1 ? 1 : 0; // High, then Low...
     } else {
-      // position > 1
       if (moraNum === 1) return 0;
       if (moraNum <= position) return 1;
       return 0;
@@ -43,10 +47,9 @@ function PitchAccentGraph({ reading, position }) {
   });
 
   // Calculate drop marker if any
-  let dropLine = null;
+  let dropLine: { x1: number; y1: number; x2: number; y2: number } | null = null;
   if (position > 0 && position <= morae.length) {
     const lastHighPoint = points[position - 1];
-    // Next point x or helper drop point
     const nextX = lastHighPoint.x + nodeSpacing / 2;
     const dropY = height - 10;
     dropLine = { x1: lastHighPoint.x, y1: lastHighPoint.y, x2: nextX, y2: dropY };
@@ -61,7 +64,6 @@ function PitchAccentGraph({ reading, position }) {
           {points.map((pt, idx) => {
             if (idx === 0) return null;
             const prev = points[idx - 1];
-            // If there's a drop, line changes
             return (
               <line
                 key={`line-${idx}`}
@@ -127,7 +129,7 @@ function PitchAccentGraph({ reading, position }) {
 }
 
 // SM-2 / FSRS-Lite scheduler calculations
-const calculateSrsIntervals = (card) => {
+const calculateSrsIntervals = (card: any) => {
   const c = card || { interval: 0, ease: 2.5, repetitions: 0, lapses: 0, state: 0 };
   const rep = c.repetitions || 0;
   const ease = c.ease || 2.5;
@@ -170,20 +172,25 @@ const calculateSrsIntervals = (card) => {
   };
 };
 
-export default function SrsReviewModal({ isOpen, onClose }) {
+interface SrsReviewModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export default function SrsReviewModal({ isOpen, onClose }: SrsReviewModalProps) {
   const rawSettings = (() => { try { return JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k => k.includes('reader_settings')) || '') || '{}'); } catch { return {}; } })();
   const lang = rawSettings.appLanguage || 'es';
   
-  const [dueCards, setDueCards] = useState([]);
+  const [dueCards, setDueCards] = useState<string[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
-  const [currentEntry, setCurrentEntry] = useState(null);
+  const [currentEntry, setCurrentEntry] = useState<any>(null);
   const [loadingEntry, setLoadingEntry] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const [sessionCount, setSessionCount] = useState(0);
   const [sessionStats, setSessionStats] = useState({ correct: 0, incorrect: 0 });
   const [isTtsPlaying, setIsTtsPlaying] = useState(false);
-  const ttsAudioRef = useRef(null);
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Timer state
   const [timerSeconds, setTimerSeconds] = useState(0);
@@ -210,7 +217,7 @@ export default function SrsReviewModal({ isOpen, onClose }) {
     return () => clearInterval(interval);
   }, [isOpen, isFinished, dueCards]);
 
-  const formatTimer = (sec) => {
+  const formatTimer = (sec: number) => {
     const mins = Math.floor(sec / 60);
     const secs = sec % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
@@ -261,12 +268,13 @@ export default function SrsReviewModal({ isOpen, onClose }) {
     }
   }, [currentIndex, dueCards]);
 
-  // Keyboard Shortcuts — 100% matched to native specifications
+  // Keyboard Shortcuts
   useEffect(() => {
     if (!isOpen || isFinished || dueCards.length === 0) return;
 
-    const handleKeyDown = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
 
       const key = e.key.toLowerCase();
 
@@ -284,10 +292,8 @@ export default function SrsReviewModal({ isOpen, onClose }) {
       } else if (key === '4') {
         if (showAnswer) submitGrade(4);
       } else if (key === 'b') {
-        // Toggle Blacklist
         handleToggleBlacklist();
       } else if (key === 'm') {
-        // Toggle Master
         handleToggleMaster();
       }
     };
@@ -296,7 +302,7 @@ export default function SrsReviewModal({ isOpen, onClose }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, showAnswer, currentIndex, dueCards, isFinished]);
 
-  const playWordTts = (word, reading) => {
+  const playWordTts = (word: string, reading?: string) => {
     if (!word) return;
     const textToSpeak = reading || word;
     
@@ -325,7 +331,6 @@ export default function SrsReviewModal({ isOpen, onClose }) {
     
     db.setWordStatus(word, 'ignored');
     
-    // Remove from study queue in current session
     setDueCards(prev => prev.filter(w => w !== word));
     if (currentIndex >= dueCards.length - 1) {
       setIsFinished(true);
@@ -337,16 +342,15 @@ export default function SrsReviewModal({ isOpen, onClose }) {
     const word = dueCards[currentIndex];
     
     db.setWordStatus(word, 'known');
-    db.saveSrsCard(word, null); // remove card stats as it is mastered
+    db.saveSrsCard(word, null);
 
-    // Remove from study queue
     setDueCards(prev => prev.filter(w => w !== word));
     if (currentIndex >= dueCards.length - 1) {
       setIsFinished(true);
     }
   };
 
-  const submitGrade = (grade) => {
+  const submitGrade = (grade: number) => {
     if (currentIndex >= dueCards.length) return;
     const word = dueCards[currentIndex];
     const currentCard = db.getSrsCard(word) || { interval: 0, ease: 2.5, repetitions: 0, lapses: 0, state: 0 };
@@ -367,7 +371,7 @@ export default function SrsReviewModal({ isOpen, onClose }) {
       newLapses += 1;
       setSessionStats(s => ({ ...s, incorrect: s.incorrect + 1 }));
     } else {
-      newInterval = intervals.calculatedDays[
+      newInterval = (intervals.calculatedDays as any)[
         grade === 2 ? 'hard' : grade === 3 ? 'good' : 'easy'
       ];
       if (grade === 2) {
@@ -399,7 +403,6 @@ export default function SrsReviewModal({ isOpen, onClose }) {
 
     db.saveSrsCard(word, updatedCard);
 
-    // If 'Again', re-queue at the end of the current session
     if (grade === 1) {
       setDueCards(prev => {
         const copy = prev.filter(w => w !== word);
@@ -435,7 +438,6 @@ export default function SrsReviewModal({ isOpen, onClose }) {
         
         {/* Native Top Navigation Bar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', background: 'var(--bg-card)', borderBottom: '1px solid var(--border-light)', position: 'relative' }}>
-          {/* Left: Study counters */}
           <div style={{ display: 'flex', gap: '8px' }}>
             <span style={{ background: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6', border: '1px solid rgba(59, 130, 246, 0.25)', fontSize: '0.74rem', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
               {newCardsCount} new
@@ -445,7 +447,6 @@ export default function SrsReviewModal({ isOpen, onClose }) {
             </span>
           </div>
  
-          {/* Center: Counter & Timer */}
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)', letterSpacing: '0.02em' }}>
               <span style={{ color: 'var(--primary)' }}>{dueCards.length > 0 ? currentIndex + 1 : 0}</span> / {dueCards.length}
@@ -455,7 +456,6 @@ export default function SrsReviewModal({ isOpen, onClose }) {
             </div>
           </div>
 
-          {/* Right: Exit action */}
           <div style={{ display: 'flex', gap: '6px' }}>
             <button
               onClick={onClose}
@@ -470,7 +470,6 @@ export default function SrsReviewModal({ isOpen, onClose }) {
         <div style={{ flex: 1, padding: '24px', display: 'flex', flexDirection: 'column', background: 'var(--bg-app)', overflowY: 'auto' }}>
           
           {dueCards.length === 0 ? (
-            /* No reviews due */
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: 'var(--text-muted)' }}>
               <div style={{ fontSize: '4rem', marginBottom: '20px' }}>🏆</div>
               <h3 style={{ fontSize: '1.4rem', color: 'var(--text-main)', marginBottom: '8px', fontWeight: 800 }}>
@@ -491,7 +490,6 @@ export default function SrsReviewModal({ isOpen, onClose }) {
               </button>
             </div>
           ) : isFinished ? (
-            /* Completed stats screen */
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: 'var(--text-muted)' }}>
               <div style={{ fontSize: '4rem', marginBottom: '20px' }}>🎉</div>
               <h3 style={{ fontSize: '1.4rem', color: 'var(--text-main)', marginBottom: '8px', fontWeight: 800 }}>
@@ -532,19 +530,13 @@ export default function SrsReviewModal({ isOpen, onClose }) {
               </div>
             </div>
           ) : (
-            /* Native Study Card Layout */
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-              
-              {/* Outer Card with border and background matching screenshot */}
               <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '30px', flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-                
-                {/* Card index and info at top right */}
                 <div style={{ position: 'absolute', right: '20px', top: '16px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', fontSize: '0.74rem' }}>
                   <span>#{currentIndex + 1}</span>
                   <span style={{ cursor: 'pointer' }}>•••</span>
                 </div>
 
-                {/* Subtitle "REVIEW" */}
                 <div style={{ textAlign: 'center', fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: '14px' }}>
                   Review
                 </div>
@@ -555,8 +547,6 @@ export default function SrsReviewModal({ isOpen, onClose }) {
                   </div>
                 ) : (
                   <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                    
-                    {/* Word display (Kanji or Kana) */}
                     <div style={{ textAlign: 'center', marginBottom: '20px' }}>
                       {showAnswer && currentEntry?.reading && (
                         <div style={{ fontSize: '1.2rem', color: 'var(--text-muted)', fontWeight: 500, marginBottom: '6px', fontFamily: 'var(--font-japanese)' }}>
@@ -577,13 +567,11 @@ export default function SrsReviewModal({ isOpen, onClose }) {
 
                     <div style={{ borderBottom: '1px solid var(--border-light)', width: '100%', marginBottom: '20px' }}></div>
 
-                    {/* Answer Area */}
                     {showAnswer ? (
                       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                        {/* Word tags */}
                         {currentEntry?.partsOfSpeech && currentEntry.partsOfSpeech.length > 0 && (
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                            {currentEntry.partsOfSpeech.filter(pos => pos !== 'Yomitan').map((pos, i) => (
+                            {currentEntry.partsOfSpeech.filter((pos: string) => pos !== 'Yomitan').map((pos: string, i: number) => (
                               <span key={i} style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', color: '#f59e0b', fontSize: '0.74rem', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
                                 {pos}
                               </span>
@@ -591,11 +579,10 @@ export default function SrsReviewModal({ isOpen, onClose }) {
                           </div>
                         )}
 
-                        {/* Translation lines */}
                         <div style={{ color: 'var(--text-main)', fontSize: '0.94rem', lineHeight: '1.6' }}>
                           {currentEntry?.definitions && currentEntry.definitions.length > 0 ? (
                             <ol style={{ paddingLeft: '20px', margin: 0 }}>
-                              {currentEntry.definitions.slice(0, 4).map((def, i) => (
+                              {currentEntry.definitions.slice(0, 4).map((def: string, i: number) => (
                                 <li key={i} style={{ marginBottom: '6px', fontWeight: 500 }}>
                                   {def}
                                 </li>
@@ -608,7 +595,6 @@ export default function SrsReviewModal({ isOpen, onClose }) {
                           )}
                         </div>
 
-                        {/* Interactive SVG Pitch Accent Graph */}
                         {currentEntry?.pitches && currentEntry.pitches.length > 0 ? (
                           <PitchAccentGraph
                             reading={currentEntry.reading || currentWord}
@@ -621,7 +607,6 @@ export default function SrsReviewModal({ isOpen, onClose }) {
                         )}
                       </div>
                     ) : (
-                      /* Big Show Answer interactive trigger block matching specifications */
                       <div 
                         onClick={() => setShowAnswer(true)}
                         style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px dashed var(--border-light)', borderRadius: '8px', cursor: 'pointer', background: 'var(--bg-app)', transition: 'all 0.15s' }}
@@ -638,11 +623,8 @@ export default function SrsReviewModal({ isOpen, onClose }) {
                 )}
               </div>
 
-              {/* Native Bottom Grading & Actions Row */}
               {showAnswer ? (
                 <div style={{ marginTop: '18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  
-                  {/* Row 1: The 4 Big Grading Cards */}
                   <div style={{ display: 'flex', gap: '10px' }}>
                     
                     {/* Again */}
@@ -739,7 +721,6 @@ export default function SrsReviewModal({ isOpen, onClose }) {
 
                   </div>
 
-                  {/* Row 2: Secondary Quick Actions */}
                   <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
                     <button
                       type="button"
@@ -757,10 +738,8 @@ export default function SrsReviewModal({ isOpen, onClose }) {
                       ★ Master <span style={{ opacity: 0.5, fontSize: '0.66rem', border: '1px solid var(--border-light)', padding: '1px 4px', borderRadius: '3px' }}>M</span>
                     </button>
                   </div>
-
                 </div>
               ) : (
-                /* Tip footer when card is hidden */
                 <div style={{ marginTop: '18px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.74rem' }}>
                   {lang === 'es' 
                     ? 'Tip: Pulsa [Espacio] para mostrar respuesta, y [1] [2] [3] [4] para calificar.' 

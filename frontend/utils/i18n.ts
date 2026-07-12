@@ -1,4 +1,4 @@
-export const TRANSLATIONS = {
+export const TRANSLATIONS: Record<string, Record<string, string>> = {
   es: {
     // Header & Navigation
     library: 'Biblioteca',
@@ -166,7 +166,7 @@ export const TRANSLATIONS = {
     sortLastRead: 'Last read',
     
     // Edit Book Modal
-    editInfo: 'Edit information',
+    editInfo: 'Edit info',
     title: 'Title',
     author: 'Author',
     series: 'Series',
@@ -247,7 +247,7 @@ export const TRANSLATIONS = {
   }
 };
 
-export function t(key, lang = 'es') {
+export function t(key: string, lang: string = 'es'): string {
   const currentLang = lang === 'en' ? 'en' : 'es';
-  return TRANSLATIONS[currentLang][key] || TRANSLATIONS['es'][key] || key;
+  return TRANSLATIONS[currentLang]?.[key] || TRANSLATIONS['es']?.[key] || key;
 }

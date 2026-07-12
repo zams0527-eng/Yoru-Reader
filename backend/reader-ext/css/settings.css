@@ -1071,3 +1071,296 @@ profile-selector select option {
 .reader-theme-swatch.active {
   box-shadow: 0 0 0 2px var(--jiten-bg, #181818), 0 0 0 4px var(--jiten-accent, #d8b9fa);
 }
+
+/* ==========================================
+   Yoru Reader Settings Premium Theme Overrides
+   ========================================== */
+
+:root {
+  --jiten-bg: #121214 !important;
+  --jiten-accent: #FFE000 !important; /* Yoru yellow accent */
+}
+
+/* Custom scrollbar matching Yoru Reader */
+* {
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(255, 224, 0, 0.4) #121214 !important;
+}
+
+*::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
+}
+
+*::-webkit-scrollbar-track {
+  background: #121214 !important;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 224, 0, 0.4) !important;
+  border-radius: 3px !important;
+  border: none !important;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #FFE000 !important;
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+  background-color: #0c0c0e !important;
+  color: rgba(255, 255, 255, 0.8) !important;
+  padding: 20px 24px 40px 24px !important;
+}
+
+h4 {
+  font-size: 1.4rem !important;
+  font-weight: 800 !important;
+  color: #fff !important;
+  letter-spacing: -0.02em !important;
+  margin-bottom: 20px !important;
+  text-align: center !important;
+  background: linear-gradient(to right, #fff, #FFE000);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Search bar styling */
+.settings-search input[type="search"] {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 12px !important;
+  color: #fff !important;
+  padding: 10px 16px !important;
+  font-size: 0.9rem !important;
+  transition: all 0.2s ease !important;
+  margin-bottom: 24px !important;
+  height: 2.6rem !important;
+}
+
+.settings-search input[type="search"]:focus {
+  border-color: #FFE000 !important;
+  box-shadow: 0 0 0 3px rgba(255, 224, 0, 0.15) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  outline: none !important;
+}
+
+/* Navigation layout */
+#settings-toc {
+  background: rgba(255, 255, 255, 0.01) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+  padding: 0 16px 0 0 !important;
+  gap: 4px !important;
+}
+
+#settings-toc a {
+  border-radius: 8px !important;
+  padding: 8px 12px !important;
+  font-size: 0.82rem !important;
+  font-weight: 600 !important;
+  color: rgba(255, 255, 255, 0.6) !important;
+  border-left: 2px solid transparent !important;
+  transition: all 0.15s ease !important;
+}
+
+#settings-toc a:hover {
+  background: rgba(255, 255, 255, 0.03) !important;
+  color: #fff !important;
+  border-left-color: rgba(255, 224, 0, 0.3) !important;
+}
+
+#settings-toc a.active {
+  background: rgba(255, 224, 0, 0.08) !important;
+  color: #FFE000 !important;
+  border-left-color: #FFE000 !important;
+}
+
+/* Section cards styling */
+.form-box {
+  background: rgba(255, 255, 255, 0.02) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 12px !important;
+  padding: 20px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2) !important;
+  margin-bottom: 20px !important;
+}
+
+/* Titles */
+h6 {
+  font-size: 0.95rem !important;
+  font-weight: 800 !important;
+  color: #ffffff !important;
+  letter-spacing: 0.05em !important;
+  text-transform: uppercase !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+  padding-bottom: 8px !important;
+  margin-top: 10px !important;
+  margin-bottom: 16px !important;
+}
+
+/* Text descriptions */
+.form-box p {
+  color: rgba(255, 255, 255, 0.45) !important;
+  font-size: 0.78rem !important;
+  line-height: 1.5 !important;
+  margin-top: 8px !important;
+}
+
+/* Labels */
+label {
+  color: rgba(255, 255, 255, 0.9) !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+  margin-bottom: 6px !important;
+  display: block !important;
+}
+
+/* Inputs, Textareas, Selects */
+input[type="text"],
+input[type="number"],
+input[type="password"],
+textarea,
+select {
+  background-color: rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 8px !important;
+  color: #fff !important;
+  padding: 8px 12px !important;
+  font-size: 0.82rem !important;
+  height: 2.3rem !important;
+  transition: all 0.15s ease !important;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+input[type="password"]:focus,
+textarea:focus,
+select:focus {
+  border-color: #FFE000 !important;
+  box-shadow: 0 0 0 3px rgba(255, 224, 0, 0.15) !important;
+  background-color: rgba(0, 0, 0, 0.3) !important;
+  outline: none !important;
+}
+
+textarea {
+  height: auto !important;
+  min-height: 80px !important;
+}
+
+/* Custom selects */
+profile-selector select {
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: #fff !important;
+  background-color: rgba(0, 0, 0, 0.25) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23FFE000' d='M6 8L1 3h10z'/%3E%3C/svg%3E") !important;
+}
+
+profile-selector select option {
+  background-color: #1c1c1e !important;
+  color: #fff !important;
+}
+
+/* Buttons */
+.button,
+button,
+input[type="button"],
+input[type="submit"] {
+  background-color: #FFE000 !important;
+  border: none !important;
+  border-radius: 8px !important;
+  color: #121214 !important;
+  font-weight: 700 !important;
+  font-size: 0.8rem !important;
+  height: 2.2rem !important;
+  line-height: normal !important;
+  padding: 0 16px !important;
+  box-shadow: 0 2px 6px rgba(255, 224, 0, 0.15) !important;
+  transition: all 0.15s ease !important;
+  transform: none !important;
+}
+
+.button:hover,
+button:hover,
+input[type="button"]:hover,
+input[type="submit"]:hover {
+  opacity: 0.9 !important;
+  box-shadow: 0 4px 12px rgba(255, 224, 0, 0.3) !important;
+  transform: translateY(-1px) !important;
+}
+
+.button:active,
+button:active,
+input[type="button"]:active,
+input[type="submit"]:active {
+  transform: translateY(0) !important;
+}
+
+/* Outline Buttons */
+.button.outline,
+button.outline,
+input[type="button"].outline {
+  background-color: transparent !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  color: #ddd !important;
+  box-shadow: none !important;
+}
+
+.button.outline:hover,
+button.outline:hover,
+input[type="button"].outline:hover {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  color: #fff !important;
+}
+
+/* Profiles table manager */
+profile-manager .table-box {
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 8px !important;
+  background-color: rgba(0, 0, 0, 0.15) !important;
+  overflow: hidden !important;
+}
+
+profile-manager .table-box .row {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04) !important;
+  padding: 10px 14px !important;
+}
+
+profile-manager .table-box .row.header {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+  font-weight: 600 !important;
+  color: #fff !important;
+}
+
+profile-manager .table-box .row.active-profile {
+  background-color: rgba(255, 224, 0, 0.04) !important;
+}
+
+profile-manager .table-box button.outline {
+  height: 1.8rem !important;
+  padding: 0 10px !important;
+  font-size: 0.75rem !important;
+  color: #FFE000 !important;
+  border-color: rgba(255, 224, 0, 0.4) !important;
+}
+
+profile-manager .table-box button.outline:hover {
+  border-color: #FFE000 !important;
+  background-color: rgba(255, 224, 0, 0.08) !important;
+}
+
+profile-manager .create-profile-btn {
+  background-color: transparent !important;
+  color: #FFE000 !important;
+  border: 1px solid rgba(255, 224, 0, 0.4) !important;
+}
+
+profile-manager .create-profile-btn:hover {
+  background-color: rgba(255, 224, 0, 0.08) !important;
+  border-color: #FFE000 !important;
+}
+
+/* Theme Swatches styling */
+.reader-theme-swatch.active {
+  box-shadow: 0 0 0 2px #0c0c0e, 0 0 0 4px #FFE000 !important;
+}

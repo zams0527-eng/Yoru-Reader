@@ -1,6 +1,6 @@
 {
-  "appVersion": "1.6.0",
-  "backendVersion": "1.1.0",
+  "appVersion": "1.7.7",
+  "backendVersion": "1.2.0",
   "url": "https://github.com/zams0527-eng/Yoru-Reader/releases/latest",
-  "description": "Fusión del motor de lectura directo nativo en React, reemplazando el iframe de Svelte. Se implementaron barras de navegación, configuración, marcadores directos y seguimiento de sesiones integrados."
+  "description": "Se rediseña la hoja de estilos de los Ajustes de Parseo (Yomitan) para integrarse visualmente con el tema oscuro premium y acentos amarillos de Yoru Reader."
 }

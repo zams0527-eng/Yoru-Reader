@@ -52,7 +52,7 @@ const resizeImage = (file, maxDimension = 128) => {
   });
 };
 
-export default function Library({ 
+const Library = React.memo(function Library({ 
   books, 
   onSelectBook, 
   onAddBooks, 
@@ -6967,4 +6967,6 @@ export default function Library({
       {confirmModal}
     </div>
   );
-}
+});
+
+export default Library;

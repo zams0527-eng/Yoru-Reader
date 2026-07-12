@@ -1,23 +1,24 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { ArrowLeft, ExternalLink, BookOpen, Plus, Settings, List, Flag, Bookmark, Maximize2, BarChart2, Image, TrendingUp, X } from 'lucide-react';
+import { ExternalLink, Plus, Volume2, X } from 'lucide-react';
 import { tokenizeText } from '../utils/japanese';
 import { lookupWord } from '../utils/dictionary';
-import { searchYomitanDB } from '../utils/yomitanDB';
 import { db } from '../utils/db';
 import html2canvas from 'html2canvas';
 import { t } from '../utils/i18n';
+import { synthesizeSpeechAzure } from '../utils/azureTtsService';
 
 // Direct reader engine imports
 import ReaderEngine from './reader/ReaderEngine';
 import ReaderNavbar from './reader/ReaderNavbar';
 import ReaderSidebar from './reader/ReaderSidebar';
 import ReaderSettings from './reader/ReaderSettings';
+import ReaderSettingsPopover from './reader/ReaderSettingsPopover';
 import CharacterCounter from './reader/CharacterCounter';
 import SelectionToolbar from './reader/SelectionToolbar';
 import { useReaderSettings } from '../hooks/useReaderSettings';
 
 // Hash a string ID to a positive 32-bit integer for ttu-reader compatibility
-function hashStringToInt(str) {
+function hashStringToInt(str: string): number {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     hash = (hash << 5) - hash + str.charCodeAt(i);
@@ -27,11 +28,11 @@ function hashStringToInt(str) {
 }
 
 // Extract the sentence containing the selected text inside the iframe DOM
-function getSentenceFromSelection(selection) {
+function getSentenceFromSelection(selection: Selection): string {
   const node = selection.anchorNode;
   if (!node) return '';
   
-  let container = node;
+  let container: Node | null = node;
   while (container && container.nodeType !== Node.ELEMENT_NODE) {
     container = container.parentNode;
   }
@@ -40,16 +41,15 @@ function getSentenceFromSelection(selection) {
   const text = container.textContent || '';
   const selectedText = selection.toString();
   
-  // Split Japanese sentences by typical punctuation
   const sentences = text.split(/(?<=[。！？\n])/g);
   const match = sentences.find(s => s.includes(selectedText));
   return match ? match.trim() : selectedText;
 }
 
-export function getUniqueFrequencies(frequencies) {
+export function getUniqueFrequencies(frequencies: any[]): any[] {
   if (!frequencies || frequencies.length === 0) return [];
   
-  const bestFreqs = {};
+  const bestFreqs: Record<string, any> = {};
   frequencies.forEach(f => {
     const dict = f.dictionary;
     let numVal = Infinity;
@@ -76,8 +76,8 @@ export function getUniqueFrequencies(frequencies) {
     }
   });
   
-  const seenDicts = new Set();
-  const orderedResult = [];
+  const seenDicts = new Set<string>();
+  const orderedResult: any[] = [];
   frequencies.forEach(f => {
     if (!seenDicts.has(f.dictionary)) {
       seenDicts.add(f.dictionary);
@@ -90,6 +90,17 @@ export function getUniqueFrequencies(frequencies) {
   return orderedResult;
 }
 
+interface ReaderProps {
+  book: any;
+  onBack: (targetTab?: string) => void;
+  onUpdateProgress: (bookId: string, currentChapter: number, currentPage: number, percent: number) => void;
+  onIncrementReadingStats: (bookId: string, chars: number, seconds: number) => void;
+  wordStatuses: Record<string, string>;
+  onSetWordStatus: (word: string, status: string, wordData?: any) => void;
+  settings: any;
+  onSaveSettings: (settings: any) => void;
+}
+
 export default function Reader({ 
   book, 
   onBack, 
@@ -99,7 +110,7 @@ export default function Reader({
   onSetWordStatus, 
   settings, 
   onSaveSettings 
-}) {
+}: ReaderProps) {
   const lang = settings.appLanguage || 'es';
 
   const handleBack = useCallback(() => {
@@ -109,12 +120,11 @@ export default function Reader({
     onBack();
   }, [onSaveSettings, onBack]);
 
-  // Direct reader engine settings and states
   const [readerSettings, setReaderSetting] = useReaderSettings();
-  const [sidebarMode, setSidebarMode] = useState(null); // 'toc' | 'bookmarks' | 'session' | 'settings' | null
-  const [bookmarks, setBookmarks] = useState(book.bookmarks || []);
+  const [sidebarMode, setSidebarMode] = useState<'toc' | 'bookmarks' | 'session' | 'settings' | null>(null);
+  const [bookmarks, setBookmarks] = useState<any[]>(book.bookmarks || []);
   const [currentProgress, setCurrentProgress] = useState({
-    currChars: book.progress?.currentPage || 0, // Fallback to progress mapping
+    currChars: book.progress?.currentPage || 0,
     totalChars: 0,
     lastIndex: book.progress?.currentPage || 0,
     currSection: book.progress?.currentChapter || 0,
@@ -129,32 +139,27 @@ export default function Reader({
     initialChars: 0,
   });
 
-  const [selection, setSelection] = useState(null);
-  const [navTargetSection, setNavTargetSection] = useState(null);
-  const [navTargetParagraphId, setNavTargetParagraphId] = useState(null);
+  const [selection, setSelection] = useState<any | null>(null);
+  const [navTargetSection, setNavTargetSection] = useState<number | null>(null);
+  const [navTargetParagraphId, setNavTargetParagraphId] = useState<number | null>(null);
 
-  const cacheBusterRef = useRef(Date.now());
-  const [selectedWord, setSelectedWord] = useState(null);
-  const [dictEntry, setDictEntry] = useState(null);
+  const [selectedWord, setSelectedWord] = useState<any | null>(null);
+  const [dictEntry, setDictEntry] = useState<any | null>(null);
   const [dictLoading, setDictLoading] = useState(false);
   const [ankiCardExists, setAnkiCardExists] = useState(false);
-  const [srsCard, setSrsCard] = useState(null);
-  const [isTtuLoaded, setIsTtuLoaded] = useState(true);
-  const [ttuNumericId, setTtuNumericId] = useState(1);
+  const [srsCard, setSrsCard] = useState<any | null>(null);
   const [isHeaderVisible, setIsHeaderVisible] = useState(true);
   const [showSettingsPopover, setShowSettingsPopover] = useState(false);
   
-  const iframeRef = useRef(null);
-  const containerRef = useRef(null);
-  const clickedWordRectRef = useRef(null);
-  const ttsAudioRef = useRef(null);
-  const ttsKeepAliveRef = useRef(null);
-  const [popupPos, setPopupPos] = useState({ x: 0, y: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
+  const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const ttsKeepAliveRef = useRef<any>(null);
+  const [popupPos, setPopupPos] = useState({ x: 0, y: 0, anchorBottom: false });
   const [isTtsPlaying, setIsTtsPlaying] = useState(false);
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
-  const toastTimerRef = useRef(null);
+  const toastTimerRef = useRef<any>(null);
 
-  const showToast = useCallback((message, type = 'success') => {
+  const showToast = useCallback((message: string, type = 'success') => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ show: true, message, type });
     toastTimerRef.current = setTimeout(() => {
@@ -168,35 +173,21 @@ export default function Reader({
         console.error(`Error attempting to enable full-screen mode: ${err.message}`);
       });
     } else {
-      document.exitFullscreen();
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
     }
   }, []);
 
-  // Programmatically trigger a keyboard action in ttu-reader (faster & extremely reliable)
-  const triggerTtuKeyboardAction = useCallback((code, key) => {
-    const iframe = iframeRef.current;
-    if (!iframe) return false;
+  const triggerTtuKeyboardAction = useCallback((code: string, key: string) => {
     try {
-      const iframeWin = iframe.contentWindow;
-      if (!iframeWin) return false;
-
-      // Dispatch Keydown
       const downEvent = new KeyboardEvent('keydown', {
         code,
         key,
         bubbles: true,
         cancelable: true
       });
-      iframeWin.dispatchEvent(downEvent);
-
-      // Dispatch Keyup
-      const upEvent = new KeyboardEvent('keyup', {
-        code,
-        key,
-        bubbles: true,
-        cancelable: true
-      });
-      iframeWin.dispatchEvent(upEvent);
+      document.dispatchEvent(downEvent);
       return true;
     } catch (e) {
       console.error('[Yoru] Keyboard action failed:', e);
@@ -204,67 +195,12 @@ export default function Reader({
     }
   }, []);
 
-  const syncSettingWithSvelte = useCallback((key, value) => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-    try {
-      const iframeWin = iframe.contentWindow;
-      if (iframeWin) {
-        let svelteKey = key;
-        let svelteVal = value;
-        
-        if (key === 'theme') {
-          svelteKey = 'theme';
-          svelteVal = value === 'light' ? 'light-theme' : (value === 'sepia' ? 'ecru-theme' : 'black-theme');
-        } else if (key === 'fontSize') {
-          svelteKey = 'fontSize';
-          svelteVal = String(value);
-        } else if (key === 'lineHeight') {
-          svelteKey = 'lineHeight';
-          svelteVal = String(value);
-        } else if (key === 'firstDimensionMargin') {
-          svelteKey = 'firstDimensionMargin';
-          svelteVal = String(value);
-        } else if (key === 'textMarginValue') {
-          svelteKey = 'textMarginValue';
-          svelteVal = String(value);
-        } else if (key === 'showFooterProgress') {
-          iframeWin.localStorage.setItem('showFooterChapterPercentage', value ? 'true' : 'false');
-          iframeWin.localStorage.setItem('showFooterChapterCharacterCounter', value ? 'true' : 'false');
-          if (iframeWin.__yoruReaderBridge?.updateReaderSetting) {
-            iframeWin.__yoruReaderBridge.updateReaderSetting('showFooterProgress', value);
-          }
-          return;
-        } else if (key === 'trackerAutoPause') {
-          svelteKey = 'trackerAutoPause';
-          svelteVal = value;
-        } else if (key === 'trackerIdleTime') {
-          svelteKey = 'trackerIdleTime';
-          svelteVal = String(value);
-        }
-        
-        iframeWin.localStorage.setItem(svelteKey, svelteVal);
-        
-        if (iframeWin.__yoruReaderBridge?.updateReaderSetting) {
-          iframeWin.__yoruReaderBridge.updateReaderSetting(key, value);
-        }
-      }
-    } catch (e) {
-      console.warn('[Yoru] Failed to sync setting with Svelte:', e);
-    }
-  }, []);
-
-  const openSvelteSettingsPopover = useCallback(() => {
-    setShowSettingsPopover(prev => !prev);
-  }, []);
-
-  const handleReaderKeydown = useCallback((e) => {
-    const target = e.target;
+  const handleReaderKeydown = useCallback((e: KeyboardEvent) => {
+    const target = e.target as HTMLElement;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
       return;
     }
 
-    // Read keybindings from settings or fallback to defaults
     const keybindings = settings.keybindings || {
       toggleFullscreen: 'f',
       nextPage: 'ArrowRight',
@@ -273,7 +209,7 @@ export default function Reader({
       readAloud: 't'
     };
 
-    const matchKey = (boundKey, pressedEvent) => {
+    const matchKey = (boundKey: string, pressedEvent: KeyboardEvent) => {
       if (!boundKey) return false;
       const lowerBound = boundKey.toLowerCase();
       if (lowerBound === pressedEvent.key.toLowerCase()) return true;
@@ -281,35 +217,30 @@ export default function Reader({
       return false;
     };
 
-    // 1. Toggle Fullscreen
     if (matchKey(keybindings.toggleFullscreen, e)) {
       e.preventDefault();
       toggleFullscreen();
       return;
     }
 
-    // 2. Next Page
     if (matchKey(keybindings.nextPage, e)) {
       e.preventDefault();
       triggerTtuKeyboardAction('ArrowRight', 'ArrowRight');
       return;
     }
 
-    // 3. Previous Page
     if (matchKey(keybindings.prevPage, e)) {
       e.preventDefault();
       triggerTtuKeyboardAction('ArrowLeft', 'ArrowLeft');
       return;
     }
 
-    // 4. Toggle Menu
     if (matchKey(keybindings.toggleMenu, e)) {
       e.preventDefault();
       setIsHeaderVisible(prev => !prev);
       return;
     }
 
-    // 5. Read Aloud (TTS)
     if (matchKey(keybindings.readAloud, e)) {
       e.preventDefault();
       if (isTtsPlaying) {
@@ -329,12 +260,6 @@ export default function Reader({
     }
   }, [settings.keybindings, toggleFullscreen, triggerTtuKeyboardAction, isTtsPlaying, selectedWord]);
 
-  const handleKeydownRef = useRef(handleReaderKeydown);
-  useEffect(() => {
-    handleKeydownRef.current = handleReaderKeydown;
-  }, [handleReaderKeydown]);
-
-  // Window keydown listener
   useEffect(() => {
     window.addEventListener('keydown', handleReaderKeydown);
     return () => {
@@ -342,7 +267,6 @@ export default function Reader({
     };
   }, [handleReaderKeydown]);
 
-  // Sync SRS card data on word change
   useEffect(() => {
     if (selectedWord && selectedWord.basicForm) {
       setSrsCard(db.getSrsCard(selectedWord.basicForm));
@@ -351,7 +275,6 @@ export default function Reader({
     }
   }, [selectedWord]);
 
-  // Clean up timers & speech Synthesis on unmount
   useEffect(() => {
     return () => {
       if ('speechSynthesis' in window) {
@@ -365,319 +288,16 @@ export default function Reader({
     };
   }, []);
 
-  // Re-inject iframe theme styles when app theme changes
   useEffect(() => {
     const theme = settings.theme || 'dark';
     window.__yoruTheme = theme;
-    // If the iframe is already loaded, re-inject with new theme
-    const iframe = iframeRef.current;
-    if (!iframe || !iframeTargetLoadedRef.current) return;
-    try {
-      const iframeWin = iframe.contentWindow;
-      if (iframeWin && iframeWin.__yoruReaderBridge?.setTheme) {
-        iframeWin.__yoruReaderBridge.setTheme(theme);
-      }
-
-      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!iframeDoc) return;
-      // Remove existing injected style so handleIframeLoad re-injects with the new theme
-      const existing = iframeDoc.getElementById('yoru-custom-styles');
-      if (existing) existing.remove();
-      // Re-trigger the injection by calling handleIframeLoad logic directly
-      // We do this by dispatching a synthetic load event is not reliable, so call it inline:
-      handleIframeLoad();
-    } catch (e) {
-      // cross-origin guard (shouldn't happen in Electron)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.theme]);
 
-  // Sync Yoru Reader book data to ttu-reader books-db IndexedDB
-  useEffect(() => {
-    // Helper to delete database if it was created with incorrect schema in previous attempts
-    const checkAndFixDatabaseSchema = () => {
-      return new Promise((resolve) => {
-        try {
-          const testReq = indexedDB.open('books');
-          testReq.onsuccess = (e) => {
-            const testDb = e.target.result;
-            let isMalformed = false;
-            
-            // If lastItem was mistakenly created with keyPath, it is malformed
-            if (testDb.objectStoreNames.contains('lastItem')) {
-              try {
-                const tx = testDb.transaction('lastItem', 'readonly');
-                const store = tx.objectStore('lastItem');
-                if (store.keyPath !== null) {
-                  isMalformed = true;
-                }
-              } catch (err) {
-                // ignore
-              }
-            }
-            testDb.close();
-            
-            if (isMalformed) {
-              console.warn("Malformed books database detected. Deleting to recreate with correct schema...");
-              const deleteReq = indexedDB.deleteDatabase('books');
-              deleteReq.onsuccess = () => {
-                console.log("Malformed books database deleted successfully.");
-                resolve();
-              };
-              deleteReq.onerror = () => {
-                console.error("Failed to delete malformed books database.");
-                resolve();
-              };
-            } else {
-              resolve();
-            }
-          };
-          testReq.onerror = () => {
-            resolve();
-          };
-        } catch (err) {
-          resolve();
-        }
-      });
-    };
-
-    const buildAndSaveBookWithDb = (idb, bookToSave, numericIdToSave) => {
-      try {
-        let elementHtml = '';
-        const sections = [];
-        let currentCharOffset = 0;
-
-        (bookToSave.chapters || []).forEach((chapter, index) => {
-          const lines = (chapter.content || '').split('\n');
-          const linesHtml = lines.map(line => {
-            if (line.startsWith('{h1:') && line.endsWith('}')) {
-              const text = line.substring(4, line.length - 1);
-              const processed = text.replace(/\{([^|{}]+)\|([^|{}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
-              return `<h1 class="chapter-content-h1">${processed}</h1>`;
-            }
-            if (line.startsWith('{h2:') && line.endsWith('}')) {
-              const text = line.substring(4, line.length - 1);
-              const processed = text.replace(/\{([^|{}]+)\|([^|{}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
-              return `<h2 class="chapter-content-h2">${processed}</h2>`;
-            }
-            if (line.startsWith('{h3:') && line.endsWith('}')) {
-              const text = line.substring(4, line.length - 1);
-              const processed = text.replace(/\{([^|{}]+)\|([^|{}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
-              return `<h3 class="chapter-content-h3">${processed}</h3>`;
-            }
-            if (line.startsWith('{img:') && line.endsWith('}')) {
-              const src = line.substring(5, line.length - 1);
-              return `<img src="${src}" style="max-width:100%; max-height:85vh; object-fit:contain; display:block; margin: 1em auto; break-after:column; page-break-after:always;" />`;
-            }
-            
-            // Standard paragraph
-            const processed = line
-              .replace(/\{img:([^{}]+)\}/gi, '<img src="$1" style="max-width:100%; max-height:85vh; object-fit:contain; display:block; margin: 1em auto; break-after:column; page-break-after:always;" />')
-              .replace(/\{([^|{}]+)\|([^|{}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
-            return `<p class="chapter-content">${processed}</p>`;
-          }).join('');
-            
-          const isBookTitle = chapter.title && bookToSave.title && 
-            chapter.title.toLowerCase().trim() === bookToSave.title.toLowerCase().trim();
-
-          const showTitle = chapter.title &&
-            !isBookTitle &&
-            !chapter.title.startsWith('Capítulo') &&
-            !chapter.title.startsWith('Chapter') &&
-            chapter.title !== 'Portada' &&
-            chapter.title !== 'Cover' &&
-            chapter.title !== 'Preface' &&
-            chapter.title !== 'Ilustración';
-
-          const chapterHtml = `
-            <section id="chapter-${index}" class="ttu-chapter">
-              ${showTitle ? `<h1 class="chapter-title">${chapter.title}</h1>` : ''}
-              ${linesHtml}
-            </section>
-          `;
-          
-          elementHtml += chapterHtml;
-          
-          const cleanText = (chapter.content || '')
-            .replace(/\{img:[^{}]*\}/gi, '')
-            .replace(/\{h[1-6]:([^{}]+)\}/gi, '$1')
-            .replace(/\{([^|{}]+)\|[^{}]*\}/g, '$1');
-          const sectionLength = cleanText.length;
-          
-          // Determine if it should be a main chapter or grouped under a parent chapter
-          let currentMainChapterId = 'chapter-0';
-          if (index > 0) {
-            // Find active main chapter by traversing backwards
-            for (let j = index - 1; j >= 0; j--) {
-              const prevCh = bookToSave.chapters[j];
-              if (prevCh.isFromToc || j === 0) {
-                currentMainChapterId = `chapter-${j}`;
-                break;
-              }
-            }
-          }
-
-          if (chapter.isFromToc || index === 0) {
-            // It's a main chapter
-            sections.push({
-              reference: `chapter-${index}`,
-              charactersWeight: sectionLength,
-              label: index === 0 ? (chapter.title || 'Preface') : chapter.title,
-              startCharacter: currentCharOffset,
-              characters: sectionLength
-            });
-          } else {
-            // It's a sub-chapter
-            sections.push({
-              reference: `chapter-${index}`,
-              charactersWeight: sectionLength,
-              parentChapter: currentMainChapterId
-            });
-            // Accumulate characters count in the parent chapter
-            const mainSec = sections.find(s => s.reference === currentMainChapterId);
-            if (mainSec) {
-              mainSec.characters += sectionLength;
-            }
-          }
-          
-          currentCharOffset += sectionLength;
-        });
-
-        const bookData = {
-          id: numericIdToSave,
-          title: bookToSave.title,
-          language: 'ja',
-          styleSheet: `
-            .ttu-chapter { padding: 2em; }
-            .chapter-title { font-size: 1.8em; font-weight: bold; margin-bottom: 1.5em; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.5em; }
-            .chapter-content { margin-bottom: 1.2em; line-height: 1.8; text-indent: 1em; }
-            img, svg, .ttu-img-parent { max-width: 100%; max-height: 85vh; object-fit: contain; break-after: column; page-break-after: always; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-          `,
-          elementHtml: elementHtml,
-          blobs: {},
-          coverImage: bookToSave.cover || '',
-          hasThumb: false,
-          characters: currentCharOffset,
-          sections: sections,
-          lastBookModified: Date.now(),
-          lastBookOpen: Date.now()
-        };
-
-        const tx = idb.transaction(['data', 'lastItem'], 'readwrite');
-        tx.objectStore('data').put(bookData);
-        tx.objectStore('lastItem').put({ dataId: numericIdToSave }, 0);
-        
-        tx.oncomplete = () => {
-          idb.close();
-          setIsTtuLoaded(true);
-        };
-        tx.onerror = (e) => {
-          console.error("tx error:", e);
-          idb.close();
-          setIsTtuLoaded(true);
-        };
-      } catch (err) {
-        console.error("buildAndSaveBookWithDb error:", err);
-        try { idb.close(); } catch (_) {}
-        setIsTtuLoaded(true);
-      }
-    };
-
-    const syncBookToTtuDb = async () => {
-      try {
-        await checkAndFixDatabaseSchema();
-
-        const numericId = hashStringToInt(book.id);
-        setTtuNumericId(numericId);
-
-        const openRequest = indexedDB.open('books', 6);
-        openRequest.onupgradeneeded = (event) => {
-          const idb = event.target.result;
-          
-          if (!idb.objectStoreNames.contains('data')) {
-            const dataStore = idb.createObjectStore('data', {
-              keyPath: 'id',
-              autoIncrement: true
-            });
-            dataStore.createIndex('title', 'title');
-          }
-          
-          if (!idb.objectStoreNames.contains('bookmark')) {
-            idb.createObjectStore('bookmark', {
-              keyPath: 'dataId'
-            });
-          }
-          
-          if (!idb.objectStoreNames.contains('lastItem')) {
-            idb.createObjectStore('lastItem'); // keyless out-of-line store
-          }
-          
-          if (!idb.objectStoreNames.contains('storageSource')) {
-            idb.createObjectStore('storageSource', {
-              keyPath: 'name'
-            });
-          }
-          
-          if (!idb.objectStoreNames.contains('statistic')) {
-            const statisticsStore = idb.createObjectStore('statistic', {
-              keyPath: ['title', 'dateKey']
-            });
-            statisticsStore.createIndex('dateKey', 'dateKey');
-            statisticsStore.createIndex('completedBook', ['completedBook', 'title']);
-          }
-          
-          if (!idb.objectStoreNames.contains('readingGoal')) {
-            const readingGoalsStore = idb.createObjectStore('readingGoal', {
-              keyPath: 'goalStartDate'
-            });
-            readingGoalsStore.createIndex('goalEndDate', 'goalEndDate');
-          }
-          
-          if (!idb.objectStoreNames.contains('lastModified')) {
-            idb.createObjectStore('lastModified', {
-              keyPath: ['title', 'dataType']
-            });
-          }
-          
-          if (!idb.objectStoreNames.contains('audioBook')) {
-            idb.createObjectStore('audioBook', { keyPath: 'title' });
-          }
-          
-          if (!idb.objectStoreNames.contains('subtitle')) {
-            idb.createObjectStore('subtitle', { keyPath: 'title' });
-          }
-          
-          if (!idb.objectStoreNames.contains('handle')) {
-            idb.createObjectStore('handle', { keyPath: ['title', 'dataType'] });
-          }
-        };
-
-        openRequest.onsuccess = (event) => {
-          const idb = event.target.result;
-          buildAndSaveBookWithDb(idb, book, numericId);
-        };
-
-        openRequest.onerror = (e) => {
-          console.error("Could not open books database:", e);
-          setIsTtuLoaded(true);
-        };
-
-      } catch (err) {
-        console.error("Failed to sync book to ttu IndexedDB:", err);
-        setIsTtuLoaded(true);
-      }
-    };
-
-    syncBookToTtuDb();
-  }, [book]);
-
-  // Handle word lookup from direct document selection (for short words <= 12 characters)
   const handleSelection = useCallback(async () => {
     const selectionObj = window.getSelection();
     if (!selectionObj) return;
     const selectedText = selectionObj.toString().trim();
     
-    // Only lookup in Yomitan if text is short (1 to 12 chars)
     if (selectedText && selectedText.length > 0 && selectedText.length <= 12) {
       const sentenceText = getSentenceFromSelection(selectionObj);
       const range = selectionObj.getRangeAt(0);
@@ -699,14 +319,12 @@ export default function Reader({
         sentenceText
       });
 
-      // Fetch local Yomitan entries
       const entry = await lookupWord(selectedText);
       setDictEntry(entry);
       setDictLoading(false);
     }
   }, []);
 
-  // Listen for mouseup and touchend in the main reader content area
   useEffect(() => {
     const contentArea = document.getElementById('reader-content');
     if (!contentArea) return;
@@ -714,7 +332,6 @@ export default function Reader({
     contentArea.addEventListener('mouseup', handleSelection);
     contentArea.addEventListener('touchend', handleSelection);
 
-    // Double click to lookup
     const handleDblClick = () => {
       setTimeout(handleSelection, 80);
     };
@@ -727,7 +344,6 @@ export default function Reader({
     };
   }, [handleSelection]);
 
-  // Handle Copy / Bookmark from selection toolbar
   const handleCopyText = useCallback(() => {
     if (!selection) return;
     navigator.clipboard.writeText(selection.text);
@@ -735,7 +351,7 @@ export default function Reader({
     window.getSelection()?.removeAllRanges();
   }, [selection, lang]);
 
-  const handleToggleBookmark = useCallback((paragraphId, content) => {
+  const handleToggleBookmark = useCallback((paragraphId: number, content: string) => {
     let next;
     const exists = bookmarks.find(b => b.paragraphId === paragraphId);
     if (exists) {
@@ -755,7 +371,6 @@ export default function Reader({
     window.getSelection()?.removeAllRanges();
   }, [selection, handleToggleBookmark]);
 
-  // Handle selection toolbar visibility and coordinates (for long selections > 12 characters)
   useEffect(() => {
     const handleSelectionChange = () => {
       const selectionObj = window.getSelection();
@@ -770,7 +385,6 @@ export default function Reader({
         return;
       }
 
-      // Check if it is a long text selection (longer than 12 chars)
       if (text.length <= 12) {
         setSelection(null);
         return;
@@ -803,7 +417,7 @@ export default function Reader({
 
   // Reading Session Timer
   useEffect(() => {
-    let interval = null;
+    let interval: any = null;
     if (session.isActive && !session.isPaused) {
       interval = setInterval(() => {
         setSession(prev => {
@@ -862,13 +476,10 @@ export default function Reader({
     });
   }, [currentProgress.currChars]);
 
-  const handleIframeLoad = () => {};
-
-  // Close popup if clicking on the parent window
   useEffect(() => {
-    const handleOutsideClick = (e) => {
+    const handleOutsideClick = (e: MouseEvent) => {
       const popup = document.querySelector('.dict-popup');
-      if (popup && !popup.contains(e.target)) {
+      if (popup && !popup.contains(e.target as Node)) {
         setSelectedWord(null);
       }
     };
@@ -876,7 +487,7 @@ export default function Reader({
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
 
-  const checkAnkiCardExists = async (word) => {
+  const checkAnkiCardExists = async (word: string) => {
     setAnkiCardExists(false);
     if (!word) return;
 
@@ -903,7 +514,7 @@ export default function Reader({
       }
     }
 
-    const expressionField = Object.keys(fieldsConfig).find(k => fieldsConfig[k] === '{expression}') || 'Expression';
+    const expressionField = Object.keys(fieldsConfig).find(k => (fieldsConfig as any)[k] === '{expression}') || 'Expression';
 
     try {
       const res = await fetch(host, {
@@ -970,16 +581,7 @@ export default function Reader({
   const handleMineToAnki = async () => {
     if (!selectedWord) return;
 
-    const blobToBase64 = (blob) => {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result.split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-    };
-
-    const uploadMediaToAnki = async (host, filename, base64Data) => {
+    const uploadMediaToAnki = async (host: string, filename: string, base64Data: string) => {
       try {
         const res = await fetch(host, {
           method: 'POST',
@@ -997,7 +599,7 @@ export default function Reader({
       }
     };
 
-    const uploadMediaUrlToAnki = async (host, filename, downloadUrl) => {
+    const uploadMediaUrlToAnki = async (host: string, filename: string, downloadUrl: string) => {
       try {
         const res = await fetch(host, {
           method: 'POST',
@@ -1015,12 +617,12 @@ export default function Reader({
       }
     };
 
-    const getAnkiFurigana = (token, keepLeadingSpace = false) => {
+    const getAnkiFurigana = (token: any, keepLeadingSpace = false) => {
       if (!token) return '';
       if (!token.alignment) return token.surface || '';
       
       let result = '';
-      token.alignment.forEach((part) => {
+      token.alignment.forEach((part: any) => {
         if (part.type === 'kanji') {
           result += ` ${part.text}[${part.ruby}]`;
         } else {
@@ -1030,7 +632,7 @@ export default function Reader({
       return keepLeadingSpace ? result : result.trim();
     };
 
-    const getSentenceAnkiFurigana = (sentenceTokens) => {
+    const getSentenceAnkiFurigana = (sentenceTokens: any[]) => {
       return sentenceTokens.map(tok => {
         if (tok.isIndentSpace) return '　';
         if (tok.isParagraphBreak || tok.isLineBreak) return ' ';
@@ -1082,11 +684,10 @@ export default function Reader({
           [legacy.readingField || 'Reading']: '{reading}',
           [legacy.meaningField || 'Meaning']: '{meaning}',
           [legacy.sentenceField || 'Sentence']: '{sentence}'
-        };
+        } as any;
       }
     }
 
-    // Tokenize target sentence and word on-the-fly for clean furigana
     const sentenceText = selectedWord.sentenceText || selectedWord.surface;
     const sentenceTokens = await tokenizeText(sentenceText);
     const wordTokens = await tokenizeText(selectedWord.basicForm);
@@ -1094,7 +695,7 @@ export default function Reader({
 
     const meaning = dictEntry && dictEntry.definitions ? dictEntry.definitions.join('<br>') : '';
     
-    const isBilingual = (defText) => {
+    const isBilingual = (defText: string) => {
       const SPA_DIACRITICS = /[áéíóúüñÁÉÍÓÚÜÑ¿¡]/u;
       const SPA_WORDS = /\b(de|del|el|la|los|las|en|un|una|unos|unas|con|por|para|que|es|son|su|sus|se|al|como|más|no|si|lo|le|les|muy|también|pero|cuando|este|esta|estos|estas|fue|ser|hay|ya|porque|aunque|donde|mientras|entre)\b/i;
       const ENG_WORDS = /\b(the|of|to|and|a|in|is|for|on|with|as|by|at|an|be|this|that|from|it|are|or|if|but|after|before|during|while|have|has|had|not|also|can|will|its|was|were|been|one|two|three|four|five|used|made|when|which|who|what|where|how)\b/i;
@@ -1102,8 +703,8 @@ export default function Reader({
     };
 
     const allDefs = dictEntry && dictEntry.definitions ? dictEntry.definitions : [];
-    const bilingualDefs = allDefs.filter(d => isBilingual(d));
-    const monolingualDefs = allDefs.filter(d => !isBilingual(d));
+    const bilingualDefs = allDefs.filter((d: string) => isBilingual(d));
+    const monolingualDefs = allDefs.filter((d: string) => !isBilingual(d));
 
     const meaningBilingual = bilingualDefs.join('<br>') || meaning;
     const monolingualPrimary = monolingualDefs[0] || '';
@@ -1120,7 +721,7 @@ export default function Reader({
     let screenshotHTML = '';
     if (hasScreenshot && containerRef.current) {
       try {
-        const popup = document.querySelector('.dict-popup');
+        const popup = document.querySelector('.dict-popup') as HTMLElement;
         if (popup) popup.style.setProperty('display', 'none', 'important');
         await new Promise(r => setTimeout(r, 80));
         
@@ -1166,7 +767,7 @@ export default function Reader({
       }
     }
 
-    const fields = {};
+    const fields: Record<string, string> = {};
     for (const [fieldName, tokenTemplate] of Object.entries(fieldsConfig)) {
       if (!tokenTemplate) {
         fields[fieldName] = '';
@@ -1178,10 +779,10 @@ export default function Reader({
       let pitchGraphs = '';
       if (dictEntry && dictEntry.pitches && dictEntry.pitches.length > 0) {
         pitchPositions = dictEntry.pitches
-          .flatMap(pEntry => pEntry.pitches.map(p => p.position))
+          .flatMap((pEntry: any) => pEntry.pitches.map((p: any) => p.position))
           .join(', ');
           
-        const getPitchCategoryName = (pos, r) => {
+        const getPitchCategoryName = (pos: number, r: string) => {
           const morae = (r || '').match(/[ぁ-んァ-ン][ゃゅょャュョ]*/g) || [];
           const count = morae.length;
           if (pos === 0) return '平板';
@@ -1193,7 +794,7 @@ export default function Reader({
           return '';
         };
 
-        const getPitchGraphHTML = (r, pos) => {
+        const getPitchGraphHTML = (r: string, pos: number) => {
           const morae = (r || '').match(/[ぁ-んァ-ン][ゃゅょャュョ]*/g) || [];
           if (morae.length === 0) return r || '';
           
@@ -1224,12 +825,12 @@ export default function Reader({
         };
         
         pitchCategories = dictEntry.pitches
-          .flatMap(pEntry => pEntry.pitches.map(p => getPitchCategoryName(p.position, pEntry.reading || selectedWord.reading)))
+          .flatMap((pEntry: any) => pEntry.pitches.map((p: any) => getPitchCategoryName(p.position, pEntry.reading || selectedWord.reading)))
           .filter(Boolean)
           .join(', ');
 
         pitchGraphs = dictEntry.pitches
-          .flatMap(pEntry => pEntry.pitches.map(p => getPitchGraphHTML(pEntry.reading || selectedWord.reading || selectedWord.surface, p.position)))
+          .flatMap((pEntry: any) => pEntry.pitches.map((p: any) => getPitchGraphHTML(pEntry.reading || selectedWord.reading || selectedWord.surface, p.position)))
           .join('<br>');
       }
 
@@ -1272,7 +873,7 @@ export default function Reader({
       let pitchAccentsVal = '';
       if (dictEntry && dictEntry.pitches && dictEntry.pitches.length > 0) {
         pitchAccentsVal = dictEntry.pitches
-          .flatMap(pEntry => pEntry.pitches.map(p => `${pEntry.reading || selectedWord.reading || ''}: [${p.position}]`))
+          .flatMap((pEntry: any) => pEntry.pitches.map((p: any) => `${pEntry.reading || selectedWord.reading || ''}: [${p.position}]`))
           .join(', ');
       }
 
@@ -1281,7 +882,7 @@ export default function Reader({
       let singleFreqJiten = '';
       let singleFreqVn = '';
       if (dictEntry && dictEntry.frequencies) {
-        dictEntry.frequencies.forEach(f => {
+        dictEntry.frequencies.forEach((f: any) => {
           const dictName = (f.dictionary || '').toLowerCase();
           const valStr = String(f.value);
           if (dictName.includes('bccwj')) singleFreqBccwj = valStr;
@@ -1379,7 +980,7 @@ export default function Reader({
     }
   };
 
-  const reproducirTexto = async (texto, vozSeleccionada) => {
+  const reproducirTexto = async (texto: string, vozSeleccionada?: string) => {
     if (!texto || !texto.trim()) return;
 
     if (ttsAudioRef.current) {
@@ -1451,7 +1052,7 @@ export default function Reader({
     }
 
     if ('speechSynthesis' in window) {
-      const getVoicesAsync = () => new Promise((resolve) => {
+      const getVoicesAsync = () => new Promise<SpeechSynthesisVoice[]>((resolve) => {
         const voices = window.speechSynthesis.getVoices();
         if (voices.length > 0) return resolve(voices);
         window.speechSynthesis.addEventListener('voiceschanged', () => {
@@ -1461,16 +1062,16 @@ export default function Reader({
       });
 
       const voices = await getVoicesAsync();
-      let matchedVoice = null;
+      let matchedVoice: SpeechSynthesisVoice | null = null;
 
       const keyword = vozId.toLowerCase();
       matchedVoice = voices.find(v => {
         const name = v.name.toLowerCase();
         return v.lang.startsWith('ja') && (name.includes(keyword) || name.includes('online') || name.includes('natural'));
-      });
+      }) || null;
 
       if (!matchedVoice) {
-        matchedVoice = voices.find(v => v.lang.startsWith('ja'));
+        matchedVoice = voices.find(v => v.lang.startsWith('ja')) || null;
       }
 
       if (!matchedVoice) {
@@ -1523,7 +1124,7 @@ export default function Reader({
     }
   };
 
-  const calculateSrsIntervals = (card) => {
+  const calculateSrsIntervals = (card: any) => {
     const c = card || { interval: 0, ease: 2.5, repetitions: 0, lapses: 0, state: 0 };
     const rep = c.repetitions || 0;
     const ease = c.ease || 2.5;
@@ -1566,7 +1167,7 @@ export default function Reader({
     };
   };
 
-  const handleSrsReview = (word, grade) => {
+  const handleSrsReview = (word: string, grade: number) => {
     const currentCard = db.getSrsCard(word) || { interval: 0, ease: 2.5, repetitions: 0, lapses: 0, state: 0 };
     const intervals = calculateSrsIntervals(currentCard);
     const now = new Date();
@@ -1584,7 +1185,7 @@ export default function Reader({
       newState = 3; 
       newLapses += 1;
     } else {
-      newInterval = intervals.calculatedDays[
+      newInterval = (intervals.calculatedDays as any)[
         grade === 2 ? 'hard' : grade === 3 ? 'good' : 'easy'
       ];
       if (grade === 2) {
@@ -1655,12 +1256,31 @@ export default function Reader({
         accent: '#FFE000',
         popoverBg: '#0c0c0e',
       }
-    }[themeName];
+    }[themeName as 'light' | 'sepia' | 'dark'] || {
+      bg: themeName === 'custom' ? (localStorage.getItem('reader:customBg') || '#18181c') : '#18181c',
+      border: 'rgba(255, 255, 255, 0.12)',
+      textMain: themeName === 'custom' ? (localStorage.getItem('reader:customText') || '#ffffff') : '#ffffff',
+      textMuted: 'rgba(255, 255, 255, 0.45)',
+      cardBg: 'rgba(255, 255, 255, 0.05)',
+      accent: '#FFE000',
+      popoverBg: '#0c0c0e',
+    };
   }, [readerSettings.theme]);
+
+  const handleCharsUpdate = useCallback((payload: any) => {
+    setCurrentProgress(payload);
+    const percentage = payload.totalChars > 0 ? Math.min(100, Math.floor((payload.currChars / payload.totalChars) * 100)) : 0;
+    onUpdateProgress(book.id, payload.currSection, payload.lastIndex, percentage);
+  }, [book.id, onUpdateProgress]);
+
+  const handleEngineClick = useCallback(() => {
+    setIsHeaderVisible(prev => !prev);
+  }, []);
 
   return (
     <div 
       ref={containerRef}
+      data-theme={readerSettings.theme || 'dark'}
       style={{
         width: '100%',
         height: '100vh',
@@ -1671,7 +1291,7 @@ export default function Reader({
         overflow: 'hidden'
       }}
     >
-      {/* Top Navbar */}
+
       <ReaderNavbar
         visible={isHeaderVisible}
         onClose={() => setIsHeaderVisible(false)}
@@ -1679,7 +1299,7 @@ export default function Reader({
         onToggleToc={() => setSidebarMode('toc')}
         onToggleBookmarks={() => setSidebarMode('bookmarks')}
         onToggleSession={() => setSidebarMode('session')}
-        onToggleSettings={() => setSidebarMode('settings')}
+        onToggleSettings={() => setShowSettingsPopover(prev => !prev)}
         onToggleFullscreen={toggleFullscreen}
         isFullscreen={!!document.fullscreenElement}
         bookTitle={book?.title || ''}
@@ -1687,29 +1307,41 @@ export default function Reader({
         lang={lang}
       />
 
-      {/* Main Direct Render Engine */}
+      {isHeaderVisible && showSettingsPopover && (
+        <ReaderSettingsPopover
+          settings={readerSettings}
+          onSettingChange={setReaderSetting}
+          onClose={() => setShowSettingsPopover(false)}
+          onOpenFullSettings={() => {
+            setShowSettingsPopover(false);
+            setSidebarMode('settings');
+          }}
+          onOpenExtensionSettings={() => {
+            if (window.electronAPI?.openReaderExtSettings) {
+              window.electronAPI.openReaderExtSettings();
+            } else {
+              alert('Solo disponible en la versión de escritorio de Windows.');
+            }
+          }}
+          lang={lang}
+        />
+      )}
+
       <ReaderEngine
         book={book}
         readerSettings={readerSettings}
         targetSection={navTargetSection}
         targetParagraphId={navTargetParagraphId}
-        onCharsUpdate={(payload) => {
-          setCurrentProgress(payload);
-          // Sync reading progress
-          const percentage = payload.totalChars > 0 ? Math.min(100, Math.floor((payload.currChars / payload.totalChars) * 100)) : 0;
-          onUpdateProgress(book.id, payload.currSection, payload.lastIndex, percentage);
-        }}
-        onClick={() => setIsHeaderVisible(prev => !prev)}
+        onCharsUpdate={handleCharsUpdate}
+        onClick={handleEngineClick}
       />
 
-      {/* Floating Counter */}
       <CharacterCounter
         currChars={currentProgress.currChars}
         totalChars={currentProgress.totalChars}
         colors={colors}
       />
 
-      {/* Selection Toolbar */}
       {selection && selection.visible && (
         <SelectionToolbar
           visible={selection.visible}
@@ -1722,7 +1354,6 @@ export default function Reader({
         />
       )}
 
-      {/* Toast notifications */}
       {toast.show && (
         <div style={{
           position: 'fixed',
@@ -1745,22 +1376,19 @@ export default function Reader({
         </div>
       )}
 
-      {/* Sidebar TOC / Bookmarks / Session / Settings */}
       {sidebarMode === 'settings' ? (
         <div
           style={{
             position: 'fixed',
             top: 0,
-            right: 0,
-            width: '340px',
-            maxWidth: '85vw',
+            left: 0,
+            width: '100vw',
             height: '100vh',
-            background: colors.popoverBg,
-            borderLeft: `1px solid ${colors.border}`,
+            background: colors.bg || '#121214',
             zIndex: 10001,
             display: 'flex',
             flexDirection: 'column',
-            animation: 'slideInRight 0.25s ease-out',
+            animation: 'fadeIn 0.2s ease-out',
             overflow: 'hidden',
           }}
         >
@@ -1768,49 +1396,71 @@ export default function Reader({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '16px',
-            borderBottom: `1px solid ${colors.border}`,
+            padding: '12px 20px',
+            borderBottom: `1px solid ${colors.border || 'rgba(255,255,255,0.08)'}`,
+            background: colors.popoverBg || '#1c1c1e',
             flexShrink: 0,
           }}>
-            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 600, color: colors.textMain }}>
-              {lang === 'es' ? 'Ajustes del Lector' : 'Reader Settings'}
-            </h3>
             <button
               onClick={() => setSidebarMode(null)}
-              style={{ background: 'none', border: 'none', color: colors.textMuted, cursor: 'pointer', padding: '4px' }}
-            >
-              <X size={20} />
-            </button>
-          </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
-            <ReaderSettings
-              settings={readerSettings}
-              onSettingChange={setReaderSetting}
-              onOpenExtensionSettings={() => {
-                if (window.electronAPI?.openReaderExtSettings) {
-                  window.electronAPI.openReaderExtSettings();
-                } else {
-                  alert('Solo disponible en la versión de escritorio de Windows.');
-                }
+              style={{
+                background: 'none',
+                border: 'none',
+                color: colors.accent || '#FFE000',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
               }}
-              colors={colors}
-              lang={lang}
-            />
+            >
+              ← {lang === 'es' ? 'Volver al Lector' : 'Back to Reader'}
+            </button>
+            <span style={{ fontSize: '0.95rem', fontWeight: 'bold', color: colors.textMain || '#fff' }}>
+              {lang === 'es' ? 'Ajustes del Lector' : 'Reader Settings'}
+            </span>
+            <div style={{ width: '80px' }} /> {/* Spacer */}
+          </div>
+          <div
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              padding: '24px 16px 40px 16px',
+              display: 'flex',
+              justifyContent: 'center',
+              background: colors.bg || '#18181c',
+            }}
+          >
+            <div style={{ width: '100%', maxWidth: '560px' }}>
+              <ReaderSettings
+                settings={readerSettings}
+                onSettingChange={setReaderSetting}
+                onOpenExtensionSettings={() => {
+                  if (window.electronAPI?.openReaderExtSettings) {
+                    window.electronAPI.openReaderExtSettings();
+                  } else {
+                    alert('Solo disponible en la versión de escritorio de Windows.');
+                  }
+                }}
+                colors={colors}
+                lang={lang}
+              />
+            </div>
           </div>
         </div>
       ) : (
         <ReaderSidebar
           mode={sidebarMode}
           onClose={() => setSidebarMode(null)}
-          sections={book.chapters.map((ch, idx) => ({ id: `chapter-${idx}`, title: ch.title, isFromToc: ch.isFromToc }))}
+          sections={book.chapters.map((ch: any, idx: number) => ({ id: `chapter-${idx}`, title: ch.title, isFromToc: ch.isFromToc }))}
           currSection={currentProgress.currSection}
-          onGoToSection={(idx) => {
+          onGoToSection={(idx: number) => {
             setNavTargetSection(idx);
-            // Reset after a frame so clicks can re-trigger navigation
             requestAnimationFrame(() => setNavTargetSection(null));
           }}
           bookmarks={bookmarks}
-          onGoToBookmark={(bm) => {
+          onGoToBookmark={(bm: any) => {
             setNavTargetParagraphId(bm.paragraphId);
             requestAnimationFrame(() => setNavTargetParagraphId(null));
           }}
@@ -1821,7 +1471,6 @@ export default function Reader({
         />
       )}
 
-      {/* Yoru Reader Floating Dictionary Tooltip */}
       {selectedWord && (
         <div 
           className="dict-popup"
@@ -1850,7 +1499,6 @@ export default function Reader({
             textAlign: 'left'
           }}
         >
-          {/* Status Toggle & SRS Review System */}
           {(() => {
             const wordStatus = wordStatuses[selectedWord.basicForm] || 'new';
             const isLearning = wordStatus === 'learning';
@@ -1859,9 +1507,7 @@ export default function Reader({
 
             return (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '8px' }}>
-                {/* Row 1: Statuses / Actions */}
                 <div style={{ display: 'flex', gap: '5px' }}>
-                  {/* Never Forget (Known) */}
                   <button
                     type="button"
                     onClick={() => {
@@ -1891,7 +1537,6 @@ export default function Reader({
                     {lang === 'es' ? 'Nunca olvidar' : 'Never forget'}
                   </button>
 
-                  {/* Blacklist (Ignored) */}
                   <button
                     type="button"
                     onClick={() => {
@@ -1917,7 +1562,6 @@ export default function Reader({
                     Blacklist
                   </button>
 
-                  {/* Deck + / Deck - */}
                   <button
                     type="button"
                     onClick={() => {
@@ -1944,12 +1588,10 @@ export default function Reader({
                   </button>
                 </div>
 
-                {/* Row 2: SRS Review Grading (only shown if learning state is active) */}
                 {isLearning && (() => {
                   const intervals = calculateSrsIntervals(srsCard);
                   return (
                     <div style={{ display: 'flex', gap: '5px', marginTop: '4px' }}>
-                      {/* Again */}
                       <button
                         type="button"
                         onClick={() => handleSrsReview(selectedWord.basicForm, 1)}
@@ -1969,7 +1611,6 @@ export default function Reader({
                         again <span style={{ opacity: 0.55, fontSize: '0.6rem' }}>({intervals.again})</span>
                       </button>
 
-                      {/* Hard */}
                       <button
                         type="button"
                         onClick={() => handleSrsReview(selectedWord.basicForm, 2)}
@@ -1989,7 +1630,6 @@ export default function Reader({
                         hard <span style={{ opacity: 0.55, fontSize: '0.6rem' }}>({intervals.hard})</span>
                       </button>
 
-                      {/* Good */}
                       <button
                         type="button"
                         onClick={() => handleSrsReview(selectedWord.basicForm, 3)}
@@ -2009,7 +1649,6 @@ export default function Reader({
                         good <span style={{ opacity: 0.55, fontSize: '0.6rem' }}>({intervals.good})</span>
                       </button>
 
-                      {/* Easy */}
                       <button
                         type="button"
                         onClick={() => handleSrsReview(selectedWord.basicForm, 4)}
@@ -2032,7 +1671,6 @@ export default function Reader({
                   );
                 })()}
 
-                {/* Row 3: SRS card info label */}
                 {srsCard && (
                   <div style={{
                     fontSize: '0.68rem',
@@ -2054,7 +1692,6 @@ export default function Reader({
             );
           })()}
 
-          {/* Word / Reading Title */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '6px', marginBottom: '8px' }}>
             <span style={{ fontSize: '1.4rem', fontWeight: 'bold', color: colors.textMain }}>
               {selectedWord.surface}
@@ -2066,7 +1703,6 @@ export default function Reader({
             )}
           </div>
 
-          {/* Action Row: Mine to Anki, Open in Anki */}
           <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
             {ankiCardExists ? (
               <button 
@@ -2115,11 +1751,10 @@ export default function Reader({
             )}
           </div>
 
-          {/* Dictionary Definitions List */}
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {!dictLoading ? (
               dictEntry && dictEntry.definitions && dictEntry.definitions.length > 0 ? (
-                dictEntry.definitions.map((def, idx) => (
+                dictEntry.definitions.map((def: any, idx: number) => (
                   <div key={idx} style={{ marginBottom: '8px', fontSize: '0.85rem', lineHeight: '1.4', color: colors.textMain }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
                       <span style={{ 
@@ -2132,7 +1767,7 @@ export default function Reader({
                       }}>
                         {def.dictionary || 'Glosario'}
                       </span>
-                      {def.partsOfSpeech && def.partsOfSpeech.map((pos, pIdx) => (
+                      {def.partsOfSpeech && def.partsOfSpeech.map((pos: string, pIdx: number) => (
                         <span key={pIdx} style={{ fontSize: '0.62rem', color: colors.textMuted, fontStyle: 'italic' }}>
                           {pos}
                         </span>
@@ -2151,6 +1786,22 @@ export default function Reader({
             )}
           </div>
         </div>
+      )}
+
+      {/* Thin bottom progress line */}
+      {readerSettings.showProgressLine && currentProgress.totalChars > 0 && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            height: '3px',
+            width: `${Math.min(100, (currentProgress.currChars / currentProgress.totalChars) * 100)}%`,
+            background: colors.accent,
+            transition: 'width 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+            zIndex: 10000,
+          }}
+        />
       )}
     </div>
   );

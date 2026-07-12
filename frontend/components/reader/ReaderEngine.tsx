@@ -47,7 +47,7 @@ interface ReaderEngineProps {
  *
  * Inspired by Lumi Reader's ReaderContent.tsx
  */
-export default function ReaderEngine({
+const ReaderEngine = React.memo(function ReaderEngine({
   book,
   readerSettings,
   onCharsUpdate,
@@ -481,7 +481,9 @@ export default function ReaderEngine({
       {children}
     </div>
   );
-}
+});
+
+export default ReaderEngine;
 
 // -- Helpers --
 

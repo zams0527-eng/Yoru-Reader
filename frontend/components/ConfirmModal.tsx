@@ -1,21 +1,25 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, ReactNode } from 'react';
+
+export interface ConfirmOptions {
+  title?: string;
+  message: string;
+  message2?: string;
+  type?: 'default' | 'danger' | 'warning' | 'info';
+  confirmText?: string;
+  cancelText?: string;
+}
+
+interface ConfirmState extends ConfirmOptions {
+  resolve: (value: boolean) => void;
+}
 
 /**
  * Hook reutilizable que reemplaza window.confirm() con un modal estilizado.
- *
- * Uso:
- *   const { confirmModal, showConfirm } = useConfirm();
- *
- *   // En lugar de: if (confirm('mensaje')) { ... }
- *   // Usar:        if (await showConfirm({ message: 'mensaje', type: 'danger' })) { ... }
- *
- *   // Renderizar el modal al final del JSX:
- *   {confirmModal}
  */
 export function useConfirm() {
-  const [state, setState] = useState(null);
+  const [state, setState] = useState<ConfirmState | null>(null);
 
-  const showConfirm = useCallback((options) => {
+  const showConfirm = useCallback((options: ConfirmOptions): Promise<boolean> => {
     return new Promise((resolve) => {
       setState({ ...options, resolve });
     });
@@ -47,9 +51,19 @@ export function useConfirm() {
   return { showConfirm, confirmModal };
 }
 
+interface ConfirmModalProps {
+  title?: string;
+  message: string;
+  message2?: string;
+  type?: 'default' | 'danger' | 'warning' | 'info';
+  confirmText?: string;
+  cancelText?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
 /**
  * Modal de confirmación estilizado con el tema de Yoru Reader.
- * Soporta tipos: 'default' | 'danger' | 'warning' | 'info'
  */
 export function ConfirmModal({
   title,
@@ -60,12 +74,12 @@ export function ConfirmModal({
   cancelText,
   onConfirm,
   onCancel,
-}) {
+}: ConfirmModalProps) {
   const typeStyles = {
-    danger:  { icon: '⚠️', accent: '#ef4444', confirmBg: 'linear-gradient(135deg, #ef4444, #b91c1c)', confirmHover: '#dc2626' },
-    warning: { icon: '⚠️', accent: '#f59e0b', confirmBg: 'linear-gradient(135deg, #f59e0b, #b45309)', confirmHover: '#d97706' },
-    info:    { icon: 'ℹ️', accent: '#60a5fa', confirmBg: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', confirmHover: '#2563eb' },
-    default: { icon: '❓', accent: '#FFE000', confirmBg: 'linear-gradient(135deg, #FFE000, #c2aa00)', confirmHover: '#FFF176' },
+    danger:  { icon: '⚠️', accent: '#ef4444', confirmBg: 'linear-gradient(135deg, #ef4444, #b91c1c)' },
+    warning: { icon: '⚠️', accent: '#f59e0b', confirmBg: 'linear-gradient(135deg, #f59e0b, #b45309)' },
+    info:    { icon: 'ℹ️', accent: '#60a5fa', confirmBg: 'linear-gradient(135deg, #3b82f6, #1d4ed8)' },
+    default: { icon: '❓', accent: '#FFE000', confirmBg: 'linear-gradient(135deg, #FFE000, #c2aa00)' },
   };
 
   const ts = typeStyles[type] || typeStyles.default;
@@ -214,3 +228,4 @@ export function ConfirmModal({
     </div>
   );
 }
+export default ConfirmModal;

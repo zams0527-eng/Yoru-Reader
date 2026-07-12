@@ -1,5 +1,18 @@
 import JSZip from 'jszip';
 
+export interface BookChapter {
+  title: string;
+  content: string;
+  isFromToc?: boolean;
+}
+
+export interface ParsedBook {
+  title: string;
+  author: string;
+  cover: string;
+  chapters: BookChapter[];
+}
+
 const GRADIENTS = [
   'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
   'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
@@ -11,19 +24,19 @@ const GRADIENTS = [
   'linear-gradient(135deg, #fa709a 0%, #fee140 100%)'
 ];
 
-function getRandomGradient() {
+function getRandomGradient(): string {
   return GRADIENTS[Math.floor(Math.random() * GRADIENTS.length)];
 }
 
 // Helper to recursively extract readable paragraphs from DOM tree, preserving <ruby> markup structure
-export function htmlToStructuredParagraphs(doc) {
+export function htmlToStructuredParagraphs(doc: Document | Element): any[] {
   // Clean elements that do not contain readable text (metadata, scripts, styles)
   doc.querySelectorAll('script, style, head').forEach(el => el.remove());
   
-  const paragraphs = [];
-  let currentParagraph = [];
+  const paragraphs: any[][] = [];
+  let currentParagraph: any[] = [];
   
-  function traverse(node) {
+  function traverse(node: Node) {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent;
       if (text) {
@@ -34,10 +47,11 @@ export function htmlToStructuredParagraphs(doc) {
         }
       }
     } else if (node.nodeType === Node.ELEMENT_NODE) {
-      const tagName = node.tagName.toLowerCase();
+      const el = node as Element;
+      const tagName = el.tagName.toLowerCase();
       
       if (tagName === 'img' || tagName === 'image') {
-        const src = node.getAttribute('src') || node.getAttribute('xlink:href') || node.getAttribute('href') || '';
+        const src = el.getAttribute('src') || el.getAttribute('xlink:href') || el.getAttribute('href') || '';
         if (src) {
           currentParagraph.push({
             type: 'image',
@@ -49,13 +63,13 @@ export function htmlToStructuredParagraphs(doc) {
 
       if (tagName === 'ruby') {
         // Extract furigana from <rt> element
-        const rtElement = node.querySelector('rt');
-        const rubyReading = rtElement ? rtElement.textContent.trim() : '';
+        const rtElement = el.querySelector('rt');
+        const rubyReading = rtElement ? rtElement.textContent?.trim() || '' : '';
         
         // Extract kanji base text by cloning and removing rt / rp elements
-        const clone = node.cloneNode(true);
-        clone.querySelectorAll('rt, rp').forEach(el => el.remove());
-        const baseText = clone.textContent.trim();
+        const clone = el.cloneNode(true) as Element;
+        clone.querySelectorAll('rt, rp').forEach(e => e.remove());
+        const baseText = clone.textContent?.trim() || '';
         
         if (baseText) {
           currentParagraph.push({
@@ -73,13 +87,13 @@ export function htmlToStructuredParagraphs(doc) {
       ].includes(tagName);
       
       if (isBlock && currentParagraph.length > 0) {
-        currentParagraph.tagName = tagName;
+        (currentParagraph as any).tagName = tagName;
         paragraphs.push(currentParagraph);
         currentParagraph = [];
       }
       
-      for (let child of node.childNodes) {
-        traverse(child);
+      for (let i = 0; i < el.childNodes.length; i++) {
+        traverse(el.childNodes[i]);
       }
       
       if (isBlock && currentParagraph.length > 0) {
@@ -89,8 +103,9 @@ export function htmlToStructuredParagraphs(doc) {
     }
   }
   
-  if (doc.body) {
-    traverse(doc.body);
+  const bodyNode = (doc as Document).body;
+  if (bodyNode) {
+    traverse(bodyNode);
   } else {
     traverse(doc);
   }
@@ -114,15 +129,15 @@ export function htmlToStructuredParagraphs(doc) {
       }
       return segment.text && segment.text.trim().length > 0;
     });
-    if (p.tagName) {
-      newP.tagName = p.tagName;
+    if ((p as any).tagName) {
+      (newP as any).tagName = (p as any).tagName;
     }
     return newP;
   }).filter(p => p.length > 0);
 }
 
 // Helper to serialize structured paragraphs into a text format that preserves ruby blocks and images
-export function serializeStructuredParagraph(p) {
+export function serializeStructuredParagraph(p: any[]): string {
   const content = p.map(segment => {
     if (typeof segment === 'string') {
       return segment;
@@ -133,14 +148,15 @@ export function serializeStructuredParagraph(p) {
     return `{${segment.text}|${segment.ruby}}`;
   }).join('');
 
-  if (p.tagName && ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(p.tagName)) {
-    return `{${p.tagName}:${content}}`;
+  const tagName = (p as any).tagName;
+  if (tagName && ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tagName)) {
+    return `{${tagName}:${content}}`;
   }
   return content;
 }
 
 // Helper to identify introductory metadata and front-matter sections
-export function isFrontMatter(title, filename) {
+export function isFrontMatter(title: string, filename: string): boolean {
   const titleLower = title.toLowerCase();
   const filenameLower = filename.toLowerCase();
   
@@ -169,17 +185,17 @@ export function isFrontMatter(title, filename) {
 }
 
 // 1. HTML Parser
-export function parseHTML(htmlText) {
+export function parseHTML(htmlText: string): string {
   const parser = new DOMParser();
   const doc = parser.parseFromString(htmlText, 'text/html');
-  const paragraphs = htmlToParagraphs(doc);
-  return paragraphs.join('\n');
+  const paragraphs = htmlToStructuredParagraphs(doc);
+  return paragraphs.map(serializeStructuredParagraph).join('\n');
 }
 
 // 2. RTF Parser
-export function parseRTF(rtfText) {
+export function parseRTF(rtfText: string): string {
   let output = "";
-  let groupStack = [];
+  const groupStack: boolean[] = [];
   let currentGroupIgnored = false;
   
   const IGNORED_GROUPS = [
@@ -196,7 +212,7 @@ export function parseRTF(rtfText) {
       i++;
     } else if (char === '}') {
       if (groupStack.length > 0) {
-        currentGroupIgnored = groupStack.pop();
+        currentGroupIgnored = groupStack.pop()!;
       } else {
         currentGroupIgnored = false;
       }
@@ -269,21 +285,17 @@ export function parseRTF(rtfText) {
 }
 
 // 3. Subtitles Parsers (SRT, VTT, ASS/SSA)
-export function parseSRT(srtText) {
+export function parseSRT(srtText: string): string {
   const blocks = srtText.split(/\r?\n\r?\n/);
-  const lines = [];
+  const lines: string[] = [];
 
   for (const block of blocks) {
     const blockLines = block.trim().split(/\r?\n/);
     if (blockLines.length < 3) continue; // Skip malformed or empty cues
     
-    // Line 0: Index (e.g. 1)
-    // Line 1: Timing (e.g. 00:00:01,000 --> 00:00:04,000)
-    // Line 2+: Subtitle Text
     const textLines = blockLines.slice(2);
-    
     const text = textLines.join(' ')
-      .replace(/<[^>]+>/g, '') // Strip HTML formatting tags like <i>, <b>
+      .replace(/<[^>]+>/g, '') // Strip HTML formatting tags
       .trim();
       
     if (text) {
@@ -294,11 +306,10 @@ export function parseSRT(srtText) {
   return lines.join('\n\n');
 }
 
-export function parseVTT(vttText) {
-  const lines = [];
+export function parseVTT(vttText: string): string {
+  const lines: string[] = [];
   const rawBlocks = vttText.split(/\r?\n\r?\n/);
   
-  // WebVTT can start with metadata / notes
   for (const block of rawBlocks) {
     const trimmedBlock = block.trim();
     if (!trimmedBlock || trimmedBlock.startsWith('WEBVTT') || trimmedBlock.startsWith('NOTE')) {
@@ -307,20 +318,18 @@ export function parseVTT(vttText) {
     
     const blockLines = trimmedBlock.split(/\r?\n/);
     
-    // Check if line contains timing arrow. Sometimes index is first line, sometimes timing is first
     let textStartIndex = 1;
     if (blockLines[0].includes('-->')) {
       textStartIndex = 1;
     } else if (blockLines.length > 1 && blockLines[1].includes('-->')) {
       textStartIndex = 2;
     } else {
-      // Not a valid subtitle block
       continue;
     }
     
     const textLines = blockLines.slice(textStartIndex);
     const text = textLines.join(' ')
-      .replace(/<[^>]+>/g, '') // Strip HTML tags
+      .replace(/<[^>]+>/g, '')
       .trim();
       
     if (text) {
@@ -331,9 +340,9 @@ export function parseVTT(vttText) {
   return lines.join('\n\n');
 }
 
-export function parseASS(assText) {
+export function parseASS(assText: string): string {
   const rawLines = assText.split(/\r?\n/);
-  const dialogues = [];
+  const dialogues: string[] = [];
   let inEventsSection = false;
 
   for (const line of rawLines) {
@@ -343,15 +352,12 @@ export function parseASS(assText) {
       continue;
     }
     if (trimmed.startsWith('[')) {
-      inEventsSection = false; // Another section started
+      inEventsSection = false;
       continue;
     }
 
     if (inEventsSection && trimmed.startsWith('Dialogue:')) {
-      // SSA/ASS line structure:
-      // Dialogue: Layer, Start, End, Style, Actor, MarginL, MarginR, MarginV, Effect, Text
-      // Split by commas, but only for the first 9 occurrences, so we don't split the Text itself.
-      const commaIndices = [];
+      const commaIndices: number[] = [];
       let index = trimmed.indexOf(',');
       while (index !== -1 && commaIndices.length < 9) {
         commaIndices.push(index);
@@ -362,9 +368,7 @@ export function parseASS(assText) {
         const textStartIndex = commaIndices[8] + 1;
         let text = trimmed.substring(textStartIndex);
         
-        // Clean ASS style blocks {\...}
         text = text.replace(/\{[^}]+\}/g, '');
-        // Replace \N or \n with newlines
         text = text.replace(/\\N/gi, '\n');
         text = text.replace(/\\n/gi, '\n');
         
@@ -379,12 +383,12 @@ export function parseASS(assText) {
   return dialogues.join('\n\n');
 }
 
-function resolveRelativePath(basePath, relativePath) {
+function resolveRelativePath(basePath: string, relativePath: string): string {
   const baseParts = basePath.split('/');
   baseParts.pop(); // Remove filename
   
   const relParts = relativePath.split('/');
-  for (let part of relParts) {
+  for (const part of relParts) {
     if (part === '.') {
       continue;
     } else if (part === '..') {
@@ -397,10 +401,9 @@ function resolveRelativePath(basePath, relativePath) {
 }
 
 // 4. EPUB Parser (Zip extractor)
-export async function parseEPUB(arrayBuffer) {
+export async function parseEPUB(arrayBuffer: ArrayBuffer): Promise<any> {
   const zip = await JSZip.loadAsync(arrayBuffer);
   
-  // 1. Locate container.xml
   const containerFile = zip.file('META-INF/container.xml');
   if (!containerFile) {
     throw new Error('Archivo contenedor inválido (META-INF/container.xml no encontrado)');
@@ -422,14 +425,12 @@ export async function parseEPUB(arrayBuffer) {
   const parser = new DOMParser();
   const opfDoc = parser.parseFromString(opfXml, 'text/xml');
   
-  // 2. Extract metadata
   const titleEl = opfDoc.querySelector('title') || opfDoc.querySelector('dc\\:title');
   const creatorEl = opfDoc.querySelector('creator') || opfDoc.querySelector('dc\\:creator');
-  const title = titleEl ? titleEl.textContent.trim() : 'Libro EPUB';
-  const author = creatorEl ? creatorEl.textContent.trim() : 'Autor Desconocido';
+  const title = titleEl ? titleEl.textContent?.trim() || 'Libro EPUB' : 'Libro EPUB';
+  const author = creatorEl ? creatorEl.textContent?.trim() || 'Autor Desconocido' : 'Autor Desconocido';
   
-  // 3. Extract manifest items
-  const manifestItems = {};
+  const manifestItems: Record<string, string> = {};
   opfDoc.querySelectorAll('manifest > item').forEach(item => {
     const id = item.getAttribute('id');
     const href = item.getAttribute('href');
@@ -438,8 +439,7 @@ export async function parseEPUB(arrayBuffer) {
     }
   });
   
-  // 4. Extract spine sequence
-  const spineIds = [];
+  const spineIds: string[] = [];
   opfDoc.querySelectorAll('spine > itemref').forEach(ref => {
     const idref = ref.getAttribute('idref');
     if (idref) {
@@ -447,28 +447,24 @@ export async function parseEPUB(arrayBuffer) {
     }
   });
 
-  // Determine relative base folder inside ZIP for files listed in manifest
   const lastSlashIndex = opfPath.lastIndexOf('/');
   const baseDir = lastSlashIndex !== -1 ? opfPath.substring(0, lastSlashIndex + 1) : '';
 
-  // --- Extract Table of Contents (TOC) Map ---
-  const tocMap = {};
+  const tocMap: Record<string, string> = {};
   try {
-    // 1. EPUB 3 Nav TOC
     let navHref = '';
     opfDoc.querySelectorAll('item').forEach(item => {
       const props = item.getAttribute('properties') || '';
       if (props.split(/\s+/).includes('nav')) {
-        navHref = item.getAttribute('href');
+        navHref = item.getAttribute('href') || '';
       }
     });
-    // Fallback search if properties attribute is not found but ID or href hints it
     if (!navHref) {
       opfDoc.querySelectorAll('item').forEach(item => {
         const id = (item.getAttribute('id') || '').toLowerCase();
         const href = (item.getAttribute('href') || '').toLowerCase();
         if (id === 'nav' || id === 'toc' || href.includes('nav.xhtml') || href.includes('toc.xhtml')) {
-          navHref = item.getAttribute('href');
+          navHref = item.getAttribute('href') || '';
         }
       });
     }
@@ -484,7 +480,7 @@ export async function parseEPUB(arrayBuffer) {
           if (href) {
             const cleanHref = decodeURIComponent(href.split('#')[0]);
             const targetPath = resolveRelativePath(resolvedNavPath, cleanHref);
-            const label = a.textContent.trim();
+            const label = a.textContent?.trim() || '';
             if (label && !tocMap[targetPath]) {
               tocMap[targetPath] = label;
             }
@@ -496,7 +492,6 @@ export async function parseEPUB(arrayBuffer) {
     console.warn("Failed to parse EPUB 3 Nav TOC:", e);
   }
 
-  // 2. EPUB 2 NCX TOC
   if (Object.keys(tocMap).length === 0) {
     try {
       const spineEl = opfDoc.querySelector('spine') || opfDoc.querySelector('opf\\:spine');
@@ -505,15 +500,14 @@ export async function parseEPUB(arrayBuffer) {
       if (tocId) {
         const ncxItem = opfDoc.getElementById(tocId) || opfDoc.querySelector(`item[id="${tocId}"]`);
         if (ncxItem) {
-          ncxHref = ncxItem.getAttribute('href');
+          ncxHref = ncxItem.getAttribute('href') || '';
         }
       }
-      // Fallback if spine toc attribute is missing but there is an NCX file in manifest
       if (!ncxHref) {
         opfDoc.querySelectorAll('item').forEach(item => {
           const mediaType = item.getAttribute('media-type') || '';
           if (mediaType === 'application/x-dtbncx+xml' || (item.getAttribute('href') || '').endsWith('.ncx')) {
-            ncxHref = item.getAttribute('href');
+            ncxHref = item.getAttribute('href') || '';
           }
         });
       }
@@ -529,7 +523,7 @@ export async function parseEPUB(arrayBuffer) {
             const textEl = point.querySelector('navlabel text');
             if (contentEl && textEl) {
               const href = contentEl.getAttribute('src');
-              const label = textEl.textContent.trim();
+              const label = textEl.textContent?.trim() || '';
               if (href && label) {
                 const cleanHref = decodeURIComponent(href.split('#')[0]);
                 const targetPath = resolveRelativePath(resolvedNcxPath, cleanHref);
@@ -546,20 +540,18 @@ export async function parseEPUB(arrayBuffer) {
     }
   }
   
-  // --- Find and extract cover image ---
-  let coverHref = null;
-  
-  // Method 1: Look for <meta name="cover" content="..." />
+  let coverHref: string | null = null;
   const coverMeta = opfDoc.querySelector('meta[name="cover"]');
   if (coverMeta) {
     const coverId = coverMeta.getAttribute('content');
-    const coverItem = opfDoc.getElementById(coverId) || opfDoc.querySelector(`item[id="${coverId}"]`);
-    if (coverItem) {
-      coverHref = coverItem.getAttribute('href');
+    if (coverId) {
+      const coverItem = opfDoc.getElementById(coverId) || opfDoc.querySelector(`item[id="${coverId}"]`);
+      if (coverItem) {
+        coverHref = coverItem.getAttribute('href');
+      }
     }
   }
   
-  // Method 2: Look for item with properties="cover-image" in manifest
   if (!coverHref) {
     const coverItem = opfDoc.querySelector('item[properties~="cover-image"]') || opfDoc.querySelector('item[properties="cover-image"]');
     if (coverItem) {
@@ -567,10 +559,10 @@ export async function parseEPUB(arrayBuffer) {
     }
   }
   
-  // Method 3: Search manifest for keywords in ID or href
   if (!coverHref) {
     const items = opfDoc.querySelectorAll('manifest > item');
-    for (let item of items) {
+    for (let j = 0; j < items.length; j++) {
+      const item = items[j];
       const href = item.getAttribute('href') || '';
       const id = item.getAttribute('id') || '';
       const mediaType = item.getAttribute('media-type') || '';
@@ -584,7 +576,7 @@ export async function parseEPUB(arrayBuffer) {
     }
   }
 
-  let coverUrl = null;
+  let coverUrl: string | null = null;
   if (coverHref) {
     const decodedCoverHref = decodeURIComponent(coverHref);
     const zipCoverPath = baseDir + decodedCoverHref;
@@ -594,7 +586,8 @@ export async function parseEPUB(arrayBuffer) {
         const coverBase64 = await coverFile.async('base64');
         let mediaType = 'image/jpeg';
         const items = opfDoc.querySelectorAll('manifest > item');
-        for (let item of items) {
+        for (let j = 0; j < items.length; j++) {
+          const item = items[j];
           if (item.getAttribute('href') === coverHref) {
             mediaType = item.getAttribute('media-type') || 'image/jpeg';
             break;
@@ -607,8 +600,7 @@ export async function parseEPUB(arrayBuffer) {
     }
   }
   
-  // 5. Read spine chapters
-  const chapters = [];
+  const chapters: BookChapter[] = [];
   
   for (let i = 0; i < spineIds.length; i++) {
     const id = spineIds[i];
@@ -624,16 +616,14 @@ export async function parseEPUB(arrayBuffer) {
     const chapterHtml = await file.async('text');
     const doc = parser.parseFromString(chapterHtml, 'text/html');
     
-    // Determine the chapter title using resilient path-matching against the TOC map
     let chapterTitle = '';
     let isFromToc = false;
-    const getCleanPath = (p) => {
+    const getCleanPath = (p: string) => {
       if (!p) return '';
       return p.toLowerCase().replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\//, '');
     };
     const cleanResolved = getCleanPath(resolvedPath);
     
-    // 1. Try exact normalized match in TOC
     for (const k of Object.keys(tocMap)) {
       if (getCleanPath(k) === cleanResolved) {
         chapterTitle = tocMap[k];
@@ -642,7 +632,6 @@ export async function parseEPUB(arrayBuffer) {
       }
     }
     
-    // 2. Try matching by filename if exact match fails (e.g. "OEBPS/xhtml/p-001.xhtml" matches "xhtml/p-001.xhtml")
     if (!chapterTitle) {
       const resolvedFilename = cleanResolved.split('/').pop();
       for (const k of Object.keys(tocMap)) {
@@ -656,24 +645,21 @@ export async function parseEPUB(arrayBuffer) {
       }
     }
     
-    // 3. Fallback to heading tags inside HTML body
     if (!chapterTitle) {
       const heading = doc.querySelector('h1, h2, h3, h4');
-      if (heading) chapterTitle = heading.textContent.trim();
+      if (heading) chapterTitle = heading.textContent?.trim() || '';
     }
     
-    // 4. Fallback to HTML title tag in head (only if not identical to book title)
     if (!chapterTitle) {
       const titleTag = doc.querySelector('title');
       if (titleTag) {
-        const titleText = titleTag.textContent.trim();
+        const titleText = titleTag.textContent?.trim() || '';
         if (titleText && titleText !== title && titleText.toLowerCase() !== 'untitled' && titleText.toLowerCase() !== 'untitled document') {
           chapterTitle = titleText;
         }
       }
     }
     
-    // 5. Hard fallback
     if (!chapterTitle) {
       chapterTitle = chapters.length === 0 ? 'Portada' : `Capítulo ${chapters.length + 1}`;
     }
@@ -681,7 +667,6 @@ export async function parseEPUB(arrayBuffer) {
     const structuredParagraphs = htmlToStructuredParagraphs(doc);
     if (structuredParagraphs.length === 0) continue;
     
-    // Resolve relative images inside the ZIP to base64 Data URIs
     for (let pIdx = 0; pIdx < structuredParagraphs.length; pIdx++) {
       const p = structuredParagraphs[pIdx];
       for (let sIdx = 0; sIdx < p.length; sIdx++) {
@@ -692,7 +677,7 @@ export async function parseEPUB(arrayBuffer) {
             const targetPath = resolveRelativePath(resolvedPath, cleanSrc);
             const imageFile = zip.file(targetPath);
             if (imageFile) {
-              const ext = targetPath.split('.').pop().toLowerCase();
+              const ext = targetPath.split('.').pop()!.toLowerCase();
               const mime = ext === 'png' ? 'image/png' : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
               const imgBase64 = await imageFile.async('base64');
               segment.src = `data:${mime};base64,${imgBase64}`;
@@ -704,7 +689,6 @@ export async function parseEPUB(arrayBuffer) {
       }
     }
     
-    // Keep the chapter unified without splitting on images to preserve continuous layout flow
     chapters.push({
       title: chapterTitle || 'Portada',
       content: structuredParagraphs.map(serializeStructuredParagraph).join('\n'),
@@ -725,21 +709,21 @@ export async function parseEPUB(arrayBuffer) {
 }
 
 // 5. General Router to Import Any Book File
-export function importBookFile(file) {
+export function importBookFile(file: File): Promise<ParsedBook> {
   return new Promise((resolve, reject) => {
     const filename = file.name;
-    const extension = filename.split('.').pop().toLowerCase();
+    const extension = filename.split('.').pop()!.toLowerCase();
     
     if (extension === 'epub') {
       const reader = new FileReader();
-      reader.onload = async (e) => {
+      reader.onload = async (e: any) => {
         try {
           const parsed = await parseEPUB(e.target.result);
           resolve({
             ...parsed,
             cover: parsed.cover || getRandomGradient()
           });
-        } catch (err) {
+        } catch (err: any) {
           reject(new Error(`Fallo al parsear EPUB: ${err.message}`));
         }
       };
@@ -747,7 +731,7 @@ export function importBookFile(file) {
       reader.readAsArrayBuffer(file);
     } else {
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = (e: any) => {
         const text = e.target.result;
         let content = "";
         let author = "Importado";
@@ -796,11 +780,11 @@ export function importBookFile(file) {
           // Split into chapters by headings if any
           const lines = content.split('\n');
           let currentTitle = "Capítulo 1";
-          let currentContent = [];
-          const chapters = [];
+          const currentContent: string[] = [];
+          const chapters: BookChapter[] = [];
           const chapterPattern = /^(第[一二三四五六七八九十百0-9]+[章話回幕節部]).*$/;
           
-          for (let line of lines) {
+          for (const line of lines) {
             const trimmed = line.trim();
             if (chapterPattern.test(trimmed) || trimmed.startsWith('# ')) {
               if (currentContent.length > 0) {
@@ -810,7 +794,7 @@ export function importBookFile(file) {
                 });
               }
               currentTitle = trimmed.replace(/^#\s+/, '');
-              currentContent = [];
+              currentContent.length = 0;
             } else {
               currentContent.push(line);
             }
@@ -829,7 +813,7 @@ export function importBookFile(file) {
             cover: getRandomGradient(),
             chapters: chapters
           });
-        } catch (err) {
+        } catch (err: any) {
           reject(new Error(`Fallo al procesar archivo: ${err.message}`));
         }
       };

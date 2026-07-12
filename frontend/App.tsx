@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Library from './components/Library';
 import WelcomeScreen from './components/WelcomeScreen';
 import Reader from './components/Reader';
@@ -8,6 +8,13 @@ import { tokenizeText, parseExtensionText } from './utils/japanese';
 import { clearYomitanCache, migrateEnglishDictName, migrateDictFlags, cleanOrphanedEntries } from './utils/yomitanDB';
 import { useConfirm } from './components/ConfirmModal';
 
+declare global {
+  interface Window {
+    __yoruTheme: string;
+    electronAPI: any;
+  }
+}
+
 const SAMPLE_BOOKS = [
   {
     title: 'また、同じ夢を見ていた',
@@ -16,7 +23,7 @@ const SAMPLE_BOOKS = [
     chapters: [
       {
         title: 'Capítulo 1',
-        content: `「生きてる時間が長いからね。どうやったら勝てるのか、なっちゃんよりもよく知ってるのさ」\n\nおばあちゃんは生きてきた時間のことをよく言います。確かに、おばあちゃんは私がこれまでに生きた時間を七回も過ごしているのだから、それくらいあれば私にだって美味しいマドレーヌが焼けるかもしれません。\n\n一つ目のマドレーヌを食べ終わり、お皿に載った二つ目に手を伸ばそうとしたけど、結局何も取らずに手をひっこめました。今日はヤクルトもアイスもいりません。\n\nおばあちゃんの家を出て、小川の横の草むらを歩きました。風が吹くと、草が擦れ合う音がさらさらと聞こえます。\n\n「幸せって、何だろう」\n\n私は独り言を呟きながら、空を見上げました。空は夕焼け色に染まっていて、とても綺麗でした。おばあちゃんのマドレーヌのように、甘くて温かい色をしていました。`
+        content: `「生きてる時間が長いからね。どうやったら勝てるのか、なっちゃんよりもよく知ってるのさ」\n\nおばあちゃんは生きてきた時間のことをよく言います。確かに、おばあちゃんは私がこれまでに生きた時間を七回も過ごしているのだから、それくらいあれば私にだって美味しいマドレーヌが焼けるかもしれません。\n\n一つ目のマドレーヌを食べ終わり、お皿に載った二つ目に手を伸ばそうとしたけど、結局何も取らずに手をひっこめました。今日はヤクルトもアイスもいりません。\n\nおばあちゃんの家を出て、小川の横 of 草むらを歩きました。風が吹くと、草が擦れ合う音がさらさらと聞こえます。\n\n「幸せって、何だろう」\n\n私は独り言を呟きながら、空を見上げました。空は夕焼け色に染まっていて、とても綺麗でした。おばあちゃんのマドレーヌのように、甘くて温かい色をしていました。`
       },
       {
         title: 'Capítulo 2',
@@ -38,7 +45,7 @@ const SAMPLE_BOOKS = [
     chapters: [
       {
         title: 'Capítulo 1',
-        content: `これは、ある冴えないオタクの少年と、彼の運命を変えた一人の少女の物語である。\n\n「ねえ、倫也。私は本当に、あなたのヒロインになれたのかな」\n\n加藤恵は、いつもと変わらない静かな声で私に問いかけた。その表情には、いつもの掴みどころのない微笑みが浮かんでいた。\n\n「ああ、恵。君は俺にとって、世界一のメインヒロインだ」\n\n私は胸を張って答えた。彼女と出会ってからの数年間、様々なことがあった。`
+        content: `これは、ある冴えないオタクの少年と、彼の運命を変えた一人の少女の物語である。\n\n「ねえ、倫也。私は本当に、あなたのヒロインになれたのかな」\n\n加藤恵は、いつもと変わらない静かな声で私に問いかけた。その表情には、いつもの掴みどころのない微笑みが浮かんでいた。\n\n「ああ、恵。君は俺にとって、世界一のメインヒロインだ」\n\n私は胸 te 答えた。彼女と出会ってからの数年間、様々なことがあった。`
       }
     ],
     progress: {
@@ -74,7 +81,7 @@ const SAMPLE_BOOKS = [
     chapters: [
       {
         title: 'Capítulo 1',
-        content: `「倫也、私たちの同人誌、絶対に成功させようね」\n\n澤村・スペンサー・英梨々は、ツインテールを揺らしながら言った。彼女の目には、強い闘志が宿っていた。\n\n「ああ、当たり前だ。俺たちの全力をぶつけよう」\n\n私たちは拳を軽く合わせ、これからの戦いに備えた。`
+        content: `「倫也、私たちの同人誌、絶対に成功させようね」\n\n澤村・スペンサー・英梨々は、ツインテールを揺らしながら言った。彼女の目には、強い闘志が宿っていた。\n\n「ああ、当たり前だ. 俺たちの全力をぶつけよう」\n\n私たちは拳を軽く合わせ、これからの戦いに備えた。`
       }
     ],
     progress: {
@@ -92,7 +99,7 @@ const SAMPLE_BOOKS = [
     chapters: [
       {
         title: 'Capítulo 1',
-        content: `「倫也くん、私の脚本、どうかしら」\n\n霞ヶ丘詩羽は、長い黒髪をかき上げながら、妖艶な笑みを浮かべた。彼女のシナリオは、いつも完璧で、そして少しだけ恐ろしい。\n\n「素晴らしいですよ、詩羽先輩。でも、このシーンは少し過激すぎませんか？」\n\n「あら、これくらいで怯むなんて、まだまだ子供ね」`
+        content: `「倫也くん、私の脚本、どうかしら」\n\n&emsp;霞ヶ丘詩羽は、長い黒髪をかき上げながら、妖艶な笑みを浮かべた。彼女のシナリオは、いつも完璧で、そして少しだけ恐ろしい。\n\n「素晴らしいですよ、詩羽先輩。底、このシーンは少し過激すぎませんか？」\n\n「あら、これくらいで怯むなんて、まだまだ子供ね」`
       }
     ],
     progress: {
@@ -106,41 +113,38 @@ const SAMPLE_BOOKS = [
 ];
 
 export default function App() {
-  const [profiles, setProfiles] = useState(db.getProfiles());
-  const [activeProfileId, setActiveProfileId] = useState(db.getActiveProfileId());
+  const [profiles, setProfiles] = useState<any[]>(db.getProfiles());
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(db.getActiveProfileId());
   
-  const [books, setBooks] = useState([]);
-  const [activeBook, setActiveBook] = useState(null);
-  const [wordStatuses, setWordStatuses] = useState({});
+  const [books, setBooks] = useState<any[]>([]);
+  const [activeBook, setActiveBook] = useState<any | null>(null);
+  const [wordStatuses, setWordStatuses] = useState<Record<string, string>>({});
   const [libraryTab, setLibraryTab] = useState('library');
-  const [settings, setSettings] = useState(() => {
+  const [settings, setSettings] = useState<any>(() => {
     const s = db.getSettings();
-    // Expose theme globally for iframe CSS injection
     window.__yoruTheme = s.theme || 'dark';
     return s;
   });
   const lang = settings.appLanguage || 'es';
   const [isInfoOpen, setIsInfoOpen] = useState(false);
-  const [infoBook, setInfoBook] = useState(null);
+  const [infoBook, setInfoBook] = useState<any | null>(null);
 
   const { showConfirm, confirmModal } = useConfirm();
 
-  const uniqueWordsCacheRef = React.useRef({});
+  const uniqueWordsCacheRef = useRef<Record<string, { uniqueWords: Set<string>; tokens: any[] }>>({});
 
   // Run background database maintenance tasks exactly once on app startup
   useEffect(() => {
-    // Register Yoru extension local API bridge IPC listeners
-    let unsubscribeQuery = null;
-    let unsubscribeSave = null;
-    let unsubscribeParse = null;
-    let unsubscribeUpdateStatus = null;
+    let unsubscribeQuery: any = null;
+    let unsubscribeSave: any = null;
+    let unsubscribeParse: any = null;
+    let unsubscribeUpdateStatus: any = null;
 
     if (window.electronAPI) {
-      // 1. Query word statuses (new/learning/known)
       if (window.electronAPI.onQueryWordStatuses) {
-        unsubscribeQuery = window.electronAPI.onQueryWordStatuses((words) => {
+        unsubscribeQuery = window.electronAPI.onQueryWordStatuses((words: string[]) => {
           const statuses = db.getWordStatuses();
-          const result = {};
+          const result: Record<string, string> = {};
           words.forEach(w => {
             result[w] = statuses[w] || 'unknown';
           });
@@ -148,14 +152,11 @@ export default function App() {
         });
       }
 
-      // 2. Save word mined from Yoru extension to Yoru local database/SRS
       if (window.electronAPI.onSaveWordToSrs) {
-        unsubscribeSave = window.electronAPI.onSaveWordToSrs((wordData) => {
+        unsubscribeSave = window.electronAPI.onSaveWordToSrs((wordData: any) => {
           console.log('[Yoru] Mining word from extension locally:', wordData);
-          // Set status as 'learning'
           db.setWordStatus(wordData.word, 'learning');
           
-          // Save card to native local SRS Spaced Repetition System
           const existingCard = db.getSrsCard(wordData.word);
           if (!existingCard) {
             const newCard = {
@@ -172,24 +173,19 @@ export default function App() {
             console.log('[Yoru] Saved mined card to local SRS:', newCard);
           }
           
-          // Update local component state so it shows up instantly
           setWordStatuses(db.getWordStatuses());
-          
-          // Reply to confirm success
           window.electronAPI.replySaveWordToSrs();
         });
       }
 
-      // 2.5. Update word status from Yomitan (learning/known/ignored/new)
       if (window.electronAPI.onUpdateWordStatus) {
-        unsubscribeUpdateStatus = window.electronAPI.onUpdateWordStatus((data) => {
+        unsubscribeUpdateStatus = window.electronAPI.onUpdateWordStatus((data: any) => {
           const { word, state } = data;
           console.log('[Yoru] Updating word status from extension:', word, state);
           
           let newStatus = 'new';
           if (state === 'learning-add') {
             newStatus = 'learning';
-            // Save SRS card if it doesn't exist
             const existingCard = db.getSrsCard(word);
             if (!existingCard) {
               const now = new Date();
@@ -215,7 +211,6 @@ export default function App() {
             newStatus = 'ignored';
             db.saveSrsCard(word, null);
           } else {
-            // learning-remove, known-remove, ignored-remove, forget-add, new-add
             newStatus = 'new';
             db.saveSrsCard(word, null);
           }
@@ -227,14 +222,13 @@ export default function App() {
         });
       }
 
-      // 3. Parse text request from Yoru extension
       if (window.electronAPI.onParseTextRequest) {
-        unsubscribeParse = window.electronAPI.onParseTextRequest(async ({ requestId, paragraphs }) => {
+        unsubscribeParse = window.electronAPI.onParseTextRequest(async ({ requestId, paragraphs }: { requestId: string; paragraphs: string[] }) => {
           try {
             console.log('[Yoru] Parsing text request from extension. Request ID:', requestId);
             const result = await parseExtensionText(paragraphs);
             window.electronAPI.replyParseText({ requestId, result });
-          } catch (err) {
+          } catch (err: any) {
             console.error('[Yoru] Failed to parse extension text:', err);
             window.electronAPI.replyParseText({ requestId, error: err.message });
           }
@@ -269,8 +263,7 @@ export default function App() {
 
     let active = true;
     
-    const calculateVocabStats = (uniqueWords, tokens, statuses) => {
-      // 1. Unique word counts
+    const calculateVocabStats = (uniqueWords: Set<string>, tokens: any[], statuses: Record<string, string>) => {
       let knownWordsCount = 0;
       let ignoredWordsCount = 0;
       uniqueWords.forEach(word => {
@@ -284,9 +277,8 @@ export default function App() {
       const unknownWordsCount = uniqueWords.size - knownWordsCount - ignoredWordsCount;
       const coverage = uniqueWords.size > 0 ? Math.round((knownWordsCount / uniqueWords.size) * 100) : 0;
 
-      // 2. Sentence metrics (1T recommended)
-      const sentences = [];
-      let currentSentence = [];
+      const sentences: any[][] = [];
+      let currentSentence: any[] = [];
       tokens.forEach(tok => {
         currentSentence.push(tok);
         if (tok.isLineBreak || tok.surface === '。' || tok.surface === '！' || tok.surface === '？') {
@@ -307,7 +299,7 @@ export default function App() {
       let multipleUnknownSentencesCount = 0;
 
       sentences.forEach(sentence => {
-        const sentenceWords = new Set();
+        const sentenceWords = new Set<string>();
         sentence.forEach(t => {
           if (t.isWord && t.basicForm) {
             sentenceWords.add(t.basicForm);
@@ -351,10 +343,11 @@ export default function App() {
     const updateActiveBookStats = async () => {
       try {
         let cached = uniqueWordsCacheRef.current[activeBook.id];
-        let uniqueWords, tokens;
+        let uniqueWords: Set<string>;
+        let tokens: any[];
 
         if (!cached) {
-          const allText = (activeBook.chapters || []).map(c => c.content || '').join('\n');
+          const allText = (activeBook.chapters || []).map((c: any) => c.content || '').join('\n');
           if (allText.trim()) {
             const paragraphs = await tokenizeText(allText);
             tokens = paragraphs.flat();
@@ -385,7 +378,7 @@ export default function App() {
             vocabStats: stats
           });
           setBooks(updatedBooks);
-          setActiveBook(prev => {
+          setActiveBook((prev: any) => {
             if (prev && prev.id === activeBook.id) {
               return {
                 ...prev,
@@ -410,12 +403,10 @@ export default function App() {
 
   // 1. Initialize and reload data when active profile changes
   useEffect(() => {
-    setBooks([]); // Clear books state immediately to prevent ghost profile books rendering
+    setBooks([]);
     const loadBooksData = async () => {
-      // Load books
       const loadedBooks = await db.getBooks();
       if (loadedBooks.length === 0 && activeProfileId === 'profile-default') {
-        // Seed default sample books
         const seeded = SAMPLE_BOOKS.map((book, idx) => ({
           ...book,
           id: `sample-${idx}-${Date.now()}`,
@@ -434,10 +425,8 @@ export default function App() {
 
     loadBooksData();
 
-    // Load word statuses
     const loadedStatuses = db.getWordStatuses();
     
-    // Seed some initial statuses for the words in our sample text
     if (Object.keys(loadedStatuses).length === 0 && activeProfileId === 'profile-default') {
       const initialSeed = {
         '時間': 'new',
@@ -455,7 +444,7 @@ export default function App() {
       setWordStatuses(initialSeed);
     } else {
       const runMigration = async () => {
-        const cleanWord = (val) => {
+        const cleanWord = (val: string) => {
           if (!val) return '';
           let s = val.replace(/<[^>]*>/g, '');
           s = s.replace(/\[[^\]]*\]/g, '')
@@ -467,7 +456,7 @@ export default function App() {
           return s.trim();
         };
 
-        const sanitizedStatuses = {};
+        const sanitizedStatuses: Record<string, string> = {};
         let needsMigration = false;
 
         for (const [key, val] of Object.entries(loadedStatuses)) {
@@ -521,11 +510,9 @@ export default function App() {
       runMigration();
     }
 
-    // Load settings
     setSettings(db.getSettings());
   }, [activeProfileId]);
 
-  // Toggle 'reader-active' class on body to control scrollbar visibility
   useEffect(() => {
     if (activeBook) {
       document.body.classList.add('reader-active');
@@ -537,38 +524,29 @@ export default function App() {
     };
   }, [activeBook]);
 
-  // 2. Handle selecting a book
-  const handleSelectBook = async (book) => {
+  const handleSelectBook = async (book: any) => {
     setActiveBook(book);
     await db.updateBookDetails(book.id, { lastRead: new Date().toISOString() });
     const loadedBooks = await db.getBooks();
     setBooks(loadedBooks);
   };
 
-  // 3. Handle updating book reading progress
-  // 3. Handle updating book reading progress
-  const handleUpdateProgress = useCallback(async (bookId, currentChapter, currentPage, percent) => {
-    // Solo persistimos en DB y actualizamos la lista de libros.
-    // Reader gestiona su propio currentPage/currentChapter internamente,
-    // por lo que actualizar activeBook aquí causaría un re-render innecesario.
+  const handleUpdateProgress = useCallback(async (bookId: string, currentChapter: number, currentPage: number, percent: number) => {
     const updatedBooks = await db.updateBookProgress(bookId, currentChapter, currentPage, percent);
     setBooks(updatedBooks);
-  }, []);  // Sin deps de activeBook → identidad estable entre renders
+  }, []);
 
-  const handleIncrementReadingStats = useCallback(async (bookId, chars, seconds) => {
-    // Solo persistimos stats en DB. Reader maneja sus propios contadores en refs.
-    // Actualizar activeBook causaría un re-render de Reader cada 5 segundos.
+  const handleIncrementReadingStats = useCallback(async (bookId: string, chars: number, seconds: number) => {
     const updatedBooks = await db.incrementReadingStats(bookId, chars, seconds);
     setBooks(updatedBooks);
-  }, []);  // Sin deps de activeBook → identidad estable
-  // 4. Handle adding custom books
-  const handleAddBooks = async (booksData) => {
+  }, []);
+
+  const handleAddBooks = async (booksData: any[]) => {
     const updatedBooks = await db.addBooks(booksData);
     setBooks(updatedBooks);
   };
 
-  // 5. Handle deleting a book
-  const handleDeleteBook = async (bookId) => {
+  const handleDeleteBook = async (bookId: string) => {
     const updatedBooks = await db.deleteBook(bookId);
     setBooks(updatedBooks);
     if (activeBook && activeBook.id === bookId) {
@@ -576,8 +554,7 @@ export default function App() {
     }
   };
 
-  // 5c. Handle deleting multiple books
-  const handleBulkDeleteBooks = async (bookIds) => {
+  const handleBulkDeleteBooks = async (bookIds: string[]) => {
     const updatedBooks = await db.deleteBooks(bookIds);
     setBooks(updatedBooks);
     if (activeBook && bookIds.includes(activeBook.id)) {
@@ -590,8 +567,7 @@ export default function App() {
     setBooks(updatedBooks);
   };
 
-  // 5b. Handle updating book details
-  const handleUpdateBookDetails = async (bookId, data) => {
+  const handleUpdateBookDetails = async (bookId: string, data: any) => {
     const updatedBooks = await db.updateBookDetails(bookId, data);
     setBooks(updatedBooks);
     if (activeBook && activeBook.id === bookId) {
@@ -599,19 +575,16 @@ export default function App() {
     }
   };
 
-  // 6. Handle vocabulary status changes
-  // wordData: optional { reading, meaning } passed from Reader when marking as known
-  const handleSetWordStatus = async (word, status, wordData = null) => {
+  const handleSetWordStatus = async (word: string, status: string, wordData: any = null) => {
     const updatedStatuses = db.setWordStatus(word, status);
     setWordStatuses(updatedStatuses);
 
-    // Auto-mature (and auto-create if needed) in Anki when status becomes 'known'
     if (status !== 'known') return;
 
     const savedAnki = localStorage.getItem('anki_settings_v2');
     if (!savedAnki) return;
 
-    let ankiOpts;
+    let ankiOpts: any;
     try { ankiOpts = JSON.parse(savedAnki); } catch { return; }
     if (!ankiOpts.enabled) return;
 
@@ -621,7 +594,7 @@ export default function App() {
     const fields = ankiOpts.expression?.fields || {};
     const wordField = ankiOpts.importWordField || Object.keys(fields).find(k => fields[k] === '{expression}') || 'Expression';
 
-    const ankiFetch = async (action, params) => {
+    const ankiFetch = async (action: string, params: any) => {
       try {
         const r = await fetch(host, {
           method: 'POST',
@@ -632,11 +605,8 @@ export default function App() {
       } catch { return null; }
     };
 
-    // 1. Search for existing notes matching this word across ALL decks and common field names.
-    // Different decks use different field names (e.g. Core 2k/6k uses "Vocabulary-Kanji",
-    // Lapis/Yomitan uses "Expression", etc.), so we try all common ones to avoid duplicates.
     const COMMON_WORD_FIELDS = [
-      wordField,          // the user's configured field (highest priority)
+      wordField,
       'Expression',
       'Vocabulary-Kanji',
       'VocabKanji',
@@ -649,7 +619,6 @@ export default function App() {
       'Vocab',
       'Reading',
     ];
-    // De-duplicate while preserving order
     const fieldsToTry = [...new Set(COMMON_WORD_FIELDS)];
 
     let noteIds = null;
@@ -663,33 +632,26 @@ export default function App() {
       }
     }
 
-
-    const matureCards = async (cIds) => {
+    const matureCards = async (cIds: number[]) => {
       if (!cIds || cIds.length === 0) return;
-      // Set ease to 2500 (normal) and interval to 30 days → card becomes "mature"
       await ankiFetch('setEaseFactors', { cardIds: cIds, easeFactors: cIds.map(() => 2500) });
-      const today = Math.floor(Date.now() / 86400000); // Anki uses days-since-epoch
-      const dues = {};
-      cIds.forEach(id => { dues[String(id)] = today + 30; });
+      const today = Math.floor(Date.now() / 86400000);
       await ankiFetch('setSpecificCardInfo', { cards: cIds.map(id => ({ id, interval: 30, ease: 2500, lapses: 0, reviews: 1 })) });
       console.log(`[Yoru] Matured ${cIds.length} card(s) for word: "${word}"`);
     };
 
     if (noteIds && noteIds.length > 0) {
-      // Cards exist → get their card IDs and mature them
       const cardsResult = await ankiFetch('notesInfo', { notes: noteIds });
-      const cardIds = (cardsResult?.result || []).flatMap(n => n.cards || []);
+      const cardIds = (cardsResult?.result || []).flatMap((n: any) => n.cards || []);
       await matureCards(cardIds);
     } else {
-      // No card exists → create one with word data, then mature it
-      // Build minimal fields using configured mapping or sensible defaults
-      const noteFields = {};
+      const noteFields: Record<string, string> = {};
       const reading = wordData?.reading || word;
       const meaning = wordData?.meaning || '';
 
       for (const [fieldName, tmpl] of Object.entries(fields)) {
         if (!tmpl) { noteFields[fieldName] = ''; continue; }
-        noteFields[fieldName] = tmpl
+        noteFields[fieldName] = (tmpl as string)
           .replaceAll('{expression}', word)
           .replaceAll('{furigana}', reading)
           .replaceAll('{reading}', reading)
@@ -698,7 +660,6 @@ export default function App() {
           .replaceAll('{glossary-brief}', meaning)
           .replaceAll('{glossary-first}', meaning)
           .replaceAll('{bilingual}', meaning)
-          // clear media placeholders — we have no screenshot/audio in silent mode
           .replaceAll('{audio}', '')
           .replaceAll('{screenshot}', '')
           .replaceAll('{sentence}', '')
@@ -708,13 +669,12 @@ export default function App() {
           .replaceAll(/\{[^}]+\}/g, '');
       }
 
-      // Fallback: if fields is empty use bare minimum
       if (Object.keys(noteFields).length === 0) {
         noteFields[wordField] = word;
       }
 
       const rawTags = ankiOpts.tags || 'yoru_reader';
-      const tagsList = rawTags.split(/[\s,]+/).filter(t => t.trim());
+      const tagsList = rawTags.split(/[\s,]+/).filter((t: string) => t.trim());
       if (!tagsList.includes('yoru_reader')) tagsList.push('yoru_reader');
       if (!tagsList.includes('auto_known')) tagsList.push('auto_known');
 
@@ -729,9 +689,8 @@ export default function App() {
       });
 
       if (addResult?.result) {
-        // Get the card IDs for the newly created note and mature them
         const newNoteInfo = await ankiFetch('notesInfo', { notes: [addResult.result] });
-        const newCardIds = (newNoteInfo?.result || []).flatMap(n => n.cards || []);
+        const newCardIds = (newNoteInfo?.result || []).flatMap((n: any) => n.cards || []);
         await matureCards(newCardIds);
         console.log(`[Yoru] Created + matured card for word: "${word}"`);
       } else {
@@ -740,24 +699,20 @@ export default function App() {
     }
   };
 
-
-  // 7. Handle settings adjustments
-  const handleSaveSettings = (newSettings) => {
+  const handleSaveSettings = (newSettings: any) => {
     db.saveSettings(newSettings);
     setSettings(newSettings);
-    // Invalidar cachés de búsqueda: el usuario puede haber cambiado dicts activos/orden
     clearYomitanCache();
   };
 
-  // 8. Profiles Management Actions
-  const handleSelectProfile = (profileId) => {
-    setBooks([]); // Reset books synchronously to avoid any ghost render/flashes
+  const handleSelectProfile = (profileId: string) => {
+    setBooks([]);
     db.setActiveProfileId(profileId);
     setActiveProfileId(profileId);
   };
 
-  const handleAddProfile = (newProfile) => {
-    setBooks([]); // Reset books synchronously to avoid any ghost render/flashes
+  const handleAddProfile = (newProfile: any) => {
+    setBooks([]);
     const currentSettings = db.getSettings();
     const updatedProfiles = [...profiles, newProfile];
     db.saveProfiles(updatedProfiles);
@@ -768,7 +723,7 @@ export default function App() {
     setActiveProfileId(newProfile.id);
   };
 
-  const handleDeleteProfile = async (profileId) => {
+  const handleDeleteProfile = async (profileId: string) => {
     if (profiles.length <= 1) {
       await showConfirm({
         title: lang === 'es' ? 'Acción no permitida' : 'Action not allowed',
@@ -788,7 +743,7 @@ export default function App() {
       confirmText: lang === 'es' ? 'Eliminar' : 'Delete',
     });
     if (ok) {
-      setBooks([]); // Reset books synchronously to avoid any ghost render/flashes
+      setBooks([]);
       const updatedProfiles = profiles.filter(p => p.id !== profileId);
       db.saveProfiles(updatedProfiles);
       setProfiles(updatedProfiles);
@@ -801,12 +756,11 @@ export default function App() {
     }
   };
 
-  const handleUpdateProfile = (profileId, updatedData) => {
+  const handleUpdateProfile = (profileId: string, updatedData: any) => {
     const updatedProfiles = profiles.map(p => p.id === profileId ? { ...p, ...updatedData } : p);
     db.saveProfiles(updatedProfiles);
     setProfiles(updatedProfiles);
     
-    // Force activeProfileId reload if the edited profile was the active one
     if (activeProfileId === profileId) {
       setActiveProfileId(null);
       setTimeout(() => {
@@ -852,7 +806,7 @@ export default function App() {
             setIsInfoOpen(true);
           }}
           profiles={profiles}
-          activeProfileId={activeProfileId}
+          activeProfileId={activeProfileId || ''}
           onSelectProfile={handleSelectProfile}
           onAddProfile={handleAddProfile}
           onDeleteProfile={handleDeleteProfile}
@@ -883,7 +837,7 @@ export default function App() {
         )}
       </React.Suspense>
 
-      {/* Styled confirm modal (replaces native window.confirm) */}
+      {/* Styled confirm modal */}
       {confirmModal}
     </div>
   );

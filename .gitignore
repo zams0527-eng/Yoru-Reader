@@ -80,7 +80,10 @@ locales/
 # ====================================================================
 # AGENTES, ARCHIVOS LOCALES Y DESCARGAS
 # ====================================================================
-.agents/
+# Permitir compartir reglas de agentes
+!.agents/
+.agents/scratch/
+.agents/tmp/
 test_db.js
 test_db.cjs
 public/yoru-reader/
@@ -104,3 +107,32 @@ electron_debug.log*
 .DS_Store
 Thumbs.db
 .vscode/
+
+# ====================================================================
+# CONFIGURACIÓN LOCAL, FRONTEND Y BACKEND
+# ====================================================================
+# Variables de entorno y llaves secretas locales
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*
+*.env
+
+# Temporales de frontend y backend
+frontend/build/
+frontend/dist/
+frontend/out/
+frontend/node_modules/
+backend/build/
+backend/dist/
+backend/out/
+backend/node_modules/
+
+# Temporales del subproyecto Svelte
+yoru-reader-svelte/.svelte-kit/
+yoru-reader-svelte/build/
+yoru-reader-svelte/dist/
+yoru-reader-svelte/node_modules/
+yoru-reader-svelte/*.mjs
