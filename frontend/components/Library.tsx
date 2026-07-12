@@ -92,6 +92,7 @@ const Library = React.memo(function Library({
   const [currentBackendVersion, setCurrentBackendVersion] = useState(stableManifest.backendVersion);
   const [currentAppVersion, setCurrentAppVersion] = useState(stableManifest.appVersion);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
+  const [remoteManifest, setRemoteManifest] = useState<any>(null);
   const [bindingKeyAction, setBindingKeyAction] = useState(null);
 
   useEffect(() => {
@@ -179,6 +180,7 @@ const Library = React.memo(function Library({
 
         setLatestAppVersion(remote.appVersion);
         setLatestBackendVersion(remote.backendVersion);
+        setRemoteManifest(remote);
         setAppStatus(appNewer ? 'out-of-date' : 'up-to-date');
         setBackendStatus(backendNewer ? 'out-of-date' : 'up-to-date');
 
@@ -213,6 +215,7 @@ const Library = React.memo(function Library({
 
       setLatestAppVersion(remote.appVersion);
       setLatestBackendVersion(remote.backendVersion);
+      setRemoteManifest(remote);
       setAppStatus(appNewer ? 'out-of-date' : 'up-to-date');
       setBackendStatus(backendNewer ? 'out-of-date' : 'up-to-date');
 
@@ -246,8 +249,17 @@ const Library = React.memo(function Library({
 
   const handleUpdateNow = () => {
     setUpdating(true);
-    // Open the official releases page in default browser so the user can download the latest version
-    window.open(stableManifest.url || 'https://github.com/zams0527-eng/Yoru-Reader/releases/latest', '_blank');
+    
+    // Open the official downloads folder or the raw file url in the browser
+    const isAndroid = window.Capacitor && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === 'android';
+    const targetUrl = remoteManifest?.url 
+      ? remoteManifest.url 
+      : (isAndroid 
+          ? 'https://github.com/zams0527-eng/Yoru-Reader/raw/main/downloads/Yoru-Reader-1.1.0.apk'
+          : 'https://github.com/zams0527-eng/Yoru-Reader/raw/main/downloads/Yoru-Reader%20Setup%201.1.0.exe'
+        );
+        
+    window.open(targetUrl, '_blank');
     
     setTimeout(() => {
       setUpdating(false);
