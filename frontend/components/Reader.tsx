@@ -13,6 +13,7 @@ import ReaderNavbar from './reader/ReaderNavbar';
 import ReaderSidebar from './reader/ReaderSidebar';
 import ReaderSettings from './reader/ReaderSettings';
 import ReaderSettingsPopover from './reader/ReaderSettingsPopover';
+import YoruParserSettings from './reader/YoruParserSettings';
 import CharacterCounter from './reader/CharacterCounter';
 import SelectionToolbar from './reader/SelectionToolbar';
 import { useReaderSettings, ReaderSettingsState } from '../hooks/useReaderSettings';
@@ -44,6 +45,19 @@ function getSentenceFromSelection(selection: Selection): string {
   const sentences = text.split(/(?<=[。！？\n])/g);
   const match = sentences.find(s => s.includes(selectedText));
   return match ? match.trim() : selectedText;
+}
+
+function getSentenceFromElement(element: HTMLElement): string {
+  let container: Node | null = element;
+  while (container && container.nodeType !== Node.ELEMENT_NODE) {
+    container = container.parentNode;
+  }
+  if (!container) return '';
+  const text = container.textContent || '';
+  const wordText = element.textContent || '';
+  const sentences = text.split(/(?<=[。！？\n])/g);
+  const match = sentences.find(s => s.includes(wordText));
+  return match ? match.trim() : wordText;
 }
 
 export function getUniqueFrequencies(frequencies: any[]): any[] {
@@ -192,6 +206,7 @@ export default function Reader({
   const [showSettingsPopover, setShowSettingsPopover] = useState(false);
   
   const containerRef = useRef<HTMLDivElement>(null);
+  const hoveredElementRef = useRef<HTMLElement | null>(null);
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
   const ttsKeepAliveRef = useRef<any>(null);
   const [popupPos, setPopupPos] = useState({ x: 0, y: 0, anchorBottom: false });
@@ -295,26 +310,9 @@ export default function Reader({
     }
   }, []);
 
-  const handleOpenExtensionSettings = useCallback(async () => {
-    let id = extId;
-    if (!id && window.electronAPI?.getReaderExtId) {
-      try {
-        id = await window.electronAPI.getReaderExtId();
-        setExtId(id);
-      } catch (err) {
-        console.error('Failed to get extension ID:', err);
-      }
-    }
-    if (id) {
-      setIsExtSettingsOpen(true);
-    } else {
-      if (window.electronAPI?.openReaderExtSettings) {
-        window.electronAPI.openReaderExtSettings(readerSettings.theme);
-      } else {
-        alert('Solo disponible en la versión de escritorio de Windows.');
-      }
-    }
-  }, [extId, readerSettings.theme]);
+  const handleOpenExtensionSettings = useCallback(() => {
+    setIsExtSettingsOpen(true);
+  }, []);
 
   const handleReaderKeydown = useCallback((e: KeyboardEvent) => {
     if (isExtSettingsOpen || isJumpModalOpen || isGalleryOpen) {
@@ -449,24 +447,115 @@ export default function Reader({
     }
   }, []);
 
-  useEffect(() => {
-    const contentArea = document.getElementById('reader-content');
-    if (!contentArea) return;
+  const triggerWordLookup = useCallback(async (wordSpan: HTMLElement) => {
+    const wordId = wordSpan.getAttribute('wordId');
+    if (!wordId) return;
+    
+    let word = wordId;
+    let reading = '';
+    if (wordId.includes(':')) {
+      const parts = wordId.split(':');
+      word = parts[0];
+      reading = parts[1];
+    }
+    
+    if (selectedWord && selectedWord.basicForm === word && selectedWord.reading === reading) {
+      return;
+    }
+    
+    const rect = wordSpan.getBoundingClientRect();
+    const x = Math.max(10, Math.min(window.innerWidth - 390, rect.left));
+    const top = rect.top;
+    const bottom = rect.bottom;
+    const anchorBottom = top > window.innerHeight / 2;
+    const y = anchorBottom ? top - 6 : bottom + 6;
+    
+    setPopupPos({ x, y, anchorBottom });
+    setDictLoading(true);
+    
+    setSelectedWord({
+      surface: wordSpan.innerText,
+      basicForm: word,
+      reading: reading,
+      sentenceText: getSentenceFromElement(wordSpan)
+    });
+    
+    const entry = await lookupWord(word);
+    setDictEntry(entry);
+    setDictLoading(false);
+  }, [selectedWord]);
 
-    contentArea.addEventListener('mouseup', handleSelection);
-    contentArea.addEventListener('touchend', handleSelection);
+  useEffect(() => {
+    // Handle selection-based dictionary lookup (bubbles up to window)
+    const handleMouseUp = () => {
+      const selectionObj = window.getSelection();
+      if (!selectionObj) return;
+      const anchorNode = selectionObj.anchorNode;
+      if (!anchorNode) return;
+      
+      const contentArea = document.querySelector('.book-content-container');
+      if (contentArea && contentArea.contains(anchorNode)) {
+        handleSelection();
+      }
+    };
 
     const handleDblClick = () => {
-      setTimeout(handleSelection, 80);
+      setTimeout(handleMouseUp, 80);
     };
-    contentArea.addEventListener('dblclick', handleDblClick);
+
+    // Tracks target element and triggers if Shift is held down
+    const handleMouseOver = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      hoveredElementRef.current = target;
+      
+      if (e.shiftKey) {
+        const wordSpan = target.closest('[wordId]') as HTMLElement;
+        if (wordSpan) {
+          triggerWordLookup(wordSpan);
+        }
+      }
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      hoveredElementRef.current = target;
+      
+      if (e.shiftKey) {
+        const wordSpan = target.closest('[wordId]') as HTMLElement;
+        if (wordSpan) {
+          triggerWordLookup(wordSpan);
+        }
+      }
+    };
+
+    // Global KeyDown to support pressing Shift while hovering
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        if (hoveredElementRef.current) {
+          const wordSpan = hoveredElementRef.current.closest('[wordId]') as HTMLElement;
+          if (wordSpan) {
+            triggerWordLookup(wordSpan);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('touchend', handleMouseUp);
+    window.addEventListener('dblclick', handleDblClick);
+    window.addEventListener('mouseover', handleMouseOver);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('keydown', handleGlobalKeyDown);
 
     return () => {
-      contentArea.removeEventListener('mouseup', handleSelection);
-      contentArea.removeEventListener('touchend', handleSelection);
-      contentArea.removeEventListener('dblclick', handleDblClick);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchend', handleMouseUp);
+      window.removeEventListener('dblclick', handleDblClick);
+      window.removeEventListener('mouseover', handleMouseOver);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('keydown', handleGlobalKeyDown);
     };
-  }, [handleSelection]);
+  }, [handleSelection, triggerWordLookup]);
 
   const handleCopyText = useCallback(() => {
     if (!selection) return;
@@ -1414,6 +1503,7 @@ export default function Reader({
   return (
     <div 
       ref={containerRef}
+      className="reader-container"
       data-theme={readerSettings.theme || 'dark'}
       style={{
         width: '100%',
@@ -1782,76 +1872,12 @@ export default function Reader({
         </div>
       )}
 
-      {isExtSettingsOpen && extId && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.6)',
-          zIndex: 10020,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          backdropFilter: 'blur(4px)',
-        }}>
-          <div style={{
-            background: colors.bg || '#0c0c0e',
-            border: `1px solid ${colors.border || 'rgba(255,255,255,0.1)'}`,
-            borderRadius: '16px',
-            width: '90%',
-            maxWidth: '960px',
-            height: '80%',
-            maxHeight: '720px',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-          }}>
-            {/* Modal Header */}
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '16px 24px',
-              borderBottom: `1px solid ${colors.border || 'rgba(255,255,255,0.1)'}`,
-              background: colors.popoverBg || 'rgba(255,255,255,0.02)',
-            }}>
-              <h3 style={{ margin: 0, color: colors.textMain, fontSize: '1.1rem', fontWeight: 700, fontFamily: 'var(--font-ui), sans-serif' }}>
-                {lang === 'es' ? 'Ajustes de Parseo' : 'Parser Settings'}
-              </h3>
-              <button
-                onClick={() => setIsExtSettingsOpen(false)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: colors.textMuted,
-                  cursor: 'pointer',
-                  fontSize: '1.2rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '4px',
-                }}
-              >
-                ✕
-              </button>
-            </div>
-            {/* Modal Body (Iframe) */}
-            <iframe
-              src={`chrome-extension://${extId}/views/settings.html?theme=${readerSettings.theme}`}
-              style={{
-                flex: 1,
-                border: 'none',
-                width: '100%',
-                height: '100%',
-                background: 'transparent',
-              }}
-            />
-          </div>
-        </div>
-      )}
+      <YoruParserSettings
+        isOpen={isExtSettingsOpen}
+        onClose={() => setIsExtSettingsOpen(false)}
+        colors={colors}
+        lang={lang}
+      />
 
       <CharacterCounter
         currChars={currentProgress.currChars}

@@ -40,7 +40,7 @@ export function initTokenizer(): Promise<any> {
     
     function build() {
       window.kuromoji.builder({
-        dicPath: "https://cdn.jsdelivr.net/npm/kuromoji@0.1.2/dict/"
+        dicPath: "dict/"
       }).build((err: any, tokenizer: any) => {
         if (err) {
           console.error("Error building kuromoji tokenizer:", err);
@@ -467,12 +467,14 @@ export async function parseExtensionText(paragraphs: string[]): Promise<Extensio
         }
       }
       
-      paraTokens.push({
-        start,
-        end,
-        wordId,
-        readingIndex: 0
-      });
+      if (wordId) {
+        paraTokens.push({
+          start,
+          end,
+          wordId,
+          readingIndex: 0
+        });
+      }
     }
     
     tokens.push(paraTokens);

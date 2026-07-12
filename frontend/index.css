@@ -7281,4 +7281,23 @@ input[type="range"]::-webkit-slider-runnable-track {
   box-shadow: 0 8px 28px rgba(139, 90, 43, 0.5), 0 0 60px rgba(139, 90, 43, 0.15);
 }
 
+/* Hide Jiten completely by default on non-reader views */
+#ajb-reader {
+  display: none !important;
+}
+body:has(.reader-container) #ajb-reader {
+  display: block !important;
+}
+
+/* Hide Jiten's status bar and parse button completely to behave as a native function of the reader */
+#ajb-status-bar,
+#ajb-parse-button {
+  display: none !important;
+}
+
+/* Hide Jiten's built-in popup completely to favor Yoru's native dictionary popup */
+#ajb-popup {
+  display: none !important;
+}
+
 

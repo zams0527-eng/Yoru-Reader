@@ -89,8 +89,8 @@ const DEFAULT_CONFIGURATION = Object.freeze({
     themeAccentColour: '#D8B9FA',
     //#endregion
     //#region JPDB Integration
-    jitenApiKey: '',
-    jitenApiEndpoint: 'https://api.jiten.moe/api',
+    jitenApiKey: 'local',
+    jitenApiEndpoint: 'http://127.0.0.1:23280',
     //#endregion
     //#region Mining configuration
     jitenAddToForq: false,
@@ -2667,7 +2667,14 @@ class Parser {
                 const key = this.buildLookupKey(token.wordId, token.readingIndex);
                 const vocabEntry = vocabMap.get(key);
                 const card = cardMap.get(key);
-                const isParticle = card.partsOfSpeech.includes('prt');
+                if (!card) {
+                    return {
+                        ...token,
+                        pitchClass: '',
+                        rubies: [],
+                    };
+                }
+                const isParticle = card.partsOfSpeech && card.partsOfSpeech.includes('prt');
                 const pitchClass = isParticle ? '' : (0,_pitch_accent_utils__WEBPACK_IMPORTED_MODULE_1__.getPitchClass)(card.pitchAccents, card.reading);
                 lastPitchClass = pitchClass || lastPitchClass;
                 const rubies = vocabEntry?.reading

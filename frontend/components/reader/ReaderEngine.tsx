@@ -48,7 +48,7 @@ interface ReaderEngineProps {
  * Replaces the Svelte iframe. Renders book chapter HTML directly in the DOM
  * using CSS columns for pagination and writing-mode for vertical reading.
  *
- * Inspired by Lumi Reader's ReaderContent.tsx
+
  */
 const ReaderEngine = React.memo(function ReaderEngine({
   book,
@@ -502,18 +502,40 @@ const ReaderEngine = React.memo(function ReaderEngine({
       ref={containerRef}
       style={containerStyle}
       onClick={handleContentClick}
-      className="reader-engine-container"
+      className="reader-engine-container book-content"
     >
       <div
         ref={contentRef}
-        id="reader-content"
+        id={`reader-content-sec-${currSection}`}
         style={contentStyle}
-        className="reader-engine-content"
+        className="reader-engine-content book-content-container"
         dangerouslySetInnerHTML={{ __html: currentHtml }}
       />
       {/* Render children (overlays like selection toolbar, char counter) */}
       {children}
     </div>
+  );
+}, (prevProps, nextProps) => {
+  return (
+    prevProps.book.id === nextProps.book.id &&
+    prevProps.book._savedSection === nextProps.book._savedSection &&
+    prevProps.readerSettings.fontSize === nextProps.readerSettings.fontSize &&
+    prevProps.readerSettings.lineHeight === nextProps.readerSettings.lineHeight &&
+    prevProps.readerSettings.fontFamily === nextProps.readerSettings.fontFamily &&
+    prevProps.readerSettings.verticalPadding === nextProps.readerSettings.verticalPadding &&
+    prevProps.readerSettings.horizontalPadding === nextProps.readerSettings.horizontalPadding &&
+    prevProps.readerSettings.vertical === nextProps.readerSettings.vertical &&
+    prevProps.readerSettings.paginated === nextProps.readerSettings.paginated &&
+    prevProps.readerSettings.showFurigana === nextProps.readerSettings.showFurigana &&
+    prevProps.readerSettings.disableCss === nextProps.readerSettings.disableCss &&
+    prevProps.readerSettings.theme === nextProps.readerSettings.theme &&
+    prevProps.readerSettings.showProgressLine === nextProps.readerSettings.showProgressLine &&
+    prevProps.readerSettings.direction === nextProps.readerSettings.direction &&
+    prevProps.colors.bg === nextProps.colors.bg &&
+    prevProps.colors.textMain === nextProps.colors.textMain &&
+    prevProps.targetSection === nextProps.targetSection &&
+    prevProps.targetParagraphId === nextProps.targetParagraphId &&
+    prevProps.targetCharPosition === nextProps.targetCharPosition
   );
 });
 

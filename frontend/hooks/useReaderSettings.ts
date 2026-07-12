@@ -1,5 +1,5 @@
 // Reader settings hook for Yoru Reader
-// Inspired by Lumi Reader's createReaderSettings
+
 // Persists to localStorage and reflects changes into CSS variables
 
 import { useState, useCallback, useEffect } from 'react';

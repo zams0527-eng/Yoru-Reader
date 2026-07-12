@@ -89,8 +89,8 @@ const DEFAULT_CONFIGURATION = Object.freeze({
     themeAccentColour: '#D8B9FA',
     //#endregion
     //#region JPDB Integration
-    jitenApiKey: '',
-    jitenApiEndpoint: 'https://api.jiten.moe/api',
+    jitenApiKey: 'local',
+    jitenApiEndpoint: 'http://127.0.0.1:23280',
     //#endregion
     //#region Mining configuration
     jitenAddToForq: false,

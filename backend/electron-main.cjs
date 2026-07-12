@@ -42,6 +42,7 @@ console.error = function(...args) {
 };
 
 let oauthServer = null;
+let mainWindow = null;
 
 function createWindow() {
   // Clear HTTP cache on startup to ensure we don't load old compiled reader assets
@@ -61,6 +62,7 @@ function createWindow() {
     autoHideMenuBar: true,
     title: "Yoru Reader"
   });
+  mainWindow = win;
 
   if (!app.isPackaged) {
     win.webContents.openDevTools();
@@ -384,6 +386,7 @@ ipcMain.on('reply-parse-text', (event, { requestId, result, error }) => {
   const pending = pendingParses.get(requestId);
   if (pending) {
     if (error) {
+      console.error(`[main] parse-text error for request ${requestId}:`, error);
       pending.reject(new Error(error));
     } else {
       pending.resolve(result);
@@ -482,6 +485,12 @@ function startLocalExtServer() {
     res.setHeader('Content-Type', 'application/json');
 
     try {
+      if (pathName === 'reader/ping') {
+        res.writeHead(200);
+        res.end(JSON.stringify({ success: true }));
+        return;
+      }
+      
       if (pathName === 'reader/parse') {
         if (!mainWindow) throw new Error("Main window not available");
         
@@ -619,6 +628,13 @@ app.whenReady().then(async () => {
     const url = new URL(request.url);
     const pathName = url.pathname.slice(1);
     console.log(`[yoru-reader-ext] Intercepted path: ${pathName}`);
+
+    if (pathName === 'reader/ping') {
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      });
+    }
 
     if (pathName === 'reader/parse') {
       try {

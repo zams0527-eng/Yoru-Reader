@@ -91,8 +91,8 @@ const DEFAULT_CONFIGURATION = Object.freeze({
     themeAccentColour: '#D8B9FA',
     //#endregion
     //#region JPDB Integration
-    jitenApiKey: '',
-    jitenApiEndpoint: 'https://api.jiten.moe/api',
+    jitenApiKey: 'local',
+    jitenApiEndpoint: 'http://127.0.0.1:23280',
     //#endregion
     //#region Mining configuration
     jitenAddToForq: false,
@@ -3085,12 +3085,14 @@ const matchUrl = (matchPattern, host) => {
     if (patternSchema !== '*' && patternSchema !== hostSchema) {
         return false;
     }
+    const patternPathSafe = patternPath || '*';
+    const hostPathSafe = hostPath || '';
     const hostRegex = new RegExp(`^${patternHost.replace(/\./g, '\\.').replace(/\*/g, '.*')}$`);
-    const pathRegex = new RegExp(`^${patternPath.replace(/\./g, '\\.').replace(/\*/g, '.*')}$`);
+    const pathRegex = new RegExp(`^${patternPathSafe.replace(/\./g, '\\.').replace(/\*/g, '.*')}$`);
     if (!hostHost.match(hostRegex)) {
         return false;
     }
-    if (!hostPath.match(pathRegex)) {
+    if (!hostPathSafe.match(pathRegex)) {
         return false;
     }
     return true;
@@ -3138,6 +3140,16 @@ const DEFAULT_HOSTS = [
         addedObserver: {
             notifyFor: 'div.book-content',
         },
+    },
+    {
+        id: 'yoru-parser',
+        name: 'Yoru Parser',
+        description: 'Native parser for Yoru Reader',
+        host: ['file:///*', '*://localhost/*'],
+        auto: true,
+        optOut: true,
+        allFrames: false,
+        custom: 'YoruParser',
     },
     {
         id: 'asbplayer-parser',
@@ -3293,23 +3305,7 @@ const DEFAULT_HOSTS = [
             checkNested: 'div',
         },
     },
-    {
-        id: 'yatsu-parser',
-        name: 'Yatsu Parser',
-        description: 'Parses the ebook reader Yatsu',
-        host: '*://app.yatsu.moe/b*',
-        auto: true,
-        optOut: true,
-        allFrames: false,
-        custom: 'YatsuParser',
-        parserClass: 'ttsu-parser',
-        parseVisibleObserver: true,
-        filter: '.book-content-page-measure, [aria-hidden="true"], [data-yatsu-current-position-marker], [data-yatsu-bookmark-marker]',
-        addedObserver: {
-            notifyFor: 'div.book-content:not(.book-content-page-measure)',
-            checkNested: 'div',
-        },
-    },
+
     {
         id: 'luna-translator-parser',
         name: 'Luna Translator Parser',
@@ -11270,6 +11266,10 @@ class AutomaticParser extends _base_parser__WEBPACK_IMPORTED_MODULE_4__.BasePars
         if (!this._visibleObserver) {
             return this.parseNodes(nodes, this.filter);
         }
+        const isYoru = window.location.href.startsWith('file://') || window.location.href.includes('localhost') || window.location.href.includes('127.0.0.1');
+        if (isYoru) {
+            this.visibleObserverOnEnter(nodes);
+        }
         nodes.forEach((node) => this._visibleObserver?.observe(node));
     }
     removedObserverCallback(nodes) {
@@ -11652,7 +11652,7 @@ const getCustomParser = (name, meta) => {
         MokuroLegacyParser: _custom_parsers_mokuro_legacy_parser__WEBPACK_IMPORTED_MODULE_5__.MokuroLegacyParser,
         ReadwokParser: _custom_parsers_readwok_parser__WEBPACK_IMPORTED_MODULE_7__.ReadwokParser,
         TtsuParser: _custom_parsers_ttsu_parser__WEBPACK_IMPORTED_MODULE_9__.TtsuParser,
-        YatsuParser: _custom_parsers_yatsu_parser__WEBPACK_IMPORTED_MODULE_10__.YatsuParser,
+        YoruParser: _custom_parsers_yatsu_parser__WEBPACK_IMPORTED_MODULE_10__.YoruParser,
         ExStaticParser: _custom_parsers_ex_static_parser__WEBPACK_IMPORTED_MODULE_3__.ExStaticParser,
         SatoriReaderParser: _custom_parsers_satori_reader_parser__WEBPACK_IMPORTED_MODULE_8__.SatoriReaderParser,
     };
@@ -12946,44 +12946,219 @@ class TtsuTextHighlighter extends _text_highlighter_text_highlighter__WEBPACK_IM
 "use strict";
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
-/* harmony export */   YatsuParser: () => (/* binding */ YatsuParser)
+/* harmony export */   YoruParser: () => (/* binding */ YoruParser)
 /* harmony export */ });
 /* harmony import */ var _integration_registry__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(90);
 /* harmony import */ var _ttsu_parser__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(167);
+/* harmony import */ var _automatic_parser__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(150);
+/* harmony import */ var _paragraph_reader_ttsu_paragraph_reader__WEBPACK_IMPORTED_MODULE_1B__ = __webpack_require__(168);
+/* harmony import */ var _ttsu_text_highlighter__WEBPACK_IMPORTED_MODULE_1C__ = __webpack_require__(169);
 
+/**
+ * YoruParser — Native parser built from scratch for Yoru Reader.
+ *
+ * Unlike YatsuParser (which extends TtsuParser and relies on Jiten's
+ * IntersectionObserver / addedObserver pipeline), YoruParser extends
+ * AutomaticParser directly and takes full control of the parsing lifecycle:
+ *
+ *  1. Overrides `startParsing()` to skip ALL observer setup (no parseVisibleObserver,
+ *     no addedObserver, no IntersectionObserver).
+ *  2. Directly polls for `.book-content-container` in the DOM.
+ *  3. Once found, immediately parses it via `parseNode()`.
+ *  4. Installs a lightweight MutationObserver on the container's `id` attribute
+ *     to re-parse on chapter/page changes (React updates the id to
+ *     `reader-content-sec-{sectionIndex}`).
+ *  5. Installs a body-level MutationObserver to detect when the reader opens
+ *     or closes (`.book-content-container` added/removed from DOM).
+ *
+ * This eliminates every race condition between React's mount cycle and Jiten's
+ * observer chain that caused the "sigue igual" bug.
+ */
+class YoruParser extends _automatic_parser__WEBPACK_IMPORTED_MODULE_2__.AutomaticParser {
+    constructor(meta) {
+        super(meta);
+        this._yoruPageObserver = null;
+        this._yoruBodyObserver = null;
+        this._yoruPollTimer = null;
+        this._yoruCurrentId = null;
+        this._yoruParsing = false;
+    }
 
-class YatsuParser extends _ttsu_parser__WEBPACK_IMPORTED_MODULE_1__.TtsuParser {
-    visibleObserverOnEnter(elements) {
-        const [element] = elements;
-        const container = element.querySelector('.book-content-container');
-        const chapters = element.querySelectorAll('[id^="ttu"], [id^="section-"]');
+    destroy() {
+        this._yoruPageObserver?.disconnect();
+        this._yoruBodyObserver?.disconnect();
+        if (this._yoruPollTimer !== null) {
+            clearTimeout(this._yoruPollTimer);
+            this._yoruPollTimer = null;
+        }
+        super.destroy();
+    }
+
+    /**
+     * Override: skip ALL of AutomaticParser's observer setup.
+     * We manage everything ourselves.
+     */
+    startParsing() {
+        if (this._destroyed) return;
+        this._yoruAttach();
+    }
+
+    /**
+     * Main entry: find the container and parse it, or poll until it appears.
+     */
+    _yoruAttach() {
+        if (this._destroyed) return;
+
+        const container = document.querySelector('.book-content-container');
         if (container) {
-            this._pageObserver = new MutationObserver(() => {
+            this._yoruBind(container);
+        } else {
+            // Container not in DOM yet (user hasn't opened a book).
+            // Poll briefly, then fall back to body observer.
+            this._yoruPollForContainer();
+        }
+
+        // Always install a body observer so we can re-attach when the user
+        // navigates between library ↔ reader.
+        this._yoruWatchBody();
+    }
+
+    /**
+     * Poll for `.book-content-container` every 200ms, up to 25 times (5s).
+     * If found, bind. If not, the body observer will catch it later.
+     */
+    _yoruPollForContainer() {
+        if (this._destroyed) return;
+        let attempts = 0;
+        const MAX = 25;
+
+        const poll = () => {
+            if (this._destroyed) return;
+            attempts++;
+            const container = document.querySelector('.book-content-container');
+            if (container) {
+                this._yoruPollTimer = null;
+                this._yoruBind(container);
+                return;
+            }
+            if (attempts < MAX) {
+                this._yoruPollTimer = setTimeout(poll, 200);
+            } else {
+                this._yoruPollTimer = null;
+                // Body observer is still active and will catch it
+            }
+        };
+        poll();
+    }
+
+    /**
+     * Bind to a found container: parse it immediately and observe id changes.
+     */
+    _yoruBind(container) {
+        if (this._destroyed || this._yoruParsing) return;
+
+        const currentId = container.getAttribute('id') || '';
+
+        // Skip if we already parsed this exact section
+        if (this._yoruCurrentId === currentId && container.querySelector('.jiten-word')) {
+            return;
+        }
+
+        this._yoruCurrentId = currentId;
+
+        // Disconnect previous page observer if any
+        this._yoruPageObserver?.disconnect();
+
+        // Reset sentence manager and parse immediately
+        _integration_registry__WEBPACK_IMPORTED_MODULE_0__.Registry.sentenceManager.reset();
+        this._yoruParsing = true;
+        this.parseNode(container);
+        this._yoruParsing = false;
+
+        // Watch for id changes (chapter/page turns in React)
+        this._yoruPageObserver = new MutationObserver(() => {
+            if (this._destroyed) return;
+            const newId = container.getAttribute('id') || '';
+            if (newId !== this._yoruCurrentId) {
+                this._yoruCurrentId = newId;
                 _integration_registry__WEBPACK_IMPORTED_MODULE_0__.Registry.sentenceManager.reset();
+                this._yoruParsing = true;
                 this.parseNode(container);
-            });
-            this._pageObserver.observe(container, {
-                attributes: true,
-                attributeFilter: ['id'],
-            });
-            this.parseNode(container);
-            return;
-        }
-        if (chapters.length) {
-            this.setupChapterObservers(chapters);
-            return;
-        }
-        this._pageObserver = new MutationObserver(() => {
-            if (element.querySelector('.book-content-container')) {
-                this._pageObserver?.disconnect();
-                this.visibleObserverOnEnter(elements);
+                this._yoruParsing = false;
             }
         });
-        this._pageObserver.observe(element, { childList: true, subtree: true });
+        this._yoruPageObserver.observe(container, {
+            attributes: true,
+            attributeFilter: ['id'],
+        });
+    }
+
+    /**
+     * Watch document.body for the container being added or removed.
+     * This handles: opening a book, closing a book, switching books.
+     */
+    _yoruWatchBody() {
+        if (this._destroyed || this._yoruBodyObserver) return;
+
+        this._yoruBodyObserver = new MutationObserver(() => {
+            if (this._destroyed) return;
+
+            const container = document.querySelector('.book-content-container');
+            if (container) {
+                // Container appeared — bind to it
+                this._yoruBind(container);
+            } else {
+                // Container removed — user left the reader
+                this._yoruPageObserver?.disconnect();
+                this._yoruCurrentId = null;
+            }
+        });
+
+        this._yoruBodyObserver.observe(document.body, {
+            childList: true,
+            subtree: true,
+        });
+    }
+
+    /**
+     * Override parseNodes to also install furigana reservation styles,
+     * same as TtsuParser does, since we bypass it.
+     */
+    parseNodes(nodes, filter) {
+        if (this._destroyed) return;
+        this.installAppStyles();
+        this._reserveYoruFuriganaSpace();
+        const { batchController } = _integration_registry__WEBPACK_IMPORTED_MODULE_0__.Registry;
+        batchController.registerNodes(nodes, {
+            filter,
+            collapseWhitespace: this._meta.collapseWhitespace,
+            getParagraphsFn: (node, f, cw) =>
+                new _paragraph_reader_ttsu_paragraph_reader__WEBPACK_IMPORTED_MODULE_1B__.TtsuParagraphReader(node, f, cw).read(),
+            applyFn: (fragments, tokens) => {
+                new _ttsu_text_highlighter__WEBPACK_IMPORTED_MODULE_1C__.TtsuTextHighlighter(fragments, tokens).apply();
+            },
+            onComplete: () => window.dispatchEvent(new Event('resize')),
+        });
+        batchController.parseBatches();
+    }
+
+    _reserveYoruFuriganaSpace() {
+        if (this._hasReservedFurigana) return;
+        this._hasReservedFurigana = true;
+
+        const style = document.createElement('style');
+        style.setAttribute('data-jiten-style', 'yoru-furigana-reservation');
+        const rules = [
+            '.book-content-container > *:not(.ttu-book-html-wrapper) > *,',
+            '.book-content-container > div.ttu-book-html-wrapper > div.ttu-book-body-wrapper > * {',
+            '  padding-block-start: 0.85em !important;',
+            '}',
+        ];
+        style.textContent = rules.join('\n');
+        document.head.appendChild(style);
+        window.dispatchEvent(new Event('resize'));
     }
 }
-
-
 /***/ }),
 /* 171 */
 /***/ ((__unused_webpack_module, __webpack_exports__, __webpack_require__) => {
@@ -13127,6 +13302,10 @@ const isDisabled = async (host) => {
     }
     if (meta.disabled) {
         return true;
+    }
+    // Allow manual parsing for Yoru Reader (localhost / file://) as fallback
+    if (host.startsWith('file://') || host.includes('localhost') || host.includes('127.0.0.1')) {
+        return false;
     }
     return meta.auto;
 };
@@ -13863,9 +14042,10 @@ class AJB {
             if (!canBeTriggered) {
                 parsers.push(new _parser_no_parser__WEBPACK_IMPORTED_MODULE_15__.NoParser(hostEvaluator.rejectionReason));
             }
+            const hasAutoParser = relevantMeta.some(meta => meta.auto);
             for (const meta of relevantMeta) {
                 if (!meta.auto) {
-                    if (!meta.disabled) {
+                    if (!meta.disabled && !hasAutoParser) {
                         parsers.push(new _parser_trigger_parser__WEBPACK_IMPORTED_MODULE_16__.TriggerParser(meta));
                     }
                     continue;
@@ -13941,12 +14121,101 @@ class AJB {
         _integration_registry__WEBPACK_IMPORTED_MODULE_12__.Registry.statusBar?.recalculateStats();
     }
 }
+
+/**
+ * ── Yoru Settings Bridge ───────────────────────────────────────────────
+ * Allows the main-world React app to read/write Jiten's chrome.storage.local
+ * configuration via CustomEvent messages, since the content script and the
+ * main page live in separate JavaScript worlds in Electron.
+ *
+ * Protocol:
+ *   React → content-script:  'yoru-settings-read'   { detail: { id, keys: string[] } }
+ *   content-script → React:  'yoru-settings-data'    { detail: { id, values: Record<string, any> } }
+ *   React → content-script:  'yoru-settings-write'   { detail: { id, entries: Record<string, any> } }
+ *   content-script → React:  'yoru-settings-written'  { detail: { id, ok: boolean } }
+ * ────────────────────────────────────────────────────────────────────────
+ */
+(function installYoruSettingsBridge() {
+    const PROFILE_PREFIX = 'profile:';
+    const PROFILES_STATE_KEY = '__profiles__';
+    const DEFAULT_PROFILE_ID = 'default';
+
+    async function getProfileId() {
+        try {
+            const state = await chrome.storage.local.get(PROFILES_STATE_KEY);
+            const parsed = state?.[PROFILES_STATE_KEY];
+            if (parsed) {
+                const obj = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+                return obj.activeProfileId || DEFAULT_PROFILE_ID;
+            }
+        } catch (_) { /* ignore */ }
+        return DEFAULT_PROFILE_ID;
+    }
+
+    function profileKey(profileId, key) {
+        return `${PROFILE_PREFIX}${profileId}:${key}`;
+    }
+
+    // ── READ ──
+    document.addEventListener('yoru-settings-read', async (e) => {
+        const { id, keys } = e.detail;
+        const pid = await getProfileId();
+        const values = {};
+        for (const key of keys) {
+            const pk = profileKey(pid, key);
+            try {
+                const result = await chrome.storage.local.get(pk);
+                values[key] = result?.[pk] ?? null;
+            } catch (_) {
+                values[key] = null;
+            }
+        }
+        document.dispatchEvent(new CustomEvent('yoru-settings-data', { detail: { id, values } }));
+    });
+
+    // ── WRITE ──
+    document.addEventListener('yoru-settings-write', async (e) => {
+        const { id, entries } = e.detail;
+        const pid = await getProfileId();
+        try {
+            const toSet = {};
+            for (const [key, value] of Object.entries(entries)) {
+                const pk = profileKey(pid, key);
+                toSet[pk] = typeof value === 'object' || Array.isArray(value)
+                    ? JSON.stringify(value)
+                    : String(value);
+            }
+            await chrome.storage.local.set(toSet);
+            try {
+                const cmd = new (__webpack_require__(175).ConfigurationUpdatedCommand)();
+                cmd.send();
+            } catch (e) {
+                console.warn('[YoruSettingsBridge] Broadcast failed:', e);
+            }
+            document.dispatchEvent(new CustomEvent('yoru-settings-written', { detail: { id, ok: true } }));
+        } catch (err) {
+            console.error('[YoruSettingsBridge] Write failed:', err);
+            document.dispatchEvent(new CustomEvent('yoru-settings-written', { detail: { id, ok: false } }));
+        }
+    });
+})();
+
 if (typeof window !== 'undefined' && window.location && window.location.href) {
   const href = window.location.href.toLowerCase();
-  if (href.startsWith('file://') && !href.includes('/yoru-reader/')) {
+  if (href.startsWith('file://') && !href.includes('/yoru-reader/') && !href.includes('/dist/index.html')) {
     console.log('[Yoru Extension] Running inside Yoru Reader app (non-reader page). Disabling AJB content script.');
   } else {
-    new AJB();
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        new AJB();
+      });
+    } else if (document.readyState === 'interactive') {
+      window.addEventListener('load', () => {
+        new AJB();
+      });
+    } else {
+      new AJB();
+    }
   }
 } else {
   new AJB();

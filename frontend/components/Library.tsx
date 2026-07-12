@@ -222,16 +222,16 @@ const Library = React.memo(function Library({
   const [selectMode, setSelectMode] = useState(false);
   const [selectedBookIds, setSelectedBookIds] = useState([]);
   const [sortBy, setSortBy] = useState(() => {
-    return localStorage.getItem('yatsu_sort_by') || 'added';
+    return localStorage.getItem('yoru_sort_by') || 'added';
   });
   const [sortDirection, setSortDirection] = useState(() => {
-    return localStorage.getItem('yatsu_sort_direction') || 'desc';
+    return localStorage.getItem('yoru_sort_direction') || 'desc';
   });
   const [groupSort, setGroupSort] = useState(() => {
-    return localStorage.getItem('yatsu_group_sort') || 'alphabetical';
+    return localStorage.getItem('yoru_group_sort') || 'alphabetical';
   });
   const [groupDirection, setGroupDirection] = useState(() => {
-    return localStorage.getItem('yatsu_group_direction') || 'asc';
+    return localStorage.getItem('yoru_group_direction') || 'asc';
   });
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [previewBook, setPreviewBook] = useState(null);
@@ -298,34 +298,34 @@ const Library = React.memo(function Library({
     }, 4000);
   };
 
-  // Library Display settings (Yatsu style)
+  // Library Display settings (Yoru style)
   const [cardWidth, setCardWidth] = useState(() => {
-    return parseInt(localStorage.getItem('yatsu_card_width') || '160');
+    return parseInt(localStorage.getItem('yoru_card_width') || '160');
   });
   const [coverFit, setCoverFit] = useState(() => {
-    return localStorage.getItem('yatsu_cover_fit') || 'cover'; // 'cover' | 'contain'
+    return localStorage.getItem('yoru_cover_fit') || 'cover'; // 'cover' | 'contain'
   });
   const [showCardTitle, setShowCardTitle] = useState(() => {
-    return localStorage.getItem('yatsu_show_title') !== 'false';
+    return localStorage.getItem('yoru_show_title') !== 'false';
   });
   const [showCardAuthor, setShowCardAuthor] = useState(() => {
-    return localStorage.getItem('yatsu_show_author') !== 'false';
+    return localStorage.getItem('yoru_show_author') !== 'false';
   });
   const [showCardProgress, setShowCardProgress] = useState(() => {
-    return localStorage.getItem('yatsu_show_progress') !== 'false';
+    return localStorage.getItem('yoru_show_progress') !== 'false';
   });
   const [showCardSeries, setShowCardSeries] = useState(() => {
-    return localStorage.getItem('yatsu_show_series') !== 'false';
+    return localStorage.getItem('yoru_show_series') !== 'false';
   });
   const [showCardTags, setShowCardTags] = useState(() => {
-    return localStorage.getItem('yatsu_show_tags') !== 'false';
+    return localStorage.getItem('yoru_show_tags') !== 'false';
   });
   const [showCardStatus, setShowCardStatus] = useState(() => {
-    return localStorage.getItem('yatsu_show_status') !== 'false';
+    return localStorage.getItem('yoru_show_status') !== 'false';
   });
   const [isDetailsDropdownOpen, setIsDetailsDropdownOpen] = useState(false);
   const [groupBy, setGroupBy] = useState(() => {
-    return localStorage.getItem('yatsu_group_by') || 'none'; // 'none' | 'author'
+    return localStorage.getItem('yoru_group_by') || 'none'; // 'none' | 'author'
   });
   const [isDisplaySettingsOpen, setIsDisplaySettingsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -1217,56 +1217,56 @@ const Library = React.memo(function Library({
   // Synchronize CSS variable for card width and cover fit
   useEffect(() => {
     document.documentElement.style.setProperty('--card-width', `${cardWidth}px`);
-    localStorage.setItem('yatsu_card_width', cardWidth.toString());
+    localStorage.setItem('yoru_card_width', cardWidth.toString());
   }, [cardWidth]);
 
   useEffect(() => {
     document.documentElement.style.setProperty('--cover-fit', coverFit);
-    localStorage.setItem('yatsu_cover_fit', coverFit);
+    localStorage.setItem('yoru_cover_fit', coverFit);
   }, [coverFit]);
 
   useEffect(() => {
-    localStorage.setItem('yatsu_show_title', showCardTitle.toString());
+    localStorage.setItem('yoru_show_title', showCardTitle.toString());
   }, [showCardTitle]);
 
   useEffect(() => {
-    localStorage.setItem('yatsu_show_author', showCardAuthor.toString());
+    localStorage.setItem('yoru_show_author', showCardAuthor.toString());
   }, [showCardAuthor]);
 
   useEffect(() => {
-    localStorage.setItem('yatsu_show_progress', showCardProgress.toString());
+    localStorage.setItem('yoru_show_progress', showCardProgress.toString());
   }, [showCardProgress]);
 
   useEffect(() => {
-    localStorage.setItem('yatsu_show_series', showCardSeries.toString());
+    localStorage.setItem('yoru_show_series', showCardSeries.toString());
   }, [showCardSeries]);
 
   useEffect(() => {
-    localStorage.setItem('yatsu_show_tags', showCardTags.toString());
+    localStorage.setItem('yoru_show_tags', showCardTags.toString());
   }, [showCardTags]);
 
   useEffect(() => {
-    localStorage.setItem('yatsu_show_status', showCardStatus.toString());
+    localStorage.setItem('yoru_show_status', showCardStatus.toString());
   }, [showCardStatus]);
 
   useEffect(() => {
-    localStorage.setItem('yatsu_group_by', groupBy);
+    localStorage.setItem('yoru_group_by', groupBy);
   }, [groupBy]);
 
   useEffect(() => {
-    localStorage.setItem('yatsu_sort_by', sortBy);
+    localStorage.setItem('yoru_sort_by', sortBy);
   }, [sortBy]);
 
   useEffect(() => {
-    localStorage.setItem('yatsu_sort_direction', sortDirection);
+    localStorage.setItem('yoru_sort_direction', sortDirection);
   }, [sortDirection]);
 
   useEffect(() => {
-    localStorage.setItem('yatsu_group_sort', groupSort);
+    localStorage.setItem('yoru_group_sort', groupSort);
   }, [groupSort]);
 
   useEffect(() => {
-    localStorage.setItem('yatsu_group_direction', groupDirection);
+    localStorage.setItem('yoru_group_direction', groupDirection);
   }, [groupDirection]);
 
   // Handle keyboard shortcut Q to toggle display settings
@@ -1796,7 +1796,7 @@ const Library = React.memo(function Library({
     setIsProfileDropdownOpen(false);
   };
 
-  // --- ANKI INTEGRATION & BACKUP HELPERS (Yatsu style) ---
+  // --- ANKI INTEGRATION & BACKUP HELPERS ---
   const [ankiSettings, setAnkiSettings] = useState(() => {
     const saved = localStorage.getItem('anki_settings');
     return saved ? JSON.parse(saved) : {
@@ -2494,40 +2494,7 @@ const Library = React.memo(function Library({
     return `${base} (${sortBy})`;
   };
 
-  const handleJitenSearch = async (book, e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setActiveMenuBookId(null);
-    
-    const title = book.title || '';
-    // Ensure there is a space before trailing numbers (e.g. "冴えない彼女の育てかた3" -> "冴えない彼女の育てかた 3")
-    const normalizedTitle = title
-      .replace(/([^\s0-9])([0-9]+)$/, '$1 $2')
-      .replace(/([^\s\d])(\d+)$/, '$1 $2')
-      .replace(/([^\s０-９])([０-９]+)$/, '$1 $2');
 
-    try {
-      const response = await fetch(`https://api.jiten.moe/api/media-deck/get-media-decks?titleFilter=${encodeURIComponent(normalizedTitle)}`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.length > 0) {
-          // Find closest match or default to first match
-          const exactMatch = data.find(d => 
-            d.title.toLowerCase() === normalizedTitle.toLowerCase() ||
-            (d.alternativeTitles && d.alternativeTitles.some(t => t.toLowerCase() === normalizedTitle.toLowerCase()))
-          );
-          const slug = exactMatch ? exactMatch.slug : data[0].slug;
-          window.open(`https://jiten.moe/decks/media/${slug}?referrer=yatsu`, '_blank');
-          return;
-        }
-      }
-    } catch (err) {
-      console.error('Error fetching from Jiten API:', err);
-    }
-    
-    // Fallback if API fails or no match found
-    window.open(`https://jiten.moe/decks/media?title=${encodeURIComponent(normalizedTitle)}&referrer=yatsu`, '_blank');
-  };
 
   const renderStatusBadge = (book) => {
     const status = book.status || 'unread';
@@ -4182,7 +4149,7 @@ const Library = React.memo(function Library({
 
 
 
-          {/* Card: Estadísticas (Yatsu style) */}
+          {/* Card: Estadísticas */}
           {matchesSearch('stats config estadisticas tracking delete books annotations enabled') && (settingsSearchQuery || activeSettingsSection === 'sec-stats') && (
             <div id="sec-stats" className="settings-section-card">
               <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -4854,7 +4821,7 @@ const Library = React.memo(function Library({
           </div>
         </div>
 
-        {/* SRS Stats Panel (Jiten style) */}
+        {/* SRS Stats Panel */}
         <div 
           style={{ 
             background: 'var(--bg-card)', 
@@ -6128,7 +6095,7 @@ const Library = React.memo(function Library({
         </div>
       )}
 
-      {/* Display Settings Drawer (Yatsu style) */}
+      {/* Display Settings Drawer */}
       <aside className={`display-settings-drawer ${isDisplaySettingsOpen ? 'open' : ''}`}>
         <div className="drawer-header">
           <span className="drawer-title" style={{ color: 'var(--text-main)', fontSize: '0.9rem', textTransform: 'none', fontWeight: 650, letterSpacing: 'normal', textShadow: 'none' }}>{lang === 'es' ? 'Ajustes de visualización' : 'Library display settings'}</span>
