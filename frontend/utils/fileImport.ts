@@ -778,7 +778,7 @@ export function importBookFile(file: File): Promise<ParsedBook> {
           }
           
           // Split into chapters by headings if any
-          const lines = content.split('\n');
+          const lines = content.split(/\r?\n/);
           let currentTitle = "Capítulo 1";
           const currentContent: string[] = [];
           const chapters: BookChapter[] = [];

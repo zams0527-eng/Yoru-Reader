@@ -1,7 +1,7 @@
 {
   "name": "lector",
   "private": true,
-  "version": "1.6.0",
+  "version": "1.1.0",
   "author": "Yoru cafe",
   "description": "Lector de novelas ligeras en japonés con integración de diccionarios y Anki.",
   "type": "module",
@@ -36,6 +36,7 @@
     "lucide-react": "^1.23.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "ts-fsrs": "^5.4.1",
     "ws": "^8.21.0"
   },
   "devDependencies": {

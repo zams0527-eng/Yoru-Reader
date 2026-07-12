@@ -9,6 +9,16 @@ export interface GoogleDriveUserInfo {
   displayName: string;
 }
 
+const defaultClientId = '658624509601-2ef33pve1i9mifecbe4n2nk0lmop9ggu.apps.googleusercontent.com';
+const defaultClientSecret = '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';
+
+function resolveClientSecret(clientId: string, clientSecret: string): string {
+  if (clientId.trim() !== defaultClientId && clientSecret.trim() === defaultClientSecret) {
+    return '';
+  }
+  return clientSecret;
+}
+
 export const googleDriveService = {
   // Exchange code for tokens
   async exchangeCodeForTokens(
@@ -24,8 +34,9 @@ export const googleDriveService = {
       redirect_uri: redirectUri,
       grant_type: 'authorization_code',
     };
-    if (clientSecret) {
-      params.client_secret = clientSecret;
+    const secret = resolveClientSecret(clientId, clientSecret);
+    if (secret) {
+      params.client_secret = secret;
     }
     if (codeVerifier) {
       params.code_verifier = codeVerifier;
@@ -59,8 +70,9 @@ export const googleDriveService = {
       client_id: clientId,
       grant_type: 'refresh_token',
     };
-    if (clientSecret) {
-      params.client_secret = clientSecret;
+    const secret = resolveClientSecret(clientId, clientSecret);
+    if (secret) {
+      params.client_secret = secret;
     }
 
     const response = await fetch('https://oauth2.googleapis.com/token', {

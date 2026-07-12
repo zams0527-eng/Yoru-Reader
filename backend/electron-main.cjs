@@ -122,25 +122,11 @@ ipcMain.handle('start-google-oauth', async (event, clientId) => {
       try { oauthServer.close(); } catch(e) {}
     }
 
-    const port = 49876;
-    // Desktop app type requires 127.0.0.1 (not localhost) for loopback redirect
-    const redirectUri = `http://127.0.0.1:${port}`;
-
     // --- PKCE: code_verifier + code_challenge ---
     const codeVerifier = base64url(crypto.randomBytes(32));
     const codeChallenge = base64url(
       crypto.createHash('sha256').update(codeVerifier).digest()
     );
-
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
-      `client_id=${encodeURIComponent(clientId)}` +
-      `&redirect_uri=${encodeURIComponent(redirectUri)}` +
-      `&response_type=code` +
-      `&scope=${encodeURIComponent('https://www.googleapis.com/auth/drive.file')}` +
-      `&code_challenge=${encodeURIComponent(codeChallenge)}` +
-      `&code_challenge_method=S256` +
-      `&access_type=offline` +
-      `&prompt=consent`;
 
     oauthServer = http.createServer(async (req, res) => {
       const reqUrl = url.parse(req.url, true);
@@ -167,6 +153,8 @@ ipcMain.handle('start-google-oauth', async (event, clientId) => {
             </body></html>`);
 
           req.socket.destroy();
+          const assignedPort = oauthServer.address().port;
+          const redirectUri = `http://127.0.0.1:${assignedPort}`;
           oauthServer.close();
           oauthServer = null;
 
@@ -179,7 +167,20 @@ ipcMain.handle('start-google-oauth', async (event, clientId) => {
       }
     });
 
-    oauthServer.listen(port, '127.0.0.1', () => {
+    oauthServer.listen(0, '127.0.0.1', () => {
+      const assignedPort = oauthServer.address().port;
+      const redirectUri = `http://127.0.0.1:${assignedPort}`;
+
+      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+        `client_id=${encodeURIComponent(clientId)}` +
+        `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+        `&response_type=code` +
+        `&scope=${encodeURIComponent('https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email')}` +
+        `&code_challenge=${encodeURIComponent(codeChallenge)}` +
+        `&code_challenge_method=S256` +
+        `&access_type=offline` +
+        `&prompt=consent`;
+
       shell.openExternal(authUrl);
     });
 
@@ -374,6 +375,20 @@ ipcMain.handle('open-reader-extension-settings', (event, theme) => {
   } catch (err) {
     console.error("[main] Error opening extension settings window:", err);
     return false;
+  }
+});
+
+ipcMain.handle('read-local-file', async (event, filePath) => {
+  try {
+    console.log(`[main] read-local-file invoked for path: ${filePath}`);
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`File does not exist: ${filePath}`);
+    }
+    const data = fs.readFileSync(filePath);
+    return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+  } catch (err) {
+    console.error("[main] Error reading local file:", err);
+    throw err;
   }
 });
 
@@ -845,5 +860,113 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
+  }
+});
+
+// Discord Rich Presence (IPC Named Pipe)
+let discordRpcSocket = null;
+let discordRpcClientId = '1326462719280054363'; // Registered Client ID for Yoru Reader
+let discordRpcActivePresence = null;
+
+function connectDiscordRpc() {
+  if (discordRpcSocket) return Promise.resolve(discordRpcSocket);
+
+  return new Promise((resolve, reject) => {
+    const isWin = process.platform === 'win32';
+    const pipePath = isWin ? '\\\\.\\pipe\\discord-ipc-0' : '/tmp/discord-ipc-0';
+
+    console.log('[Discord RPC] Connecting to socket at:', pipePath);
+    const client = net.createConnection(pipePath);
+
+    client.on('connect', () => {
+      console.log('[Discord RPC] Connected successfully. Performing handshake...');
+      
+      const handshake = JSON.stringify({
+        v: 1,
+        client_id: discordRpcClientId
+      });
+      sendDiscordRpcFrame(client, 0, handshake);
+      discordRpcSocket = client;
+      
+      if (discordRpcActivePresence) {
+        setTimeout(() => {
+          updateDiscordRpcPresence(discordRpcActivePresence);
+        }, 1000);
+      }
+      resolve(client);
+    });
+
+    client.on('error', (err) => {
+      console.warn('[Discord RPC] Connection error:', err.message);
+      discordRpcSocket = null;
+      reject(err);
+    });
+
+    client.on('close', () => {
+      console.log('[Discord RPC] Connection closed.');
+      discordRpcSocket = null;
+    });
+
+    client.on('data', (data) => {
+      // Consume data
+    });
+  });
+}
+
+function sendDiscordRpcFrame(socket, opcode, jsonPayload) {
+  try {
+    const payloadBuffer = Buffer.from(jsonPayload, 'utf8');
+    const headerBuffer = Buffer.alloc(8);
+    headerBuffer.writeUInt32LE(opcode, 0);
+    headerBuffer.writeUInt32LE(payloadBuffer.length, 4);
+
+    socket.write(headerBuffer);
+    socket.write(payloadBuffer);
+  } catch (err) {
+    console.error('[Discord RPC] Failed to write socket frame:', err);
+  }
+}
+
+function updateDiscordRpcPresence(presence) {
+  discordRpcActivePresence = presence;
+  if (!discordRpcSocket) {
+    connectDiscordRpc().catch(() => {});
+    return;
+  }
+
+  const nonce = Math.random().toString(36).substring(2, 15);
+  const payload = JSON.stringify({
+    cmd: 'SET_ACTIVITY',
+    args: {
+      pid: process.pid,
+      activity: presence
+    },
+    nonce: nonce
+  });
+
+  sendDiscordRpcFrame(discordRpcSocket, 1, payload);
+}
+
+function clearDiscordRpcPresence() {
+  discordRpcActivePresence = null;
+  if (discordRpcSocket) {
+    const nonce = Math.random().toString(36).substring(2, 15);
+    const payload = JSON.stringify({
+      cmd: 'SET_ACTIVITY',
+      args: {
+        pid: process.pid,
+        activity: null
+      },
+      nonce: nonce
+    });
+    sendDiscordRpcFrame(discordRpcSocket, 1, payload);
+  }
+}
+
+ipcMain.handle('update-discord-presence', (event, presence) => {
+  if (presence) {
+    updateDiscordRpcPresence(presence);
+  } else {
+    clearDiscordRpcPresence();
   }
 });

@@ -89,8 +89,8 @@ const Library = React.memo(function Library({
   const [latestAppVersion, setLatestAppVersion] = useState('Unknown');
   const [backendStatus, setBackendStatus] = useState('up-to-date'); // 'up-to-date' | 'out-of-date'
   const [appStatus, setAppStatus] = useState('up-to-date'); // 'up-to-date' | 'out-of-date'
-  const [currentBackendVersion, setCurrentBackendVersion] = useState('2026.6.15');
-  const [currentAppVersion, setCurrentAppVersion] = useState('2026.6.15');
+  const [currentBackendVersion, setCurrentBackendVersion] = useState(stableManifest.backendVersion);
+  const [currentAppVersion, setCurrentAppVersion] = useState(stableManifest.appVersion);
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
   const [bindingKeyAction, setBindingKeyAction] = useState(null);
 
@@ -134,87 +134,130 @@ const Library = React.memo(function Library({
     };
   }, [bindingKeyAction, settings, onSaveSettings]);
 
+  // --- Semver comparison helper ---
+  const isNewerVersion = (remote: string, local: string): boolean => {
+    const r = remote.split('.').map(Number);
+    const l = local.split('.').map(Number);
+    for (let i = 0; i < Math.max(r.length, l.length); i++) {
+      const rv = r[i] || 0;
+      const lv = l[i] || 0;
+      if (rv > lv) return true;
+      if (rv < lv) return false;
+    }
+    return false;
+  };
+
+  const fetchRemoteStable = async () => {
+    // Fetch stable.json from the main branch raw content
+    const urls = [
+      'https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/main/stable.json',
+      'https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/master/stable.json'
+    ];
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (res.ok) {
+          const data = await res.json();
+          return data as { appVersion: string; backendVersion: string; url: string; description: string };
+        }
+      } catch (_) { /* try next */ }
+    }
+    return null;
+  };
+
   useEffect(() => {
     const checkForUpdates = async () => {
       try {
-        const res = await fetch('https://api.github.com/repos/zams0527-eng/Yoru-Reader/releases/latest');
-        if (res.ok) {
-          const data = await res.json();
-          const latestTag = data.tag_name;
-          const cleanTag = latestTag.replace(/^v/, '');
-          const currentVersion = '2026.6.15';
-          
-          const parts1 = cleanTag.split('.').map(Number);
-          const parts2 = currentVersion.split('.').map(Number);
-          let isNewer = false;
-          for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
-            const p1 = parts1[i] || 0;
-            const p2 = parts2[i] || 0;
-            if (p1 > p2) { isNewer = true; break; }
-            if (p1 < p2) { break; }
-          }
+        const remote = await fetchRemoteStable();
+        if (!remote) {
+          console.warn('Could not fetch remote stable.json — offline or repo unreachable.');
+          return;
+        }
 
-          if (isNewer) {
-            setLatestAppVersion(cleanTag);
-            setLatestBackendVersion(cleanTag);
-            setAppStatus('out-of-date');
-            setBackendStatus('out-of-date');
-            setShowUpdateBanner(true);
-            return;
-          }
+        const appNewer = isNewerVersion(remote.appVersion, stableManifest.appVersion);
+        const backendNewer = isNewerVersion(remote.backendVersion, stableManifest.backendVersion);
+
+        setLatestAppVersion(remote.appVersion);
+        setLatestBackendVersion(remote.backendVersion);
+        setAppStatus(appNewer ? 'out-of-date' : 'up-to-date');
+        setBackendStatus(backendNewer ? 'out-of-date' : 'up-to-date');
+
+        if (appNewer || backendNewer) {
+          setShowUpdateBanner(true);
         }
       } catch (err) {
         console.error('Error checking updates:', err);
       }
-
-      // Mock update check if offline or no newer release found so the user can test the banner
-      setTimeout(() => {
-        setLatestAppVersion('2026.7.1');
-        setLatestBackendVersion('2026.7.1');
-        setAppStatus('out-of-date');
-        setBackendStatus('out-of-date');
-        setShowUpdateBanner(true);
-      }, 3000);
     };
 
     checkForUpdates();
   }, []);
 
-  const handleCheckUpdates = () => {
+  const handleCheckUpdates = async () => {
     setCheckingUpdates(true);
-    setTimeout(() => {
-      setCheckingUpdates(false);
-      setLatestBackendVersion('2026.7.1');
-      setLatestAppVersion('2026.7.1');
-      setBackendStatus('out-of-date');
-      setAppStatus('out-of-date');
+    try {
+      const remote = await fetchRemoteStable();
+      if (!remote) {
+        showToast(
+          lang === 'es'
+            ? 'No se pudo conectar al repositorio. Verifica tu conexión a internet.'
+            : 'Could not connect to repository. Check your internet connection.',
+          'error'
+        );
+        setCheckingUpdates(false);
+        return;
+      }
+
+      const appNewer = isNewerVersion(remote.appVersion, stableManifest.appVersion);
+      const backendNewer = isNewerVersion(remote.backendVersion, stableManifest.backendVersion);
+
+      setLatestAppVersion(remote.appVersion);
+      setLatestBackendVersion(remote.backendVersion);
+      setAppStatus(appNewer ? 'out-of-date' : 'up-to-date');
+      setBackendStatus(backendNewer ? 'out-of-date' : 'up-to-date');
+
+      if (appNewer || backendNewer) {
+        setShowUpdateBanner(true);
+        showToast(
+          lang === 'es'
+            ? 'Nuevas actualizaciones encontradas.'
+            : 'New updates found.',
+          'info'
+        );
+      } else {
+        showToast(
+          lang === 'es'
+            ? 'Ya tienes la última versión.'
+            : 'You are up to date.',
+          'success'
+        );
+      }
+    } catch (err) {
+      console.error('Error checking updates:', err);
       showToast(
-        lang === 'es' 
-          ? 'Nuevas actualizaciones encontradas.' 
-          : 'New updates found.', 
-        'info'
+        lang === 'es'
+          ? 'Error al buscar actualizaciones.'
+          : 'Error checking for updates.',
+        'error'
       );
-    }, 1500);
+    }
+    setCheckingUpdates(false);
   };
 
   const handleUpdateNow = () => {
     setUpdating(true);
-    // Open the official releases page in default browser so the user can download the installer/zip
-    window.open('https://github.com/zams0527-eng/Yoru-Reader/releases/latest', '_blank');
+    // Open the official releases page in default browser so the user can download the latest version
+    window.open(stableManifest.url || 'https://github.com/zams0527-eng/Yoru-Reader/releases/latest', '_blank');
     
     setTimeout(() => {
       setUpdating(false);
-      setCurrentBackendVersion('2026.7.1');
-      setCurrentAppVersion('2026.7.1');
-      setBackendStatus('up-to-date');
-      setAppStatus('up-to-date');
       showToast(
-        lang === 'es' 
-          ? 'Abriendo página de descargas. Backend y App actualizados localmente.' 
-          : 'Opening download page. Backend and App updated locally.', 
-        'success'
+        lang === 'es'
+          ? 'Se abrió la página de descargas en tu navegador. Descarga e instala la última versión.'
+          : 'Download page opened in your browser. Download and install the latest version.',
+        'info'
       );
-    }, 2000);
+    }, 1500);
   };
   
   // Book Manager states
@@ -329,7 +372,15 @@ const Library = React.memo(function Library({
   });
   const [isDisplaySettingsOpen, setIsDisplaySettingsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState(initialTab || 'library'); // 'library' | 'statistics' | 'settings' | 'notes'
+  const [activeTab, setActiveTab] = useState(initialTab || 'library'); // 'library' | 'statistics' | 'settings' | 'notes' | 'srs'
+  const [selectedDeckFilter, setSelectedDeckFilter] = useState<string | null>(null);
+  const [srsSubTab, setSrsSubTab] = useState<'decks' | 'stats' | 'notes' | 'history' | 'settings'>('decks');
+  const [isDeckPromptOpen, setIsDeckPromptOpen] = useState(false);
+  const [deckPromptMode, setDeckPromptMode] = useState<'create' | 'rename' | 'merge'>('create');
+  const [deckPromptTargetId, setDeckPromptTargetId] = useState<string | null>(null);
+  const [deckPromptValue, setDeckPromptValue] = useState('');
+  const [srsCalendarYear, setSrsCalendarYear] = useState(new Date().getFullYear());
+  const [separateSuspended, setSeparateSuspended] = useState(false);
   const [notesSearch, setNotesSearch] = useState('');
   const [notesFilterStatus, setNotesFilterStatus] = useState('all');
   const [visibleVocabCount, setVisibleVocabCount] = useState(60);
@@ -1308,8 +1359,8 @@ const Library = React.memo(function Library({
 
   // Google Drive / Cloud Sync States
   const [isGDriveSyncOpen, setIsGDriveSyncOpen] = useState(false);
-  const [gDriveClientId, setGDriveClientId] = useState(localStorage.getItem('gdrive_client_id') || '658624509601-2ef33pve1i9mifecbe4n2nk0lmop9ggu.apps.googleusercontent.com');
-  const [gDriveClientSecret, setGDriveClientSecret] = useState(localStorage.getItem('gdrive_client_secret') || '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');
+  const [gDriveClientId, setGDriveClientId] = useState(() => localStorage.getItem('gdrive_client_id') !== null ? localStorage.getItem('gdrive_client_id')! : '658624509601-2ef33pve1i9mifecbe4n2nk0lmop9ggu.apps.googleusercontent.com');
+  const [gDriveClientSecret, setGDriveClientSecret] = useState(() => localStorage.getItem('gdrive_client_secret') !== null ? localStorage.getItem('gdrive_client_secret')! : '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');
   const [gDriveTokens, setGDriveTokens] = useState(localStorage.getItem('gdrive_tokens') ? JSON.parse(localStorage.getItem('gdrive_tokens')) : null);
   const [gDriveUserEmail, setGDriveUserEmail] = useState(localStorage.getItem('gdrive_user_email') || '');
   const [isAutoSyncEnabled, setIsAutoSyncEnabled] = useState(localStorage.getItem('gdrive_autosync_enabled') === 'true');
@@ -4686,17 +4737,1436 @@ const Library = React.memo(function Library({
   );
 };
 
-  const renderNotesTab = () => {
-    // 1. Calculate status counts based on wordStatuses keys/values
-    const allWordStatuses = db.getWordStatuses();
-    const totalKnown = Object.values(allWordStatuses).filter(s => s === 'known').length;
-    const totalLearning = Object.values(allWordStatuses).filter(s => s === 'learning').length;
-    const totalStarred = Object.values(allWordStatuses).filter(s => s === 'starred').length;
-    const totalIgnored = Object.values(allWordStatuses).filter(s => s === 'ignored').length;
-    const totalNew = Object.values(allWordStatuses).filter(s => s === 'new').length;
+  const handleCreateDeck = () => {
+    setDeckPromptMode('create');
+    setDeckPromptTargetId(null);
+    setDeckPromptValue('');
+    setIsDeckPromptOpen(true);
+  };
 
-    // 2. Build list of words
-    const wordsList = Object.entries(allWordStatuses).map(([word, status]) => {
+  const handleDeckPromptSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = deckPromptValue.trim();
+    if (!trimmed) return;
+
+    if (deckPromptMode === 'create') {
+      db.saveSrsCard(`_deck_${trimmed}`, {
+        word: `_deck_${trimmed}`,
+        source: trimmed,
+        state: 0,
+        dueDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+        due: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+        isPlaceholder: true
+      });
+      setSrsUpdateTrigger(t => t + 1);
+      showToast(lang === 'es' ? `Mazo "${trimmed}" creado con éxito` : `Deck "${trimmed}" created successfully`, 'success');
+    } else if (deckPromptMode === 'rename' && deckPromptTargetId) {
+      const oldName = deckPromptTargetId;
+      const newName = trimmed;
+      if (oldName !== newName) {
+        // Delete old placeholder card
+        db.saveSrsCard(`_deck_${oldName}`, null);
+        // Create new placeholder card
+        db.saveSrsCard(`_deck_${newName}`, {
+          word: `_deck_${newName}`,
+          source: newName,
+          state: 0,
+          dueDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+          due: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+          isPlaceholder: true
+        });
+        // Update all cards belonging to the old deck
+        const srsData = db.getSrsData();
+        Object.entries(srsData).forEach(([word, card]: [string, any]) => {
+          if (card && card.source === oldName) {
+            card.source = newName;
+            db.saveSrsCard(word, card);
+          }
+        });
+        setSrsUpdateTrigger(t => t + 1);
+        showToast(lang === 'es' ? 'Mazo renombrado' : 'Deck renamed', 'success');
+      }
+    } else if (deckPromptMode === 'merge' && deckPromptTargetId) {
+      const sourceName = deckPromptTargetId;
+      const targetName = trimmed;
+      if (sourceName !== targetName) {
+        if (confirm(lang === 'es'
+          ? `¿Estás seguro de que deseas fusionar todo el contenido del mazo "${sourceName}" dentro del mazo "${targetName}"? El mazo "${sourceName}" será eliminado.`
+          : `Are you sure you want to merge all content from deck "${sourceName}" into deck "${targetName}"? The deck "${sourceName}" will be deleted.`
+        )) {
+          // Delete placeholder of source mazo
+          db.saveSrsCard(`_deck_${sourceName}`, null);
+          
+          // Ensure target mazo has a placeholder card if not the default
+          if (targetName !== 'Yoru Reader') {
+            db.saveSrsCard(`_deck_${targetName}`, {
+              word: `_deck_${targetName}`,
+              source: targetName,
+              state: 0,
+              dueDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+              due: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+              isPlaceholder: true
+            });
+          }
+
+          // Move all cards from source to target
+          const srsData = db.getSrsData();
+          Object.entries(srsData).forEach(([word, card]: [string, any]) => {
+            if (card && card.source === sourceName) {
+              card.source = targetName;
+              db.saveSrsCard(word, card);
+            }
+          });
+
+          setSrsUpdateTrigger(t => t + 1);
+          showToast(lang === 'es' ? 'Mazos fusionados con éxito' : 'Decks merged successfully', 'success');
+        }
+      }
+    }
+
+    setIsDeckPromptOpen(false);
+  };
+
+  const handleDeckPromptDelete = () => {
+    if (deckPromptMode === 'rename' && deckPromptTargetId) {
+      const deckName = deckPromptTargetId;
+      if (confirm(lang === 'es' ? `¿Estás seguro de que deseas eliminar el mazo "${deckName}"?` : `Are you sure you want to delete the deck "${deckName}"?`)) {
+        // Delete the placeholder card
+        db.saveSrsCard(`_deck_${deckName}`, null);
+        // Update all cards belonging to this deck to 'Yoru Reader'
+        const srsData = db.getSrsData();
+        Object.entries(srsData).forEach(([word, card]: [string, any]) => {
+          if (card && card.source === deckName) {
+            card.source = 'Yoru Reader';
+            db.saveSrsCard(word, card);
+          }
+        });
+        setSrsUpdateTrigger(t => t + 1);
+        showToast(lang === 'es' ? 'Mazo eliminado' : 'Deck deleted', 'info');
+        setIsDeckPromptOpen(false);
+      }
+    }
+  };
+
+  const renderSrsTab = () => {
+    const statuses = db.getWordStatuses();
+    const srsData = db.getSrsData();
+    const now = new Date();
+    
+    const getYearCalendarCells = (year: number) => {
+      const yearCells = [];
+      const jan1 = new Date(year, 0, 1);
+      const startDay = jan1.getDay();
+      const alignOffset = (startDay + 6) % 7;
+      const startDate = new Date(year, 0, 1);
+      startDate.setDate(startDate.getDate() - alignOffset);
+
+      const tempDate = new Date(startDate);
+      for (let col = 0; col < 54; col++) {
+        const weekCells = [];
+        for (let row = 0; row < 7; row++) {
+          const ymd = tempDate.toISOString().slice(0, 10);
+          const cellYear = tempDate.getFullYear();
+          const isActive = cellYear === year && activity.activityDays.includes(ymd);
+          weekCells.push({ ymd, isActive, date: new Date(tempDate), isCurrentYear: cellYear === year });
+          tempDate.setDate(tempDate.getDate() + 1);
+        }
+        if (weekCells.some(c => c.isCurrentYear)) {
+          yearCells.push(weekCells);
+        }
+      }
+      return yearCells;
+    };
+
+    const getYearMonthLabels = (yearCells: any[][]) => {
+      const labels: { colIndex: number; label: string }[] = [];
+      let lastMonth = -1;
+      yearCells.forEach((week, colIndex) => {
+        const firstDayOfWeek = week[0].date;
+        const m = firstDayOfWeek.getMonth();
+        if (m !== lastMonth && firstDayOfWeek.getFullYear() === srsCalendarYear) {
+          lastMonth = m;
+          const name = firstDayOfWeek.toLocaleDateString(lang === 'es' ? 'es-ES' : 'en-US', { month: 'short' });
+          labels.push({ colIndex, label: name.charAt(0).toUpperCase() + name.slice(1) });
+        }
+      });
+      return labels;
+    };
+
+    // Group cards into decks by card.source
+    const decks: Record<string, { 
+      newCount: number; 
+      learningCount: number; 
+      reviewCount: number;
+      totalCards: number;
+      totalNew: number;
+      totalLearning: number;
+      totalRelearning: number;
+      totalYoung: number;
+      totalMature: number;
+    }> = {};
+    let totalDueCount = 0;
+    
+    const learningWords = Object.keys(statuses).filter(w => statuses[w] === 'learning');
+    
+    const initDeck = (name: string) => {
+      if (!decks[name]) {
+        decks[name] = { 
+          newCount: 0, 
+          learningCount: 0, 
+          reviewCount: 0,
+          totalCards: 0,
+          totalNew: 0,
+          totalLearning: 0,
+          totalRelearning: 0,
+          totalYoung: 0,
+          totalMature: 0
+        };
+      }
+    };
+
+    // 1. First register all unique deck sources that exist in srsData
+    Object.entries(srsData).forEach(([word, card]: [string, any]) => {
+      const deckName = card?.source || 'Yoru Reader';
+      initDeck(deckName);
+      
+      // If it's a custom deck placeholder card, skip adding to due counts or statistics
+      if (word.startsWith('_deck_')) {
+        return;
+      }
+      
+      // We only count stats for words that are currently in 'learning' status
+      if (statuses[word] === 'learning') {
+        decks[deckName].totalCards++;
+        
+        const state = card.state;
+        const reps = card.repetitions || card.reps || 0;
+        
+        // Count totals per card state (non-due + due)
+        if (state === undefined || state === 0 || reps === 0) {
+          decks[deckName].totalNew++;
+        } else if (state === 1) {
+          decks[deckName].totalLearning++;
+        } else if (state === 3) {
+          decks[deckName].totalRelearning++;
+        } else if (state === 2) {
+          const interval = card.scheduled_days || card.scheduledDays || 0;
+          if (interval >= 21) {
+            decks[deckName].totalMature++;
+          } else {
+            decks[deckName].totalYoung++;
+          }
+        } else {
+          decks[deckName].totalNew++;
+        }
+
+        // Count due cards
+        const isDue = !card.dueDate || new Date(card.dueDate) <= now;
+        if (isDue) {
+          totalDueCount++;
+          if (card.state === 0) {
+            decks[deckName].newCount++;
+          } else if (card.state === 1 || card.state === 3) {
+            decks[deckName].learningCount++;
+          } else {
+            decks[deckName].reviewCount++;
+          }
+        }
+      }
+    });
+
+    // 2. Also register any words currently marked as 'learning' that don't have cards yet
+    learningWords.forEach(word => {
+      if (!srsData[word]) {
+        const deckName = 'Yoru Reader';
+        initDeck(deckName);
+        
+        decks[deckName].totalCards++;
+        decks[deckName].totalNew++;
+        decks[deckName].newCount++;
+        totalDueCount++;
+      }
+    });
+
+    const deckList = Object.entries(decks).map(([name, counts]) => ({
+      name,
+      ...counts
+    })).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+
+    let totalNewCount = 0;
+    let totalLearnCount = 0;
+    let totalReviewCount = 0;
+    deckList.forEach(d => {
+      totalNewCount += d.newCount || 0;
+      totalLearnCount += d.learningCount || 0;
+      totalReviewCount += d.reviewCount || 0;
+    });
+
+    // Fetch studied history activity and streak
+    const activity = (() => {
+      const activityDays = new Set<string>();
+      let cardsStudiedToday = 0;
+      
+      Object.values(srsData).forEach((card: any) => {
+        if (card.last_review) {
+          const rDate = new Date(card.last_review);
+          activityDays.add(rDate.toISOString().slice(0, 10));
+          if (rDate.toDateString() === now.toDateString()) cardsStudiedToday++;
+        } else if (card.lastReview) {
+          const rDate = new Date(card.lastReview);
+          activityDays.add(rDate.toISOString().slice(0, 10));
+          if (rDate.toDateString() === now.toDateString()) cardsStudiedToday++;
+        }
+      });
+      
+      let streak = 0;
+      const check = new Date();
+      while (true) {
+        const ymd = check.toISOString().slice(0, 10);
+        if (activityDays.has(ymd)) {
+          streak++;
+          check.setDate(check.getDate() - 1);
+        } else {
+          if (streak === 0) {
+            check.setDate(check.getDate() - 1);
+            if (activityDays.has(check.toISOString().slice(0, 10))) {
+              streak = 1;
+              check.setDate(check.getDate() - 1);
+              while (true) {
+                if (activityDays.has(check.toISOString().slice(0, 10))) {
+                  streak++;
+                  check.setDate(check.getDate() - 1);
+                } else break;
+              }
+            }
+          }
+          break;
+        }
+      }
+      return { cardsStudiedToday, streak, activityDays: Array.from(activityDays) };
+    })();
+
+
+    const renderActivityCalendar = () => (
+      <div 
+        style={{ 
+          background: 'var(--bg-card)', 
+          border: '1px solid var(--border-light)', 
+          borderRadius: '16px', 
+          padding: '24px', 
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.05)',
+          marginTop: '24px'
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-light)', paddingBottom: '12px' }}>
+          <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>📅</span>
+            <span>{lang === 'es' ? 'Calendario de Actividad' : 'Activity Calendar'}</span>
+          </h3>
+          
+          {/* Year Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button 
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setSrsCalendarYear(y => y - 1); }}
+              style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-light)', borderRadius: '6px', color: '#fff', width: '26px', height: '26px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', transition: 'all 0.15s' }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)'}
+            >
+              &lt;
+            </button>
+            <span style={{ fontSize: '0.85rem', fontWeight: 850, color: '#fff', minWidth: '40px', textAlign: 'center' }}>{srsCalendarYear}</span>
+            <button 
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setSrsCalendarYear(y => y + 1); }}
+              style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-light)', borderRadius: '6px', color: '#fff', width: '26px', height: '26px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.8rem', transition: 'all 0.15s' }}
+              onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)'}
+            >
+              &gt;
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', gap: '16px', fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+            <span>
+              {lang === 'es' ? 'Racha actual: ' : 'Current streak: '}
+              <span style={{ color: '#c084fc', fontWeight: 800 }}>{activity.streak} {lang === 'es' ? 'días' : 'days'}</span>
+            </span>
+            <span>•</span>
+            <span>
+              {lang === 'es' ? 'Repasadas hoy: ' : 'Reviewed today: '}
+              <span style={{ color: '#c084fc', fontWeight: 800 }}>{activity.cardsStudiedToday}</span>
+            </span>
+          </div>
+        </div>
+        
+        {/* Year Heatmap Grid */}
+        <div className="srs-calendar-scroll" style={{ overflowX: 'auto', padding: '10px 0 5px 0' }}>
+          <div style={{ minWidth: '680px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            
+            {/* Month Labels aligned to 54 columns */}
+            <div style={{ display: 'flex', position: 'relative', height: '16px', marginLeft: '18px', marginBottom: '4px' }}>
+              {(() => {
+                const yearCells = getYearCalendarCells(srsCalendarYear);
+                const monthLabels = getYearMonthLabels(yearCells);
+                return monthLabels.map((lbl, idx) => (
+                  <span 
+                    key={idx} 
+                    style={{ 
+                      position: 'absolute', 
+                      left: `${lbl.colIndex * 12.2}px`, 
+                      fontSize: '0.62rem', 
+                      color: 'var(--text-muted)', 
+                      fontWeight: 800, 
+                      textTransform: 'uppercase' 
+                    }}
+                  >
+                    {lbl.label}
+                  </span>
+                ));
+              })()}
+            </div>
+
+            {/* Calendar Grid cells */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+              {Array.from({ length: 7 }).map((_, rowIndex) => {
+                const yearCells = getYearCalendarCells(srsCalendarYear);
+                return (
+                  <div key={rowIndex} style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.58rem', color: 'var(--text-muted)', width: '12px', textAlign: 'right', marginRight: '6px', fontWeight: 'bold' }}>
+                      {rowIndex === 0 ? 'L' : rowIndex === 2 ? 'M' : rowIndex === 4 ? 'V' : rowIndex === 6 ? 'D' : ''}
+                    </span>
+                    {yearCells.map((week, colIndex) => {
+                      const cell = week[rowIndex];
+                      if (!cell) return <div key={colIndex} style={{ width: '9px', height: '9px' }} />;
+                      return (
+                        <div 
+                          key={colIndex} 
+                          title={cell.date.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) + (cell.isActive ? ' (Activo)' : ' (Inactivo)')}
+                          style={{
+                            width: '9px',
+                            height: '9px',
+                            borderRadius: '2px',
+                            background: cell.isActive ? 'rgba(168, 85, 247, 0.85)' : 'rgba(255, 255, 255, 0.03)',
+                            border: cell.isActive ? '1px solid rgba(168, 85, 247, 0.5)' : '1px solid rgba(255, 255, 255, 0.02)',
+                            transition: 'all 0.15s ease',
+                            opacity: cell.isCurrentYear ? 1 : 0.15
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+
+          </div>
+        </div>
+      </div>
+    );
+
+    // --- Study Stats Calculations ---
+    const ymdToday = now.toISOString().slice(0, 10);
+    const studyTimeTodaySeconds = Number(localStorage.getItem(`yoru_reader_srs_study_time_${ymdToday}`) || 0);
+
+    const formatStudyTime = (seconds: number) => {
+      if (seconds < 60) {
+        return lang === 'es' ? `${seconds} segundos` : `${seconds} seconds`;
+      }
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      if (secs === 0) {
+        return lang === 'es' ? `${mins} minutos` : `${mins} minutes`;
+      }
+      return lang === 'es' 
+        ? `${mins} min ${secs} seg` 
+        : `${mins} min ${secs} sec`;
+    };
+
+    const avgSecondsPerCard = activity.cardsStudiedToday > 0 
+      ? Math.round(studyTimeTodaySeconds / activity.cardsStudiedToday) 
+      : 0;
+
+    // --- Forecast Calculations (Next 7 days) ---
+    const forecastCounts = Array(7).fill(0);
+    Object.values(srsData).forEach((card: any) => {
+      if (!card || card.word?.startsWith('_deck_')) return;
+      if (statuses[card.word] !== 'learning') return;
+
+      const dueTime = card.dueDate ? new Date(card.dueDate).getTime() : 0;
+      if (!dueTime) return;
+
+      const diffTime = dueTime - now.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays <= 0) {
+        forecastCounts[0]++;
+      } else if (diffDays < 7) {
+        forecastCounts[diffDays]++;
+      }
+    });
+
+    const maxForecast = Math.max(...forecastCounts, 1);
+
+
+
+    // --- Card Count Breakdown Calculations ---
+    let countNew = 0;
+    let countLearning = 0;
+    let countRelearning = 0;
+    let countYoung = 0;
+    let countMature = 0;
+
+    Object.entries(srsData).forEach(([word, card]: [string, any]) => {
+      if (word.startsWith('_deck_') || !card) return;
+      
+      if (separateSuspended) {
+        const status = statuses[word];
+        if (status === 'ignored' || status === 'known') return;
+      }
+
+      const state = card.state;
+      const reps = card.repetitions || card.reps || 0;
+      
+      if (state === undefined || state === 0 || reps === 0) {
+        countNew++;
+      } else if (state === 1) {
+        countLearning++;
+      } else if (state === 3) {
+        countRelearning++;
+      } else if (state === 2) {
+        const interval = card.scheduled_days || card.scheduledDays || 0;
+        if (interval >= 21) {
+          countMature++;
+        } else {
+          countYoung++;
+        }
+      } else {
+        countNew++;
+      }
+    });
+
+    const totalSrsCardsCount = countNew + countLearning + countRelearning + countYoung + countMature;
+    
+    const pctNew = totalSrsCardsCount > 0 ? (countNew / totalSrsCardsCount) * 100 : 0;
+    const pctLearning = totalSrsCardsCount > 0 ? (countLearning / totalSrsCardsCount) * 100 : 0;
+    const pctRelearning = totalSrsCardsCount > 0 ? (countRelearning / totalSrsCardsCount) * 100 : 0;
+    const pctYoung = totalSrsCardsCount > 0 ? (countYoung / totalSrsCardsCount) * 100 : 0;
+    const pctMature = totalSrsCardsCount > 0 ? (countMature / totalSrsCardsCount) * 100 : 0;
+
+    let currentPct = 0;
+    const stops = [];
+    
+    if (pctNew > 0) {
+      stops.push(`#3b82f6 ${currentPct}% ${currentPct + pctNew}%`);
+      currentPct += pctNew;
+    }
+    if (pctLearning > 0) {
+      stops.push(`#f59e0b ${currentPct}% ${currentPct + pctLearning}%`);
+      currentPct += pctLearning;
+    }
+    if (pctRelearning > 0) {
+      stops.push(`#ef4444 ${currentPct}% ${currentPct + pctRelearning}%`);
+      currentPct += pctRelearning;
+    }
+    if (pctYoung > 0) {
+      stops.push(`#86efac ${currentPct}% ${currentPct + pctYoung}%`);
+      currentPct += pctYoung;
+    }
+    if (pctMature > 0) {
+      stops.push(`#22c55e ${currentPct}% ${currentPct + pctMature}%`);
+      currentPct += pctMature;
+    }
+
+    const gradientString = stops.length > 0 
+      ? `conic-gradient(${stops.join(', ')})` 
+      : 'rgba(255, 255, 255, 0.05)';
+
+    return (
+      <div className="tab-view-container srs-view-panel" style={{ maxWidth: '800px', margin: '0 auto', padding: '1.5rem 1rem 6rem 1rem', height: 'calc(100vh - 64px)', overflowY: 'auto', boxSizing: 'border-box' }}>
+        {/* Top Navigation Row */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
+          <div style={{
+            display: 'inline-flex',
+            background: 'rgba(255, 255, 255, 0.04)',
+            border: '1px solid var(--border-light)',
+            borderRadius: '24px',
+            padding: '4px',
+            gap: '2px',
+            alignItems: 'center'
+          }}>
+            {/* Mazos button */}
+            <button
+              type="button"
+              onClick={() => setSrsSubTab('decks')}
+              style={{
+                background: srsSubTab === 'decks' ? 'rgba(255, 255, 255, 0.08)' : 'none',
+                border: 'none',
+                color: srsSubTab === 'decks' ? 'var(--primary)' : 'var(--text-main)',
+                fontSize: '0.82rem',
+                fontWeight: srsSubTab === 'decks' ? 700 : 500,
+                cursor: 'pointer',
+                padding: '6px 14px',
+                borderRadius: '18px',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {lang === 'es' ? 'Mazos' : 'Decks'}
+            </button>
+
+            {/* Explorar (notes) button */}
+            <button
+              type="button"
+              onClick={() => setSrsSubTab('notes')}
+              style={{
+                background: srsSubTab === 'notes' ? 'rgba(255, 255, 255, 0.08)' : 'none',
+                border: 'none',
+                color: srsSubTab === 'notes' ? 'var(--primary)' : 'var(--text-main)',
+                fontSize: '0.82rem',
+                fontWeight: srsSubTab === 'notes' ? 700 : 500,
+                cursor: 'pointer',
+                padding: '6px 14px',
+                borderRadius: '18px',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {lang === 'es' ? 'Tarjetas' : 'Cards'}
+            </button>
+
+            {/* Estadísticas button */}
+            <button
+              type="button"
+              onClick={() => setSrsSubTab('stats')}
+              style={{
+                background: srsSubTab === 'stats' ? 'rgba(255, 255, 255, 0.08)' : 'none',
+                border: 'none',
+                color: srsSubTab === 'stats' ? 'var(--primary)' : 'var(--text-main)',
+                fontSize: '0.82rem',
+                fontWeight: srsSubTab === 'stats' ? 700 : 500,
+                cursor: 'pointer',
+                padding: '6px 14px',
+                borderRadius: '18px',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {lang === 'es' ? 'Estadísticas' : 'Stats'}
+            </button>
+
+            {/* Historial button */}
+            <button
+              type="button"
+              onClick={() => setSrsSubTab('history')}
+              style={{
+                background: srsSubTab === 'history' ? 'rgba(255, 255, 255, 0.08)' : 'none',
+                border: 'none',
+                color: srsSubTab === 'history' ? 'var(--primary)' : 'var(--text-main)',
+                fontSize: '0.82rem',
+                fontWeight: srsSubTab === 'history' ? 700 : 500,
+                cursor: 'pointer',
+                padding: '6px 14px',
+                borderRadius: '18px',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {lang === 'es' ? 'Historial' : 'History'}
+            </button>
+
+            {/* Ajustes button */}
+            <button
+              type="button"
+              onClick={() => setSrsSubTab('settings')}
+              style={{
+                background: srsSubTab === 'settings' ? 'rgba(255, 255, 255, 0.08)' : 'none',
+                border: 'none',
+                color: srsSubTab === 'settings' ? 'var(--primary)' : 'var(--text-main)',
+                fontSize: '0.82rem',
+                fontWeight: srsSubTab === 'settings' ? 700 : 500,
+                cursor: 'pointer',
+                padding: '6px 14px',
+                borderRadius: '18px',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {lang === 'es' ? 'Ajustes' : 'Settings'}
+            </button>
+          </div>
+
+          {/* Quick Actions */}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              onClick={handleCreateDeck}
+              style={{
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid var(--border-light)',
+                color: 'var(--text-main)',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                padding: '6px 14px',
+                borderRadius: '20px',
+                transition: 'all 0.15s ease'
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)' }}
+            >
+              + {lang === 'es' ? 'Mazo' : 'Deck'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsVocabModalOpen(true)}
+              style={{
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid var(--border-light)',
+                color: 'var(--text-main)',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                padding: '6px 14px',
+                borderRadius: '20px',
+                transition: 'all 0.15s ease'
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)' }}
+            >
+              {lang === 'es' ? 'Sincronizar' : 'Sync'}
+            </button>
+          </div>
+        </div>
+
+        {srsSubTab === 'decks' && (
+          <>
+            {/* Header Dashboard Card */}
+            <div className="vocab-dashboard-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', padding: '20px', borderRadius: '16px', background: 'var(--bg-card)', border: '1px solid var(--border-light)' }}>
+              <div>
+                <h2 style={{ margin: '0 0 4px 0', fontSize: '1.45rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                  {lang === 'es' ? 'Repaso de Yoru SRS' : 'Yoru SRS Reviews'}
+                </h2>
+                <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 500 }}>
+                  {lang === 'es' ? `Tienes ${totalDueCount} tarjetas pendientes hoy` : `You have ${totalDueCount} reviews pending today`}
+                </p>
+              </div>
+              
+              {totalDueCount > 0 && (
+                <button
+                  type="button"
+                  className="vocab-action-btn"
+                  onClick={() => {
+                    setSelectedDeckFilter(null);
+                    setIsSrsReviewOpen(true);
+                  }}
+                  style={{
+                    background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
+                    border: 'none',
+                    color: '#ffffff',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    cursor: 'pointer',
+                    fontWeight: 700,
+                    padding: '10px 20px',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 14px rgba(168, 85, 247, 0.3)'
+                  }}
+                >
+                  <Zap size={15} fill="rgba(255,255,255,0.2)" />
+                  <span>{lang === 'es' ? 'Repasar Todo' : 'Review All'}</span>
+                </button>
+              )}
+            </div>
+
+            {/* Deck List (Mazos) */}
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '16px', padding: '24px', marginBottom: '24px' }}>
+              <h3 style={{ margin: '0 0 20px 0', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--border-light)', paddingBottom: '10px' }}>
+                🗂️ {lang === 'es' ? 'Mazos de Aprendizaje' : 'Learning Decks'}
+              </h3>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: '16px' }}>
+                {deckList.length === 0 ? (
+                  <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', color: 'var(--text-muted)', background: 'var(--bg-card-hover)', border: '1px dashed var(--border-light)', borderRadius: '12px' }}>
+                    <Zap size={24} style={{ color: 'rgba(255,255,255,0.1)', marginBottom: '8px' }} />
+                    <p style={{ margin: 0, fontSize: '0.82rem', fontWeight: 600 }}>
+                      {lang === 'es' ? 'No tienes palabras en el sistema de repaso' : 'No words in the review system'}
+                    </p>
+                  </div>
+                ) : (
+                  deckList.map((deck) => {
+                    const isDue = deck.newCount > 0 || deck.learningCount > 0 || deck.reviewCount > 0;
+                    
+                    const total = deck.totalCards;
+                    const mature = deck.totalMature;
+                    const young = deck.totalYoung;
+                    const learning = deck.totalLearning + deck.totalRelearning;
+                    const newCards = deck.totalNew;
+                    const known = mature + young;
+                    const combined = known + learning;
+                    
+                    const pctMature = total > 0 ? (mature / total) * 100 : 0;
+                    const pctKnown = total > 0 ? (known / total) * 100 : 0;
+                    const pctCombined = total > 0 ? (combined / total) * 100 : 0;
+
+                    return (
+                      <div 
+                        key={deck.name} 
+                        style={{ 
+                          background: 'rgba(255, 255, 255, 0.01)', 
+                          border: '1px solid var(--border-light)', 
+                          borderRadius: '16px',
+                          padding: '16px 20px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          gap: '12px',
+                          transition: 'all 0.15s ease-in-out'
+                        }}
+                      >
+                        {/* Top Info Row */}
+                        <div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                              <FolderOpen size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+                              <span style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--text-main)', overflow: 'hidden', textHighlight: 'none', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={deck.name}>
+                                {deck.name}
+                              </span>
+                              {deck.name === 'Yoru Reader' && (
+                                <span style={{ fontSize: '0.58rem', fontWeight: 900, background: 'rgba(168, 85, 247, 0.12)', color: '#c084fc', padding: '1px 6px', borderRadius: '12px', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>
+                                  {lang === 'es' ? 'Fijo' : 'Fixed'}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Due Counters Badge pills */}
+                            <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexShrink: 0 }}>
+                              {deck.newCount > 0 && (
+                                <span style={{ background: '#3b82f6', color: '#ffffff', fontSize: '0.68rem', fontWeight: 800, padding: '1px 6px', borderRadius: '10px' }} title={lang === 'es' ? 'Nuevas pendientes' : 'New cards due'}>
+                                  {deck.newCount}
+                                </span>
+                              )}
+                              {deck.learningCount > 0 && (
+                                <span style={{ background: '#f59e0b', color: '#ffffff', fontSize: '0.68rem', fontWeight: 800, padding: '1px 6px', borderRadius: '10px' }} title={lang === 'es' ? 'En aprendizaje pendientes' : 'Learning cards due'}>
+                                  {deck.learningCount}
+                                </span>
+                              )}
+                              {deck.reviewCount > 0 && (
+                                <span style={{ background: '#22c55e', color: '#ffffff', fontSize: '0.68rem', fontWeight: 800, padding: '1px 6px', borderRadius: '10px' }} title={lang === 'es' ? 'Repasos pendientes' : 'Reviews due'}>
+                                  {deck.reviewCount}
+                                </span>
+                              )}
+                              {deck.newCount === 0 && deck.learningCount === 0 && deck.reviewCount === 0 && (
+                                <span style={{ background: 'rgba(255,255,255,0.03)', color: 'var(--text-muted)', fontSize: '0.68rem', fontWeight: 800, padding: '1px 6px', borderRadius: '10px' }}>
+                                  ✓
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Progress Bar & Detailed breakdown */}
+                          {total > 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                              {/* Colored Progress Bar */}
+                              <div 
+                                title={`${pctMature.toFixed(1)}% mature\n${pctKnown.toFixed(1)}% known (young + mature)`}
+                                style={{ 
+                                  position: 'relative', 
+                                  width: '100%', 
+                                  backgroundColor: 'rgba(255,255,255,0.02)', 
+                                  borderRadius: '6px', 
+                                  height: '14px', 
+                                  overflow: 'hidden',
+                                  border: '1px solid var(--border-light)'
+                                }}
+                              >
+                                {/* Combined (learning + relearning + young + mature) */}
+                                <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', backgroundColor: 'rgba(245, 158, 11, 0.12)', width: `${pctCombined}%`, transition: 'width 0.4s ease' }} />
+                                {/* Known (young + mature) */}
+                                <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', backgroundColor: 'rgba(134, 239, 172, 0.15)', width: `${pctKnown}%`, transition: 'width 0.4s ease' }} />
+                                {/* Mature */}
+                                <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', backgroundColor: 'rgba(34, 197, 94, 0.7)', width: `${pctMature}%`, transition: 'width 0.4s ease' }} />
+                                
+                                {/* Labels Overlay */}
+                                <div style={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 6px', fontSize: '0.6rem', fontWeight: 800, color: '#ffffff', textShadow: '0 1px 1px rgba(0,0,0,0.7)' }}>
+                                  <span>{pctMature.toFixed(0)}% {lang === 'es' ? 'maduras' : 'mature'}</span>
+                                  <span>{pctKnown.toFixed(0)}% {lang === 'es' ? 'conocidas' : 'known'}</span>
+                                </div>
+                              </div>
+
+                              {/* Numbers list */}
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                                <span>{total} {lang === 'es' ? 'totales' : 'total'}</span>
+                                <span>·</span>
+                                <span style={{ color: '#3b82f6' }}>{newCards} {lang === 'es' ? 'nuevas' : 'new'}</span>
+                                <span>·</span>
+                                <span style={{ color: '#f59e0b' }}>{learning} {lang === 'es' ? 'aprender' : 'learn'}</span>
+                                <span>·</span>
+                                <span style={{ color: '#86efac' }}>{young} {lang === 'es' ? 'joven' : 'young'}</span>
+                                <span>·</span>
+                                <span style={{ color: '#22c55e' }}>{mature} {lang === 'es' ? 'madura' : 'mature'}</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                              {lang === 'es' ? 'Sin tarjetas en este mazo' : 'No cards in this deck'}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Bottom Action Controls */}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px solid var(--border-light)', paddingTop: '10px', marginTop: '4px' }}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedDeckFilter(deck.name);
+                              setIsSrsReviewOpen(true);
+                            }}
+                            disabled={deck.totalCards === 0}
+                            style={{
+                              background: isDue 
+                                ? 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)' 
+                                : (deck.totalCards > 0 ? 'rgba(168, 85, 247, 0.06)' : 'rgba(255,255,255,0.02)'),
+                              border: isDue 
+                                ? 'none' 
+                                : (deck.totalCards > 0 ? '1px solid rgba(168, 85, 247, 0.3)' : 'none'),
+                              color: isDue 
+                                ? '#ffffff' 
+                                : (deck.totalCards > 0 ? 'var(--primary)' : 'var(--text-muted)'),
+                              borderRadius: '8px',
+                              padding: '6px 14px',
+                              fontSize: '0.75rem',
+                              fontWeight: 700,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              cursor: deck.totalCards > 0 ? 'pointer' : 'not-allowed',
+                              boxShadow: isDue ? '0 2px 8px rgba(168, 85, 247, 0.2)' : 'none',
+                              transition: 'all 0.15s'
+                            }}
+                          >
+                            <Play size={12} fill={isDue ? '#ffffff' : 'none'} />
+                            <span>{lang === 'es' ? 'Repasar' : 'Review'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (deck.name === 'Yoru Reader') {
+                                showToast(lang === 'es' ? 'El mazo por defecto no se puede renombrar' : 'Default deck cannot be renamed', 'info');
+                                return;
+                              }
+                              setDeckPromptMode('rename');
+                              setDeckPromptTargetId(deck.name);
+                              setDeckPromptValue(deck.name);
+                              setIsDeckPromptOpen(true);
+                            }}
+                            style={{
+                              background: 'rgba(255, 255, 255, 0.02)',
+                              border: '1px solid rgba(255, 255, 255, 0.05)',
+                              color: 'var(--text-muted)',
+                              borderRadius: '8px',
+                              width: '28px',
+                              height: '28px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: deck.name === 'Yoru Reader' ? 'not-allowed' : 'pointer',
+                              transition: 'all 0.15s'
+                            }}
+                            title={lang === 'es' ? 'Opciones de mazo' : 'Deck options'}
+                          >
+                            <Settings size={12} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeckPromptMode('merge');
+                              setDeckPromptTargetId(deck.name);
+                              setDeckPromptValue('');
+                              setIsDeckPromptOpen(true);
+                            }}
+                            style={{
+                              background: 'rgba(255, 255, 255, 0.02)',
+                              border: '1px solid rgba(255, 255, 255, 0.05)',
+                              color: 'var(--text-muted)',
+                              borderRadius: '8px',
+                              width: '28px',
+                              height: '28px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s'
+                            }}
+                            title={lang === 'es' ? 'Fusionar con otro mazo' : 'Merge with another deck'}
+                          >
+                            <Layers size={12} />
+                          </button>
+                        </div>
+
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Heatmap below decks list */}
+            {renderActivityCalendar()}
+          </>
+        )}
+
+        {srsSubTab === 'notes' && renderNotesTab(true)}
+
+        {srsSubTab === 'stats' && (
+          <>
+            {/* 2-Column Layout: Hoy + Pronóstico */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+              
+              {/* Column 1: Hoy */}
+              <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '180px' }}>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-light)', paddingBottom: '6px' }}>
+                  {lang === 'es' ? 'Hoy' : 'Today'}
+                </h4>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '8px' }}>
+                  <div style={{ fontSize: '0.82rem', color: 'var(--text-main)', lineHeight: '1.4' }}>
+                    {lang === 'es' ? (
+                      <>
+                        Estudiadas <strong style={{ color: '#a855f7', fontSize: '1rem' }}>{activity.cardsStudiedToday}</strong> tarjetas en <strong style={{ color: '#a855f7' }}>{formatStudyTime(studyTimeTodaySeconds)}</strong> hoy.
+                      </>
+                    ) : (
+                      <>
+                        Studied <strong style={{ color: '#a855f7', fontSize: '1rem' }}>{activity.cardsStudiedToday}</strong> cards in <strong style={{ color: '#a855f7' }}>{formatStudyTime(studyTimeTodaySeconds)}</strong> today.
+                      </>
+                    )}
+                  </div>
+                  <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    {lang === 'es' ? `Velocidad promedio: ${avgSecondsPerCard}s/tarjeta` : `Average speed: ${avgSecondsPerCard}s/card`}
+                  </div>
+                </div>
+              </div>
+
+              {/* Column 2: Pronóstico */}
+              <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', minHeight: '180px' }}>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--border-light)', paddingBottom: '6px' }}>
+                  {lang === 'es' ? 'Pronóstico' : 'Forecast'}
+                </h4>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', height: '110px', gap: '6px', padding: '5px 0', justifyContent: 'space-between' }}>
+                    {forecastCounts.map((count, idx) => {
+                      const pct = (count / maxForecast) * 80;
+                      const dayLabel = idx === 0 ? (lang === 'es' ? 'Hoy' : 'Today') : idx === 1 ? (lang === 'es' ? 'Mañ' : 'Tom') : `+${idx}d`;
+                      return (
+                        <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, height: '100%' }}>
+                          <span style={{ fontSize: '0.58rem', color: 'var(--text-muted)', fontWeight: 'bold', marginBottom: '2px' }}>{count}</span>
+                          <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', width: '100%', background: 'rgba(255,255,255,0.02)', borderRadius: '3px' }}>
+                            <div style={{
+                              width: '100%',
+                              height: `${pct}%`,
+                              background: 'linear-gradient(to top, #7c3aed, #a855f7)',
+                              borderRadius: '3px',
+                              transition: 'height 0.3s ease'
+                            }} title={`${count} reviews`} />
+                          </div>
+                          <span style={{ fontSize: '0.58rem', color: 'var(--text-muted)', marginTop: '4px', fontWeight: 'bold' }}>{dayLabel}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Conteo de Tarjetas */}
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-light)', paddingBottom: '12px' }}>
+                <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  📊 {lang === 'es' ? 'Conteo de Tarjetas' : 'Card Count'}
+                </h3>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={separateSuspended}
+                    onChange={(e) => setSeparateSuspended(e.target.checked)}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <span>{lang === 'es' ? 'Separar tarjetas suspendidas/enterradas' : 'Separate suspended/buried cards'}</span>
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '40px', justifyContent: 'center', alignItems: 'center', padding: '20px 0' }}>
+                {/* Donut Chart */}
+                <div style={{
+                  width: '180px',
+                  height: '180px',
+                  borderRadius: '50%',
+                  background: gradientString,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative',
+                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.2)'
+                }}>
+                  <div style={{
+                    width: '120px',
+                    height: '120px',
+                    borderRadius: '50%',
+                    background: '#16161c',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      {lang === 'es' ? 'Tarjetas' : 'Cards'}
+                    </span>
+                    <span style={{ fontSize: '1.8rem', fontWeight: 900, color: 'var(--text-main)' }}>
+                      {totalSrsCardsCount}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Color Legend & Stats List */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '220px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem', padding: '4px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#3b82f6', display: 'inline-block' }} />
+                      <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>{lang === 'es' ? 'Nuevas' : 'New'}</span>
+                    </div>
+                    <span style={{ fontWeight: 700, color: 'var(--text-main)' }}>{countNew} ({pctNew.toFixed(0)}%)</span>
+                  </div>
+                  
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem', padding: '4px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#f59e0b', display: 'inline-block' }} />
+                      <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>{lang === 'es' ? 'Aprendiendo' : 'Learning'}</span>
+                    </div>
+                    <span style={{ fontWeight: 700, color: 'var(--text-main)' }}>{countLearning} ({pctLearning.toFixed(0)}%)</span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem', padding: '4px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#ef4444', display: 'inline-block' }} />
+                      <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>{lang === 'es' ? 'Reaprendiendo' : 'Relearning'}</span>
+                    </div>
+                    <span style={{ fontWeight: 700, color: 'var(--text-main)' }}>{countRelearning} ({pctRelearning.toFixed(0)}%)</span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem', padding: '4px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#86efac', display: 'inline-block' }} />
+                      <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>{lang === 'es' ? 'Jóvenes' : 'Young'}</span>
+                    </div>
+                    <span style={{ fontWeight: 700, color: 'var(--text-main)' }}>{countYoung} ({pctYoung.toFixed(0)}%)</span>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem', padding: '4px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ width: '12px', height: '12px', borderRadius: '3px', background: '#22c55e', display: 'inline-block' }} />
+                      <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>{lang === 'es' ? 'Maduras' : 'Mature'}</span>
+                    </div>
+                    <span style={{ fontWeight: 700, color: 'var(--text-main)' }}>{countMature} ({pctMature.toFixed(0)}%)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Full-width Year Calendar */}
+            {renderActivityCalendar()}
+          </>
+        )}
+
+        {srsSubTab === 'history' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-main)' }}>
+                {lang === 'es' ? 'Historial de Repasos' : 'Review History'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(lang === 'es' ? '¿Estás seguro de que deseas limpiar el historial de repasos?' : 'Are you sure you want to clear the review history?')) {
+                    db.clearSrsHistory();
+                    setSrsUpdateTrigger(t => t + 1);
+                    showToast(lang === 'es' ? 'Historial limpiado' : 'History cleared', 'info');
+                  }
+                }}
+                style={{
+                  background: 'rgba(239, 68, 68, 0.1)',
+                  border: '1px solid rgba(239, 68, 68, 0.25)',
+                  color: '#f87171',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  padding: '5px 12px',
+                  borderRadius: '16px',
+                  transition: 'all 0.15s'
+                }}
+              >
+                {lang === 'es' ? 'Limpiar Historial' : 'Clear History'}
+              </button>
+            </div>
+
+            {(() => {
+              const history = db.getSrsHistory();
+              if (history.length === 0) {
+                return (
+                  <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontStyle: 'italic', background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '16px' }}>
+                    {lang === 'es' ? 'Aún no hay repasos registrados en esta sesión.' : 'No reviews registered in this session yet.'}
+                  </div>
+                );
+              }
+
+              const getGradeBadge = (grade: number) => {
+                const grades: Record<number, { text: string; bg: string; color: string }> = {
+                  1: { text: lang === 'es' ? 'Otra vez' : 'Again', bg: 'rgba(239, 68, 68, 0.12)', color: '#f87171' },
+                  2: { text: lang === 'es' ? 'Difícil' : 'Hard', bg: 'rgba(245, 158, 11, 0.12)', color: '#fbbf24' },
+                  3: { text: lang === 'es' ? 'Bien' : 'Good', bg: 'rgba(34, 197, 94, 0.12)', color: '#4ade80' },
+                  4: { text: lang === 'es' ? 'Fácil' : 'Easy', bg: 'rgba(59, 130, 246, 0.12)', color: '#60a5fa' }
+                };
+                const val = grades[grade] || { text: 'Unknown', bg: 'rgba(255,255,255,0.05)', color: 'var(--text-muted)' };
+                return (
+                  <span style={{ fontSize: '0.7rem', fontWeight: 800, background: val.bg, color: val.color, padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    {val.text}
+                  </span>
+                );
+              };
+
+              return (
+                <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '16px', overflow: 'hidden' }}>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.85rem' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '1px solid var(--border-light)', background: 'rgba(255,255,255,0.01)' }}>
+                          <th style={{ padding: '12px 16px', color: 'var(--text-muted)', fontWeight: 700 }}>{lang === 'es' ? 'Palabra' : 'Word'}</th>
+                          <th style={{ padding: '12px 16px', color: 'var(--text-muted)', fontWeight: 700 }}>{lang === 'es' ? 'Mazo' : 'Deck'}</th>
+                          <th style={{ padding: '12px 16px', color: 'var(--text-muted)', fontWeight: 700 }}>{lang === 'es' ? 'Calificación' : 'Grade'}</th>
+                          <th style={{ padding: '12px 16px', color: 'var(--text-muted)', fontWeight: 700 }}>{lang === 'es' ? 'Intervalo' : 'Interval'}</th>
+                          <th style={{ padding: '12px 16px', color: 'var(--text-muted)', fontWeight: 700 }}>{lang === 'es' ? 'Fecha' : 'Date'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {history.map((entry: any, idx: number) => {
+                          const displayWord = entry.word.includes(':') ? entry.word.split(':')[0] : entry.word;
+                          const relativeTime = (() => {
+                            const diff = Date.now() - new Date(entry.timestamp).getTime();
+                            const mins = Math.floor(diff / 60000);
+                            const hours = Math.floor(mins / 60);
+                            if (mins < 1) return lang === 'es' ? 'Hace un momento' : 'Just now';
+                            if (mins < 60) return lang === 'es' ? `Hace ${mins}m` : `${mins}m ago`;
+                            if (hours < 24) return lang === 'es' ? `Hace ${hours}h` : `${hours}h ago`;
+                            return new Date(entry.timestamp).toLocaleDateString(lang === 'es' ? 'es-ES' : 'en-US');
+                          })();
+                          return (
+                            <tr key={idx} style={{ borderBottom: idx < history.length - 1 ? '1px solid var(--border-light)' : 'none' }}>
+                              <td style={{ padding: '12px 16px', fontWeight: 800, color: 'var(--text-main)', fontFamily: 'var(--font-japanese)', fontSize: '0.95rem' }}>{displayWord}</td>
+                              <td style={{ padding: '12px 16px', color: 'var(--text-muted)', fontWeight: 500 }}>{entry.deckName}</td>
+                              <td style={{ padding: '12px 16px' }}>{getGradeBadge(entry.grade)}</td>
+                              <td style={{ padding: '12px 16px', color: 'var(--text-main)', fontWeight: 650 }}>{entry.interval}d</td>
+                              <td style={{ padding: '12px 16px', color: 'var(--text-muted)', fontSize: '0.78rem' }}>{relativeTime}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {srsSubTab === 'settings' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: 'var(--text-main)' }}>
+              {lang === 'es' ? 'Ajustes de SRS' : 'SRS Settings'}
+            </h3>
+
+            {/* Limits Section */}
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {lang === 'es' ? 'Límites Diarios de Sesión' : 'Daily Session Limits'}
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '6px' }}>
+                    {lang === 'es' ? 'Tarjetas nuevas por día' : 'New cards per day'}
+                  </label>
+                  <input
+                    type="number"
+                    value={settings.srsNewCardsPerDay !== undefined ? settings.srsNewCardsPerDay : 20}
+                    onChange={(e) => h({ ...settings, srsNewCardsPerDay: Number(e.target.value) })}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid var(--border-light)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      color: '#fff',
+                      fontSize: '0.9rem',
+                      width: '100%',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '6px' }}>
+                    {lang === 'es' ? 'Máximo de repasos por día' : 'Maximum reviews per day'}
+                  </label>
+                  <input
+                    type="number"
+                    value={settings.srsMaxReviewsPerDay !== undefined ? settings.srsMaxReviewsPerDay : 200}
+                    onChange={(e) => h({ ...settings, srsMaxReviewsPerDay: Number(e.target.value) })}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid var(--border-light)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      color: '#fff',
+                      fontSize: '0.9rem',
+                      width: '100%',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* FSRS Configuration Section */}
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {lang === 'es' ? 'Parámetros del Algoritmo FSRS-6' : 'FSRS-6 Algorithm Parameters'}
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '6px' }}>
+                    {lang === 'es' ? 'Retención solicitada (FSRS)' : 'Requested retention (FSRS)'}
+                  </label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <input
+                      type="range"
+                      min="0.70"
+                      max="0.99"
+                      step="0.01"
+                      value={settings.fsrsRetentionRate !== undefined ? settings.fsrsRetentionRate : 0.90}
+                      onChange={(e) => h({ ...settings, fsrsRetentionRate: Number(e.target.value) })}
+                      style={{ flex: 1, accentColor: 'var(--primary)' }}
+                    />
+                    <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-main)', minWidth: '40px' }}>
+                      {((settings.fsrsRetentionRate !== undefined ? settings.fsrsRetentionRate : 0.90) * 100).toFixed(0)}%
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '6px' }}>
+                    {lang === 'es' ? 'Intervalo máximo (Días)' : 'Maximum interval (Days)'}
+                  </label>
+                  <input
+                    type="number"
+                    value={settings.fsrsMaxInterval !== undefined ? settings.fsrsMaxInterval : 36500}
+                    onChange={(e) => h({ ...settings, fsrsMaxInterval: Number(e.target.value) })}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid var(--border-light)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      color: '#fff',
+                      fontSize: '0.9rem',
+                      width: '100%',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '4px' }}>
+                <input
+                  type="checkbox"
+                  id="enableFuzzCheckbox"
+                  checked={settings.fsrsEnableFuzz !== false}
+                  onChange={(e) => h({ ...settings, fsrsEnableFuzz: e.target.checked })}
+                  style={{ width: '16px', height: '16px', accentColor: 'var(--primary)', cursor: 'pointer' }}
+                />
+                <label htmlFor="enableFuzzCheckbox" style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer' }}>
+                  {lang === 'es' ? 'Habilitar Fuzz (dispersión aleatoria de intervalos para evitar acumulación)' : 'Enable Fuzz (randomly disperse intervals to prevent study spikes)'}
+                </label>
+              </div>
+            </div>
+
+            {/* Audio Section */}
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {lang === 'es' ? 'Preferencias de Audio' : 'Audio Preferences'}
+              </h4>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <input
+                  type="checkbox"
+                  id="autoTtsCheckbox"
+                  checked={settings.autoTTS === true}
+                  onChange={(e) => h({ ...settings, autoTTS: e.target.checked })}
+                  style={{ width: '16px', height: '16px', accentColor: 'var(--primary)', cursor: 'pointer' }}
+                />
+                <label htmlFor="autoTtsCheckbox" style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer' }}>
+                  {lang === 'es' ? 'Reproducir audio automáticamente al mostrar la respuesta (Auto-TTS)' : 'Play audio automatically upon revealing the answer (Auto-TTS)'}
+                </label>
+              </div>
+            </div>
+
+            {/* Keyboard Shortcuts Section */}
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '16px', padding: '20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                {lang === 'es' ? 'Atajos de Teclado del Repaso' : 'Review Keyboard Shortcuts'}
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                  <span>{lang === 'es' ? 'Mostrar Respuesta' : 'Reveal Answer'}</span>
+                  <kbd style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '2px 6px', borderRadius: '4px', color: '#fff', border: '1px solid var(--border-light)' }}>[Espacio] / [Enter]</kbd>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                  <span>{lang === 'es' ? 'Calificar: Otra vez (Again)' : 'Grade: Again'}</span>
+                  <kbd style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '2px 6px', borderRadius: '4px', color: '#fff', border: '1px solid var(--border-light)' }}>1</kbd>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                  <span>{lang === 'es' ? 'Calificar: Difícil (Hard)' : 'Grade: Hard'}</span>
+                  <kbd style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '2px 6px', borderRadius: '4px', color: '#fff', border: '1px solid var(--border-light)' }}>2</kbd>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                  <span>{lang === 'es' ? 'Calificar: Bien (Good)' : 'Grade: Good'}</span>
+                  <kbd style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '2px 6px', borderRadius: '4px', color: '#fff', border: '1px solid var(--border-light)' }}>3</kbd>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                  <span>{lang === 'es' ? 'Calificar: Fácil (Easy)' : 'Grade: Easy'}</span>
+                  <kbd style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '2px 6px', borderRadius: '4px', color: '#fff', border: '1px solid var(--border-light)' }}>4</kbd>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                  <span>{lang === 'es' ? 'Ignorar / Ocultar' : 'Blacklist / Ignore'}</span>
+                  <kbd style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '2px 6px', borderRadius: '4px', color: '#fff', border: '1px solid var(--border-light)' }}>B</kbd>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                  <span>{lang === 'es' ? 'Marcar como conocido (Máster)' : 'Mark as known (Master)'}</span>
+                  <kbd style={{ background: 'rgba(255, 255, 255, 0.08)', padding: '2px 6px', borderRadius: '4px', color: '#fff', border: '1px solid var(--border-light)' }}>M</kbd>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderNotesTab = (isSubTab: boolean = false) => {
+    const allWordStatuses = db.getWordStatuses();
+    const srsData = db.getSrsData();
+    const now = new Date();
+
+    // 1. Calculate lists and stats
+    const allUniqueWords = new Set([
+      ...Object.keys(allWordStatuses),
+      ...Object.keys(srsData).filter(w => !w.startsWith('_deck_'))
+    ]);
+
+    const wordsList = Array.from(allUniqueWords).map(word => {
+      const status = allWordStatuses[word] || 'learning';
       let statusText = lang === 'es' ? 'Nuevo' : 'New';
       let statusClass = 'new';
       if (status === 'learning') {
@@ -4715,14 +6185,56 @@ const Library = React.memo(function Library({
       return { word, status, statusText, statusClass };
     });
 
-    // 3. Filter list
+    const allSrsCards = Object.entries(srsData).filter(([w, c]) => !w.startsWith('_deck_') && c);
+    
+    // Counts
+    const countAll = wordsList.length;
+    const countDue = allSrsCards.filter(([w, c]: [string, any]) => {
+      return c.dueDate && new Date(c.dueDate) <= now && allWordStatuses[w] === 'learning';
+    }).length;
+    const countLeeches = allSrsCards.filter(([w, c]: [string, any]) => c.lapses >= 4).length;
+    const countLearning = allSrsCards.filter(([w, c]: [string, any]) => c.state === 1).length;
+    const countReview = allSrsCards.filter(([w, c]: [string, any]) => c.state === 2).length;
+    const countRelearning = allSrsCards.filter(([w, c]: [string, any]) => c.state === 3).length;
+    const countMastered = allSrsCards.filter(([w, c]: [string, any]) => c.state === 2 && (c.scheduled_days >= 21 || c.interval >= 21)).length;
+    const countSuspended = Object.values(allWordStatuses).filter(s => s === 'ignored').length;
+    const countBlacklisted = countSuspended;
+
+    // 2. Filter list
     const filteredWords = wordsList.filter(item => {
       const matchSearch = item.word.toLowerCase().includes(notesSearch.toLowerCase());
-      const matchStatus = notesFilterStatus === 'all' || item.status === notesFilterStatus;
-      return matchSearch && matchStatus;
+      if (!matchSearch) return false;
+
+      const card = srsData[item.word];
+      if (notesFilterStatus === 'all') return true;
+      if (notesFilterStatus === 'due') {
+        return card && card.dueDate && new Date(card.dueDate) <= now && item.status === 'learning';
+      }
+      if (notesFilterStatus === 'leeches') {
+        return card && card.lapses >= 4;
+      }
+      if (notesFilterStatus === 'learning') {
+        return card && card.state === 1;
+      }
+      if (notesFilterStatus === 'review') {
+        return card && card.state === 2;
+      }
+      if (notesFilterStatus === 'relearning') {
+        return card && card.state === 3;
+      }
+      if (notesFilterStatus === 'mastered') {
+        return card && card.state === 2 && (card.scheduled_days >= 21 || card.interval >= 21);
+      }
+      if (notesFilterStatus === 'suspended') {
+        return item.status === 'ignored';
+      }
+      if (notesFilterStatus === 'blacklisted') {
+        return item.status === 'ignored';
+      }
+      return true;
     });
 
-    // 4. Sort list
+    // 3. Sort list
     const sortedWords = [...filteredWords].sort((a, b) => {
       if (notesSort === 'alphabetical') {
         return a.word.localeCompare(b.word, 'ja');
@@ -4732,263 +6244,151 @@ const Library = React.memo(function Library({
       return a.word.localeCompare(b.word, 'ja');
     });
 
-    // Option details mapping for display
-    const activeFilterLabel = {
-      all: lang === 'es' ? 'TODOS' : 'ALL',
-      new: lang === 'es' ? 'NUEVO' : 'NEW',
-      learning: lang === 'es' ? 'APRENDIENDO' : 'LEARNING',
-      known: lang === 'es' ? 'CONOCIDO' : 'KNOWN',
-      starred: lang === 'es' ? 'DESTACADO' : 'STARRED',
-      ignored: lang === 'es' ? 'IGNORADO' : 'IGNORED'
-    }[notesFilterStatus] || (lang === 'es' ? 'FILTRAR' : 'FILTER');
-
-    const activeSortLabel = {
-      alphabetical: lang === 'es' ? 'ALFABÉTICO (A-Z)' : 'ALPHABETICAL (A-Z)',
-      'alphabetical-desc': lang === 'es' ? 'ALFABÉTICO (Z-A)' : 'ALPHABETICAL (Z-A)'
-    }[notesSort] || (lang === 'es' ? 'ORDENAR' : 'SORT');
-
     return (
-      <div className="tab-view-container notes-view-panel" style={{ maxWidth: '800px', margin: '0 auto', padding: '2rem 1rem 6rem 1rem' }}>
-        {/* Premium Dashboard Summary Card (Image 1 style) */}
-        <div className="vocab-dashboard-card">
-          {/* Main Counter */}
-          <h2 style={{ margin: '0 0 10px 0', fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: 'var(--status-known)' }}>{totalKnown.toLocaleString()}</span>
-            <span>{lang === 'es' ? 'Palabras conocidas' : 'Known words'}</span>
-          </h2>
-
-          {/* Subtitle counters */}
-          <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '16px', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-            <span>
-              <span style={{ color: 'var(--status-learning)', marginRight: '4px' }}>{totalLearning}</span>
-              {lang === 'es' ? 'aprendiendo' : 'learning'}
-            </span>
-            <span style={{ opacity: 0.4 }}>•</span>
-            <span>
-              <span style={{ color: '#ab47bc', marginRight: '4px' }}>{totalStarred}</span>
-              {lang === 'es' ? 'destacada(s)' : 'starred'}
-            </span>
-            <span style={{ opacity: 0.4 }}>•</span>
-            <span>
-              <span style={{ color: 'var(--text-muted)', marginRight: '4px' }}>{totalIgnored}</span>
-              {lang === 'es' ? 'ignorada(s)' : 'ignored'}
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'center', marginTop: '16px', gap: '10px', flexWrap: 'wrap' }}>
+      <div 
+        className={isSubTab ? "" : "tab-view-container notes-view-panel"} 
+        style={isSubTab ? { padding: '10px 0' } : { maxWidth: '800px', margin: '0 auto', padding: '1.5rem 1rem 6rem 1rem', height: 'calc(100vh - 64px)', overflowY: 'auto', boxSizing: 'border-box' }}
+      >
+        {/* Back to Yoru SRS Link */}
+        {!isSubTab && (
+          <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '16px' }}>
             <button
               type="button"
-              className="vocab-action-btn"
-              onClick={() => setIsVocabModalOpen(true)}
-              style={{ background: 'rgba(255, 224, 0, 0.08)', borderColor: 'var(--primary)', color: 'var(--primary)', display: 'inline-flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 650, padding: '6px 14px', borderRadius: '8px' }}
-            >
-              <Database size={14} /> <span>{lang === 'es' ? 'Importar / Sincronizar' : 'Import / Sync'}</span>
-            </button>
-
-            {/* SRS Review Button */}
-            <button
-              type="button"
-              className="vocab-action-btn"
-              onClick={() => { setIsSrsReviewOpen(true); setSrsUpdateTrigger(t => t + 1); }}
+              onClick={() => setActiveTab('srs')}
               style={{
-                background: dueCount > 0 ? 'rgba(168, 85, 247, 0.08)' : 'var(--bg-app)',
-                borderColor: dueCount > 0 ? 'rgba(168, 85, 247, 0.6)' : 'var(--border-light)',
-                color: dueCount > 0 ? '#c084fc' : 'var(--text-muted)',
+                background: 'none',
+                border: 'none',
+                color: 'var(--primary)',
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                cursor: 'pointer',
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '8px',
-                cursor: 'pointer',
-                fontWeight: 650,
-                padding: '6px 14px',
+                gap: '6px',
+                padding: '6px 12px',
                 borderRadius: '8px',
-                position: 'relative'
+                transition: 'background 0.2s'
               }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.03)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'none' }}
             >
-              <Zap size={14} />
-              <span>{lang === 'es' ? 'Repasar SRS' : 'Review SRS'}</span>
-              {dueCount > 0 && (
-                <span style={{
-                  background: '#a855f7',
-                  color: '#fff',
-                  borderRadius: '10px',
-                  fontSize: '0.65rem',
-                  fontWeight: 800,
-                  padding: '1px 6px',
-                  marginLeft: '2px'
-                }}>{dueCount}</span>
-              )}
+              ← {lang === 'es' ? 'Volver a Yoru SRS' : 'Back to Yoru SRS'}
             </button>
           </div>
+        )}
+
+        {/* Jiten Title & Count */}
+        <div style={{ marginBottom: '18px' }}>
+          <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-main)', margin: '0 0 6px 0', display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+            {lang === 'es' ? 'Mis Tarjetas' : 'My Cards'}
+            <span style={{ fontSize: '1rem', color: 'var(--text-muted)', fontWeight: 500 }}>({countAll})</span>
+          </h2>
         </div>
 
-        {/* SRS Stats Panel */}
-        <div 
-          style={{ 
-            background: 'var(--bg-card)', 
-            border: '1px solid var(--border-light)', 
-            borderRadius: '16px', 
-            padding: '24px', 
-            marginBottom: '24px',
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.05)',
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-            gap: '24px'
-          }}
-        >
-          {/* Left: Card Breakdown */}
-          <div>
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--border-light)', paddingBottom: '8px' }}>
-              📊 {lang === 'es' ? 'Desglose de Tarjetas SRS' : 'SRS Card Breakdown'}
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {[
-                { label: lang === 'es' ? 'Nuevas' : 'New', value: srsStats.newCards, color: '#3b82f6', desc: lang === 'es' ? 'Listas para aprender' : 'Ready to learn' },
-                { label: lang === 'es' ? 'Aprendiendo' : 'Learning', value: srsStats.learningCards, color: '#f59e0b', desc: lang === 'es' ? 'En repaso corto' : 'Short review cycle' },
-                { label: lang === 'es' ? 'Jóvenes' : 'Young', value: srsStats.youngCards, color: '#22c55e', desc: lang === 'es' ? 'Intervalo < 21 días' : 'Interval < 21 days' },
-                { label: lang === 'es' ? 'Maduras' : 'Mature', value: srsStats.matureCards, color: '#a855f7', desc: lang === 'es' ? 'Intervalo ≥ 21 días' : 'Interval ≥ 21 days' }
-              ].map((item, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-card-hover)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: item.color }} />
-                    <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-main)' }}>{item.label}</span>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500 }}>({item.desc})</span>
-                  </div>
-                  <span style={{ fontSize: '0.94rem', fontWeight: 800, color: 'var(--text-main)' }}>{item.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+        {/* Jiten Filter Pills Row */}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '20px', alignItems: 'center' }}>
+          {(() => {
+            const renderPill = (type: string, esLabel: string, enLabel: string, count: number, activeColor: string, textColor: string) => {
+              const isActive = notesFilterStatus === type;
+              const label = lang === 'es' ? esLabel : enLabel;
+              return (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setNotesFilterStatus(type)}
+                  style={{
+                    background: isActive ? activeColor : 'rgba(255, 255, 255, 0.02)',
+                    border: isActive ? `1px solid ${activeColor}` : '1px solid var(--border-light)',
+                    color: isActive ? '#ffffff' : textColor,
+                    fontSize: '0.78rem',
+                    fontWeight: 700,
+                    padding: '6px 14px',
+                    borderRadius: '20px',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.12s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.02)';
+                  }}
+                >
+                  <span>{label}</span>
+                  {count > 0 && <span style={{ opacity: 0.75, fontSize: '0.7rem' }}>{count}</span>}
+                </button>
+              );
+            };
 
-          {/* Right: Review Forecast */}
-          <div>
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--border-light)', paddingBottom: '8px' }}>
-              🔮 {lang === 'es' ? 'Pronóstico de Repasos' : 'Review Forecast'}
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {[
-                { label: lang === 'es' ? 'Pendientes hoy' : 'Due today', value: srsStats.due, color: '#ef4444' },
-                { label: lang === 'es' ? 'Próximos 7 días' : 'Next 7 days', value: srsStats.due7d, color: 'var(--primary)' },
-                { label: lang === 'es' ? 'Próximos 30 días' : 'Next 30 days', value: srsStats.due30d, color: '#60a5fa' }
-              ].map((item, idx) => (
-                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', background: 'var(--bg-card-hover)', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
-                  <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-main)' }}>{item.label}</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {item.value > 0 && <span style={{ fontSize: '0.72rem', color: item.color, background: 'rgba(255, 255, 255, 0.02)', padding: '2px 8px', borderRadius: '12px', border: `1px solid ${item.color}`, fontWeight: 700 }}>+{item.value}</span>}
-                    <span style={{ fontSize: '0.94rem', fontWeight: 800, color: 'var(--text-main)' }}>{item.value}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+            return (
+              <>
+                {renderPill('all', 'Todas', 'All', countAll, '#a855f7', '#c084fc')}
+                {renderPill('due', 'Pendientes', 'Due', countDue, '#ef4444', '#f87171')}
+                {renderPill('leeches', 'Leeches', 'Leeches', countLeeches, '#f97316', '#fb923c')}
+                {renderPill('learning', 'Aprendiendo', 'Learning', countLearning, '#eab308', '#fde047')}
+                {renderPill('review', 'Repaso', 'Review', countReview, '#22c55e', '#4ade80')}
+                {renderPill('relearning', 'Reaprendizaje', 'Relearning', countRelearning, '#f43f5e', '#fb7185')}
+                {renderPill('mastered', 'Graduadas', 'Mastered', countMastered, '#14b8a6', '#2dd4bf')}
+                {renderPill('suspended', 'Suspendidas', 'Suspended', countSuspended, 'var(--text-muted)', 'var(--text-muted)')}
+                {renderPill('blacklisted', 'Lista Negra', 'Blacklisted', countBlacklisted, 'var(--text-muted)', 'var(--text-muted)')}
+              </>
+            );
+          })()}
         </div>
 
-        {/* Dropdown Filters & Actions Row */}
-        <div style={{ display: 'flex', gap: '14px', marginBottom: '24px', position: 'relative', zIndex: 10 }}>
-          {/* Sort By Button */}
+        {/* Search & Sort Controls Row */}
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '24px', alignItems: 'center' }}>
           <div style={{ flex: 1, position: 'relative' }}>
-            <button
-              type="button"
-              onClick={() => {
-                setIsNotesSortOpen(!isNotesSortOpen);
-                setIsNotesFilterOpen(false);
+            <input
+              type="text"
+              placeholder={lang === 'es' ? 'Buscar palabra...' : 'Search word...'}
+              value={notesSearch}
+              onChange={(e) => setNotesSearch(e.target.value)}
+              style={{
+                width: '100%',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid var(--border-light)',
+                borderRadius: '10px',
+                padding: '10px 12px 10px 38px',
+                color: '#fff',
+                fontSize: '0.85rem',
+                outline: 'none',
+                boxSizing: 'border-box'
               }}
-              className="vocab-action-btn"
-            >
-              {lang === 'es' ? 'ORDENAR POR' : 'SORT BY'}: {activeSortLabel} <ChevronDown size={14} />
-            </button>
-            {isNotesSortOpen && (
-              <div className="vocab-dropdown-menu">
-                {[
-                  { value: 'alphabetical', label: lang === 'es' ? 'Alfabético (A-Z)' : 'Alphabetical (A-Z)' },
-                  { value: 'alphabetical-desc', label: lang === 'es' ? 'Alfabético (Z-A)' : 'Alphabetical (Z-A)' }
-                ].map(opt => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => {
-                      setNotesSort(opt.value);
-                      setIsNotesSortOpen(false);
-                    }}
-                    style={{
-                      width: '100%',
-                      background: notesSort === opt.value ? 'rgba(255,224,0,0.1)' : 'transparent',
-                      border: 'none',
-                      color: notesSort === opt.value ? 'var(--primary)' : 'var(--text-main)',
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      fontSize: '0.8rem',
-                      fontWeight: 600,
-                      textAlign: 'left',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            />
+            <Search size={15} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
           </div>
 
-          {/* Filter Status Button */}
-          <div style={{ flex: 1, position: 'relative' }}>
-            <button
-              type="button"
-              onClick={() => {
-                setIsNotesFilterOpen(!isNotesFilterOpen);
-                setIsNotesSortOpen(false);
-              }}
-              className="vocab-action-btn"
-            >
-              {lang === 'es' ? 'FILTRAR POR' : 'FILTER BY'}: {activeFilterLabel} <ChevronDown size={14} />
-            </button>
-            {isNotesFilterOpen && (
-              <div className="vocab-dropdown-menu">
-                {[
-                  { value: 'all', label: lang === 'es' ? 'Todos los estados' : 'All statuses' },
-                  { value: 'new', label: lang === 'es' ? 'Nuevo' : 'New' },
-                  { value: 'learning', label: lang === 'es' ? 'Aprendiendo' : 'Learning' },
-                  { value: 'known', label: lang === 'es' ? 'Conocido' : 'Known' },
-                  { value: 'starred', label: lang === 'es' ? 'Destacado' : 'Starred' },
-                  { value: 'ignored', label: lang === 'es' ? 'Ignorado' : 'Ignored' }
-                ].map(opt => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => {
-                      setNotesFilterStatus(opt.value);
-                      setIsNotesFilterOpen(false);
-                    }}
-                    style={{
-                      width: '100%',
-                      background: notesFilterStatus === opt.value ? 'rgba(255,224,0,0.1)' : 'transparent',
-                      border: 'none',
-                      color: notesFilterStatus === opt.value ? 'var(--primary)' : 'var(--text-main)',
-                      padding: '8px 12px',
-                      borderRadius: '8px',
-                      fontSize: '0.8rem',
-                      fontWeight: 600,
-                      textAlign: 'left',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Text Keyword Search Box */}
-        <div style={{ marginBottom: '20px' }}>
-          <input 
-            type="text"
-            placeholder={lang === 'es' ? "Buscar palabra..." : "Search word..."}
-            value={notesSearch}
-            onChange={(e) => setNotesSearch(e.target.value)}
-            className="create-profile-input"
-            style={{ width: '100%', maxWidth: 'none', borderRadius: '12px', padding: '12px 16px', background: 'var(--bg-card)', border: '1px solid var(--border-light)', color: 'var(--text-main)' }}
-          />
+          <button
+            type="button"
+            onClick={() => {
+              setNotesSort(s => s === 'alphabetical' ? 'alphabetical-desc' : 'alphabetical');
+            }}
+            style={{
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid var(--border-light)',
+              borderRadius: '10px',
+              padding: '10px 14px',
+              color: 'var(--text-main)',
+              fontSize: '0.82rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              height: '40px',
+              boxSizing: 'border-box',
+              transition: 'background 0.2s'
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.03)' }}
+          >
+            <ArrowUpDown size={14} />
+            <span>{notesSort === 'alphabetical' ? 'A-Z' : 'Z-A'}</span>
+          </button>
         </div>
         
         {/* Word Grid Output */}
@@ -5088,6 +6488,14 @@ const Library = React.memo(function Library({
             <BookOpen size={15} /> <span>{t('library', lang)}</span>
           </button>
           <button 
+            className={`nav-tab-btn ${activeTab === 'srs' ? 'active' : ''}`}
+            onClick={() => setActiveTab('srs')}
+            type="button"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <Zap size={15} /> <span>Yoru SRS</span>
+          </button>
+          <button 
             className={`nav-tab-btn ${activeTab === 'statistics' ? 'active' : ''}`}
             onClick={() => setActiveTab('statistics')}
             type="button"
@@ -5102,14 +6510,6 @@ const Library = React.memo(function Library({
             style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
           >
             <Settings size={15} /> <span>{t('settings', lang)}</span>
-          </button>
-          <button 
-            className={`nav-tab-btn ${activeTab === 'notes' ? 'active' : ''}`}
-            onClick={() => setActiveTab('notes')}
-            type="button"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-          >
-            <ListChecks size={15} /> <span>{t('vocabulary', lang)}</span>
           </button>
         </nav>
 
@@ -6056,6 +7456,7 @@ const Library = React.memo(function Library({
       {activeTab === 'statistics' && renderStatisticsTab()}
       {activeTab === 'settings' && renderSettingsTab()}
       {activeTab === 'notes' && renderNotesTab()}
+      {activeTab === 'srs' && renderSrsTab()}
 
       {/* Bottom Navigation Bar for Mobile */}
       {isMobile && (
@@ -6067,6 +7468,14 @@ const Library = React.memo(function Library({
           >
             <BookOpen size={18} />
             <span>{t('library', lang)}</span>
+          </button>
+          <button 
+            className={`bottom-tab-btn ${activeTab === 'srs' ? 'active' : ''}`}
+            onClick={() => setActiveTab('srs')}
+            type="button"
+          >
+            <Zap size={18} />
+            <span>Yoru SRS</span>
           </button>
           <button 
             className={`bottom-tab-btn ${activeTab === 'statistics' ? 'active' : ''}`}
@@ -6083,14 +7492,6 @@ const Library = React.memo(function Library({
           >
             <Settings size={18} />
             <span>{t('settings', lang)}</span>
-          </button>
-          <button 
-            className={`bottom-tab-btn ${activeTab === 'notes' ? 'active' : ''}`}
-            onClick={() => setActiveTab('notes')}
-            type="button"
-          >
-            <ListChecks size={18} />
-            <span>{t('vocabulary', lang)}</span>
           </button>
         </div>
       )}
@@ -6868,7 +8269,7 @@ const Library = React.memo(function Library({
           <VocabularyModal isOpen={isVocabModalOpen} onClose={() => setIsVocabModalOpen(false)} />
         )}
         {isSrsReviewOpen && (
-          <SrsReviewModal isOpen={isSrsReviewOpen} onClose={() => { setIsSrsReviewOpen(false); setSrsUpdateTrigger(t => t + 1); }} />
+          <SrsReviewModal isOpen={isSrsReviewOpen} filterDeck={selectedDeckFilter} onClose={() => { setIsSrsReviewOpen(false); setSrsUpdateTrigger(t => t + 1); }} />
         )}
       </React.Suspense>
 
@@ -6932,6 +8333,157 @@ const Library = React.memo(function Library({
             display: 'inline-block' 
           }} />
           <span>{toast.message}</span>
+        </div>
+      )}
+      {isDeckPromptOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.75)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10001
+        }}>
+          <form 
+            onSubmit={handleDeckPromptSubmit}
+            style={{
+              background: '#16161c',
+              border: '1px solid var(--border-light)',
+              borderRadius: '16px',
+              padding: '24px',
+              width: '380px',
+              maxWidth: '90%',
+              boxShadow: '0 20px 50px rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px'
+            }}
+          >
+            <h3 style={{ margin: 0, color: '#fff', fontSize: '1.1rem', fontWeight: 700 }}>
+              {deckPromptMode === 'create' 
+                ? (lang === 'es' ? 'Crear Nuevo Mazo' : 'Create New Deck')
+                : deckPromptMode === 'rename'
+                  ? (lang === 'es' ? 'Renombrar Mazo' : 'Rename Deck')
+                  : (lang === 'es' ? 'Fusionar Mazo' : 'Merge Decks')
+              }
+            </h3>
+
+            {deckPromptMode === 'merge' ? (
+              <select
+                value={deckPromptValue}
+                onChange={(e) => setDeckPromptValue(e.target.value)}
+                required
+                style={{
+                  background: '#1c1c24',
+                  border: '1px solid var(--border-light)',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  color: '#fff',
+                  fontSize: '0.9rem',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  width: '100%'
+                }}
+              >
+                <option value="" disabled style={{ background: '#16161c' }}>
+                  {lang === 'es' ? 'Seleccionar mazo destino...' : 'Select target deck...'}
+                </option>
+                {(() => {
+                  const srsData = db.getSrsData();
+                  const deckNames = new Set<string>(['Yoru Reader']);
+                  Object.entries(srsData).forEach(([word, card]: [string, any]) => {
+                    if (card && card.source && !word.startsWith('_deck_')) {
+                      deckNames.add(card.source);
+                    }
+                  });
+                  return Array.from(deckNames)
+                    .filter(name => name !== deckPromptTargetId)
+                    .sort((a, b) => a.localeCompare(b, 'ja'))
+                    .map(name => (
+                      <option key={name} value={name} style={{ background: '#16161c' }}>
+                        {name}
+                      </option>
+                    ));
+                })()}
+              </select>
+            ) : (
+              <input 
+                type="text"
+                value={deckPromptValue}
+                onChange={(e) => setDeckPromptValue(e.target.value)}
+                placeholder={lang === 'es' ? 'Nombre del mazo...' : 'Deck name...'}
+                required
+                autoFocus
+                style={{
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid var(--border-light)',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  color: '#fff',
+                  fontSize: '0.9rem',
+                  outline: 'none',
+                  transition: 'border-color 0.2s'
+                }}
+              />
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
+              <button
+                type="button"
+                className="create-profile-cancel"
+                onClick={() => setIsDeckPromptOpen(false)}
+                style={{ padding: '8px 16px', fontSize: '0.85rem' }}
+              >
+                {lang === 'es' ? 'Cancelar' : 'Cancel'}
+              </button>
+
+              {deckPromptMode === 'rename' && (
+                <button
+                  type="button"
+                  onClick={handleDeckPromptDelete}
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid #ef4444',
+                    color: '#f87171',
+                    borderRadius: '8px',
+                    padding: '8px 16px',
+                    fontSize: '0.85rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {lang === 'es' ? 'Eliminar' : 'Delete'}
+                </button>
+              )}
+
+              <button
+                type="submit"
+                style={{
+                  background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
+                  border: 'none',
+                  color: '#fff',
+                  borderRadius: '8px',
+                  padding: '8px 16px',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {deckPromptMode === 'create'
+                  ? (lang === 'es' ? 'Crear' : 'Create')
+                  : deckPromptMode === 'rename'
+                    ? (lang === 'es' ? 'Guardar' : 'Save')
+                    : (lang === 'es' ? 'Fusionar' : 'Merge')
+                }
+              </button>
+            </div>
+          </form>
         </div>
       )}
       {deleteAllState && renderDeleteAllModal()}

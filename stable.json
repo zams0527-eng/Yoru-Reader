@@ -1,6 +1,6 @@
 {
-  "appVersion": "2.3.0",
-  "backendVersion": "1.3.0",
+  "appVersion": "1.1.0",
+  "backendVersion": "1.1.0",
   "url": "https://github.com/zams0527-eng/Yoru-Reader/releases/latest",
-  "description": "Se implementa de forma 100% nativa el procesador de lectura y análisis YoruParser (en reemplazo del cargador genérico de Jiten) junto a un panel de ajustes nativo integrado en React (YoruParserSettings) con 6 pestañas funcionales (General, Popup, Estilos, Repaso, Minado, Atajos). Se añade un editor completo de 'Word Styling' que permite seleccionar temas predefinidos (Default, Toy Box, Monochrome, High Contrast, Subtle, Underline) y personalizar de forma granular los efectos de estilo (color de texto, subrayados, fondos con opacidad, opacidad con hover y sombras) para los 16 estados del parser, incluyendo una ventana de previsualización interactiva con soporte de escritura Horizontal y Vertical (writing-mode vertical-rl). Se soluciona el problema de visibilidad de las opciones en los menús de selección (dropdowns) en el tema oscuro aplicando estilos de fondo y texto explícitos a las etiquetas <option>. Se realiza una limpieza profunda del código eliminando referencias obsoletas a Jiten, Tsu y Lumi en comentarios y código inactivo, se renombra el prefijo de almacenamiento local localStorage de 'yatsu_*' a 'yoru_*' y se elimina la clase inactiva YatsuParser de la extensión."
+  "description": "Lanzamiento oficial de Yoru Reader v1.1.0 con soporte nativo de Discord RPC, interfaz de ajustes reorganizada con navegación por pestañas y correcciones importantes para la sincronización con Google Drive (puertos dinámicos y compatibilidad de retornos de carro CRLF para imágenes en Windows)."
 }

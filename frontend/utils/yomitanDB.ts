@@ -656,7 +656,7 @@ export async function searchYomitanDB(word: string, reading: string = ''): Promi
 
   const db = await getDB();
   let results: any[] | null = [];
-  const { disabledDicts, dictOrder } = getCachedSettings();
+  const { dictOrder } = getCachedSettings();
 
   try {
     // 1. Buscar coincidencia de término exacto usando cursores (Consultas selectivas)
@@ -670,15 +670,13 @@ export async function searchYomitanDB(word: string, reading: string = ''): Promi
         const cursor = e.target.result;
         if (cursor) {
           const val = cursor.value;
-          if (!disabledDicts.includes(val.dictionary)) {
-            results!.push({
-              term: val.term,
-              reading: val.reading,
-              definitions: val.definitions,
-              tags: val.tags,
-              dictionary: val.dictionary
-            });
-          }
+          results!.push({
+            term: val.term,
+            reading: val.reading,
+            definitions: val.definitions,
+            tags: val.tags,
+            dictionary: val.dictionary
+          });
           cursor.continue();
         } else {
           resolve();
@@ -699,15 +697,13 @@ export async function searchYomitanDB(word: string, reading: string = ''): Promi
           const cursor = e.target.result;
           if (cursor) {
             const val = cursor.value;
-            if (!disabledDicts.includes(val.dictionary)) {
-              results!.push({
-                term: val.term,
-                reading: val.reading,
-                definitions: val.definitions,
-                tags: val.tags,
-                dictionary: val.dictionary
-              });
-            }
+            results!.push({
+              term: val.term,
+              reading: val.reading,
+              definitions: val.definitions,
+              tags: val.tags,
+              dictionary: val.dictionary
+            });
             cursor.continue();
           } else {
             resolve();
@@ -734,6 +730,7 @@ export async function searchYomitanDB(word: string, reading: string = ''): Promi
       }
 
       const combinedDefs: string[] = [];
+      const fullDefinitions: { dictionary: string; glossary: string; partsOfSpeech?: string[] }[] = [];
       const tagsSet = new Set<string>();
 
       // Helpers to classify definitions by language
@@ -745,8 +742,10 @@ export async function searchYomitanDB(word: string, reading: string = ''): Promi
       const isEnglish = (text: string) => !SPA_DIACRITICS.test(text) && ENG_WORDS.test(text) && !SPA_WORDS.test(text);
 
       results.forEach(res => {
+        let resPos: string[] = [];
         if (res.tags) {
-          res.tags.split(' ').filter((t: string) => t.length > 0).forEach((t: string) => tagsSet.add(t));
+          resPos = res.tags.split(' ').filter((t: string) => t.length > 0);
+          resPos.forEach((t: string) => tagsSet.add(t));
         }
 
         const defs = res.definitions.map(cleanDefinition).filter(Boolean);
@@ -754,13 +753,20 @@ export async function searchYomitanDB(word: string, reading: string = ''): Promi
         // Check if this entry has at least one Spanish definition
         const hasSpanish = defs.some(isSpanish);
 
-        if (hasSpanish) {
-          // Keep only non-English defs (Spanish + Japanese notes + other)
-          const filtered = defs.filter((d: string) => !isEnglish(d));
-          combinedDefs.push(...(filtered.length > 0 ? filtered : defs));
-        } else {
-          combinedDefs.push(...defs);
-        }
+        const targetDefs = hasSpanish 
+          ? defs.filter((d: string) => !isEnglish(d))
+          : defs;
+
+        const finalDefs = targetDefs.length > 0 ? targetDefs : defs;
+
+        finalDefs.forEach((d: string) => {
+          combinedDefs.push(d);
+          fullDefinitions.push({
+            dictionary: res.dictionary || 'Glosario',
+            glossary: d,
+            partsOfSpeech: resPos
+          });
+        });
       });
       
       const posTags = [...tagsSet].slice(0, 3);
@@ -768,6 +774,7 @@ export async function searchYomitanDB(word: string, reading: string = ''): Promi
         word: results[0].term,
         reading: results[0].reading || reading,
         definitions: combinedDefs.slice(0, 5), // Limit definitions returned to UI to save RAM
+        fullDefinitions: fullDefinitions.slice(0, 5),
         partsOfSpeech: posTags.length > 0 ? posTags : [],
         frequencies: freqs,
         pitches: pitches,
@@ -788,6 +795,7 @@ export async function searchYomitanDB(word: string, reading: string = ''): Promi
         word,
         reading: reading || '',
         definitions: [],
+        fullDefinitions: [],
         partsOfSpeech: [],
         frequencies: freqs,
         pitches: pitches,

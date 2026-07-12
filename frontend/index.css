@@ -3748,6 +3748,45 @@ rt {
   animation: tabViewFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Discrete scrollbar for SRS panels */
+.srs-view-panel {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+}
+.srs-view-panel::-webkit-scrollbar {
+  width: 6px;
+}
+.srs-view-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+.srs-view-panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+}
+.srs-view-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Discrete horizontal scrollbar for calendar heatmap */
+.srs-calendar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+.srs-calendar-scroll::-webkit-scrollbar {
+  height: 5px;
+}
+.srs-calendar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 3px;
+}
+.srs-calendar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+.srs-calendar-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 @keyframes tabViewFadeIn {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }

@@ -3,9 +3,11 @@ import { ExternalLink, Plus, Volume2, X } from 'lucide-react';
 import { tokenizeText } from '../utils/japanese';
 import { lookupWord } from '../utils/dictionary';
 import { db } from '../utils/db';
+import { FSRS6, Rating } from '../utils/fsrs';
 import html2canvas from 'html2canvas';
 import { t } from '../utils/i18n';
 import { synthesizeSpeechAzure } from '../utils/azureTtsService';
+import { updateDiscordReading, clearDiscordPresence } from '../utils/discordRpc';
 
 // Direct reader engine imports
 import ReaderEngine from './reader/ReaderEngine';
@@ -17,6 +19,139 @@ import YoruParserSettings from './reader/YoruParserSettings';
 import CharacterCounter from './reader/CharacterCounter';
 import SelectionToolbar from './reader/SelectionToolbar';
 import { useReaderSettings, ReaderSettingsState } from '../hooks/useReaderSettings';
+
+// Extract morae helper
+const getMorae = (reading: string): string[] => {
+  if (!reading) return [];
+  const clean = reading.replace(/[\s.]/g, '');
+  const morae: string[] = [];
+  const smallChars = new Set([
+    'ゃ', 'ゅ', 'ょ', 'ぁ', 'ぃ', 'ぅ', 'ぇ', 'ぉ',
+    'ャ', 'ュ', 'ョ', 'ァ', 'ィ', 'ゥ', 'ェ', 'ォ'
+  ]);
+  
+  for (let i = 0; i < clean.length; i++) {
+    const char = clean[i];
+    if (smallChars.has(char) && morae.length > 0) {
+      morae[morae.length - 1] += char;
+    } else {
+      morae.push(char);
+    }
+  }
+  return morae;
+};
+
+interface PitchAccentGraphProps {
+  reading: string;
+  position: number;
+}
+
+// Beautiful Interactive SVG Pitch Accent Graph
+function PitchAccentGraph({ reading, position }: PitchAccentGraphProps) {
+  const morae = getMorae(reading);
+  if (morae.length === 0) return null;
+
+  const nodeSpacing = 30;
+  const height = 50;
+  const padding = 12;
+  const width = morae.length * nodeSpacing + padding * 2;
+
+  const getLevel = (idx: number) => {
+    const moraNum = idx + 1; // 1-based index
+    if (position === 0) {
+      return moraNum === 1 ? 0 : 1; // Low, then High...
+    } else if (position === 1) {
+      return moraNum === 1 ? 1 : 0; // High, then Low...
+    } else {
+      if (moraNum === 1) return 0;
+      if (moraNum <= position) return 1;
+      return 0;
+    }
+  };
+
+  const points = morae.map((mora, idx) => {
+    const x = padding + idx * nodeSpacing;
+    const level = getLevel(idx);
+    const y = level === 1 ? 12 : 28; // High node at 12, Low node at 28
+    return { x, y, mora, idx, level };
+  });
+
+  let dropLine: { x1: number; y1: number; x2: number; y2: number } | null = null;
+  if (position > 0 && position <= morae.length) {
+    const lastHighPoint = points[position - 1];
+    const nextX = lastHighPoint.x + nodeSpacing / 2;
+    const dropY = 28; // Drop to low level (28)
+    dropLine = { x1: lastHighPoint.x, y1: lastHighPoint.y, x2: nextX, y2: dropY };
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px', margin: '8px 0' }}>
+      <div style={{ overflowX: 'auto', maxWidth: '100%', background: 'rgba(255,255,255,0.01)', borderRadius: '6px', padding: '4px 8px', border: '1px solid rgba(255,255,255,0.03)' }}>
+        <svg width={width} height={height} style={{ overflow: 'visible' }}>
+          {points.map((pt, idx) => {
+            if (idx === 0) return null;
+            const prev = points[idx - 1];
+            return (
+              <line
+                key={`line-${idx}`}
+                x1={prev.x}
+                y1={prev.y}
+                x2={pt.x}
+                y2={pt.y}
+                stroke="#38bdf8"
+                strokeWidth="2"
+              />
+            );
+          })}
+
+          {dropLine && (
+            <>
+              <line
+                x1={dropLine.x1}
+                y1={dropLine.y1}
+                x2={dropLine.x2}
+                y2={dropLine.y2}
+                stroke="#ef4444"
+                strokeWidth="2"
+                strokeDasharray="2 2"
+              />
+              <circle
+                cx={dropLine.x2}
+                cy={dropLine.y2}
+                r="3"
+                fill="none"
+                stroke="#ef4444"
+                strokeWidth="1.5"
+              />
+            </>
+          )}
+
+          {points.map((pt) => (
+            <g key={`node-${pt.idx}`}>
+              <circle
+                cx={pt.x}
+                cy={pt.y}
+                r="3.5"
+                fill={pt.level === 1 ? '#38bdf8' : '#1e293b'}
+                stroke="#38bdf8"
+                strokeWidth="1.5"
+              />
+              <text
+                x={pt.x}
+                y={height - 4} // Always align text at the bottom
+                textAnchor="middle"
+                fill="#ffffff"
+                style={{ fontSize: '0.64rem', fontFamily: 'var(--font-japanese)', fontWeight: 600 }}
+              >
+                {pt.mora}
+              </text>
+            </g>
+          ))}
+        </svg>
+      </div>
+    </div>
+  );
+}
 
 // Hash a string ID to a positive 32-bit integer for ttu-reader compatibility
 function hashStringToInt(str: string): number {
@@ -137,6 +272,18 @@ export default function Reader({
   }, [onSaveSettings, onBack]);
 
   const [readerSettings, rawSetReaderSetting] = useReaderSettings();
+
+  const fsrsRetentionRate = readerSettings.fsrsRetentionRate !== undefined ? Number(readerSettings.fsrsRetentionRate) : 0.90;
+  const fsrsMaxInterval = readerSettings.fsrsMaxInterval !== undefined ? Number(readerSettings.fsrsMaxInterval) : 36500;
+  const fsrsEnableFuzz = readerSettings.fsrsEnableFuzz !== undefined ? Boolean(readerSettings.fsrsEnableFuzz) : true;
+
+  const fsrs = useMemo(() => {
+    return new FSRS6({
+      request_retention: fsrsRetentionRate,
+      maximum_interval: fsrsMaxInterval,
+      enable_fuzz: fsrsEnableFuzz,
+    });
+  }, [fsrsRetentionRate, fsrsMaxInterval, fsrsEnableFuzz]);
   const setReaderSetting = useCallback(<K extends keyof ReaderSettingsState>(key: K, value: ReaderSettingsState[K]) => {
     rawSetReaderSetting(key, value);
     if (key === 'theme' && (value === 'light' || value === 'sepia' || value === 'dark')) {
@@ -154,6 +301,14 @@ export default function Reader({
     currSection: book.progress?.currentChapter || 0,
   });
 
+  // Discord Rich Presence Integration
+  useEffect(() => {
+    updateDiscordReading(book, settings);
+    return () => {
+      clearDiscordPresence();
+    };
+  }, [book, settings, currentProgress.currSection]);
+
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [isJumpModalOpen, setIsJumpModalOpen] = useState(false);
@@ -161,13 +316,14 @@ export default function Reader({
   const [targetCharPosition, setTargetCharPosition] = useState<number | null>(null);
   const [isExtSettingsOpen, setIsExtSettingsOpen] = useState(false);
   const [extId, setExtId] = useState<string | null>(null);
+  const [deckSelectorWord, setDeckSelectorWord] = useState<string | null>(null);
 
   // Extract all images from book chapters
   const bookImages = useMemo<string[]>(() => {
     if (!book || !book.chapters) return [];
     const urls: string[] = [];
     book.chapters.forEach(chapter => {
-      const lines = (chapter.content || '').split('\n');
+      const lines = (chapter.content || '').split(/\r?\n/);
       lines.forEach(line => {
         if (line.startsWith('{img:') && line.endsWith('}')) {
           const src = line.substring(5, line.length - 1);
@@ -480,7 +636,7 @@ export default function Reader({
       sentenceText: getSentenceFromElement(wordSpan)
     });
     
-    const entry = await lookupWord(word);
+    const entry = await lookupWord(word, reading);
     setDictEntry(entry);
     setDictLoading(false);
   }, [selectedWord]);
@@ -906,7 +1062,11 @@ export default function Reader({
     const wordTokens = await tokenizeText(selectedWord.basicForm);
     const activeWordToken = wordTokens[0] || selectedWord;
 
-    const meaning = dictEntry && dictEntry.definitions ? dictEntry.definitions.join('<br>') : '';
+    const definitionsAsStrings = dictEntry && dictEntry.definitions
+      ? dictEntry.definitions.map((d: any) => typeof d === 'string' ? d : (d.glossary || ''))
+      : [];
+
+    const meaning = definitionsAsStrings.join('<br>');
     
     const isBilingual = (defText: string) => {
       const SPA_DIACRITICS = /[áéíóúüñÁÉÍÓÚÜÑ¿¡]/u;
@@ -915,7 +1075,7 @@ export default function Reader({
       return SPA_DIACRITICS.test(defText) || SPA_WORDS.test(defText) || ENG_WORDS.test(defText);
     };
 
-    const allDefs = dictEntry && dictEntry.definitions ? dictEntry.definitions : [];
+    const allDefs = definitionsAsStrings;
     const bilingualDefs = allDefs.filter((d: string) => isBilingual(d));
     const monolingualDefs = allDefs.filter((d: string) => !isBilingual(d));
 
@@ -1183,7 +1343,12 @@ export default function Reader({
         showToast('Anki error: ' + result.error, 'error');
       } else {
         if (selectedWord && selectedWord.basicForm) {
-          onSetWordStatus(selectedWord.basicForm, 'learning');
+          const existingCard = db.getSrsCard(selectedWord.basicForm);
+          onSetWordStatus(selectedWord.basicForm, 'learning', {
+            reading: selectedWord.reading || selectedWord.surface,
+            sentence: selectedWord.sentenceText || selectedWord.surface || '',
+            source: existingCard?.source || book?.title || 'Yoru Reader'
+          });
         }
         setAnkiCardExists(true);
         showToast(lang === 'es' ? '¡Tarjeta de Anki creada con éxito! La palabra fue marcada como "Estudiando".' : 'Anki card created successfully! The word was marked as "Learning".', 'success');
@@ -1338,104 +1503,47 @@ export default function Reader({
   };
 
   const calculateSrsIntervals = (card: any) => {
-    const c = card || { interval: 0, ease: 2.5, repetitions: 0, lapses: 0, state: 0 };
-    const rep = c.repetitions || 0;
-    const ease = c.ease || 2.5;
-    const interval = c.interval || 0;
+    const c = card ? { ...card } : fsrs.createEmptyCard();
+    const repeats = fsrs.repeat(c, new Date());
     
-    let intervalHard = 1;
-    if (rep > 0) {
-      intervalHard = Math.ceil(interval * 1.2);
-    }
-    
-    let intervalGood = 1;
-    if (rep === 0) {
-      intervalGood = 1;
-    } else if (rep === 1) {
-      intervalGood = 4; 
-    } else {
-      intervalGood = Math.ceil(interval * ease);
-    }
-    
-    let intervalEasy = 1;
-    if (rep === 0) {
-      intervalEasy = 4;
-    } else if (rep === 1) {
-      intervalEasy = 8;
-    } else {
-      intervalEasy = Math.ceil(interval * ease * 1.3);
-    }
-    
-    return {
-      again: '10m',
-      hard: intervalHard >= 1 ? `${intervalHard}d` : '12h',
-      good: `${intervalGood}d`,
-      easy: `${intervalEasy}d`,
-      calculatedDays: {
-        again: 0,
-        hard: intervalHard,
-        good: intervalGood,
-        easy: intervalEasy
+    const formatInterval = (days: number) => {
+      if (days === 0) return '10m';
+      if (days >= 30) {
+        return `${Math.round(days / 30)}mo`;
       }
+      return `${days}d`;
+    };
+
+    return {
+      again: repeats[Rating.Again].scheduled_days === 0 ? '10m' : formatInterval(repeats[Rating.Again].scheduled_days),
+      hard: repeats[Rating.Hard].scheduled_days === 0 ? '12h' : formatInterval(repeats[Rating.Hard].scheduled_days),
+      good: formatInterval(repeats[Rating.Good].scheduled_days),
+      easy: formatInterval(repeats[Rating.Easy].scheduled_days),
+      repeats,
     };
   };
 
   const handleSrsReview = (word: string, grade: number) => {
-    const currentCard = db.getSrsCard(word) || { interval: 0, ease: 2.5, repetitions: 0, lapses: 0, state: 0 };
+    const currentCard = db.getSrsCard(word);
     const intervals = calculateSrsIntervals(currentCard);
-    const now = new Date();
+    const updatedCard = { ...(intervals.repeats as any)[grade] };
     
-    let newRep = currentCard.repetitions || 0;
-    let newEase = currentCard.ease || 2.5;
-    let newInterval = 0;
-    let newState = currentCard.state || 0;
-    let newLapses = currentCard.lapses || 0;
-    
-    if (grade === 1) {
-      newRep = 0;
-      newInterval = 0;
-      newEase = Math.max(1.3, newEase - 0.2);
-      newState = 3; 
-      newLapses += 1;
-    } else {
-      newInterval = (intervals.calculatedDays as any)[
-        grade === 2 ? 'hard' : grade === 3 ? 'good' : 'easy'
-      ];
-      if (grade === 2) {
-        newEase = Math.max(1.3, newEase - 0.15);
-      } else if (grade === 4) {
-        newEase = Math.min(3.0, newEase + 0.15);
-      }
-      newRep += 1;
-      newState = 2; 
-    }
-    
-    const dueDate = new Date();
-    if (newInterval > 0) {
-      dueDate.setDate(dueDate.getDate() + newInterval);
-    } else {
-      dueDate.setMinutes(dueDate.getMinutes() + 10);
-    }
-    
-    const updatedCard = {
-      interval: newInterval,
-      ease: newEase,
-      repetitions: newRep,
-      dueDate: dueDate.toISOString(),
-      lastReview: now.toISOString(),
-      lapses: newLapses,
-      state: newState
-    };
+    // Ensure all metadata fields are populated
+    if (!updatedCard.word) updatedCard.word = word;
+    if (!updatedCard.reading) updatedCard.reading = selectedWord?.reading || '';
+    if (!updatedCard.sentence) updatedCard.sentence = selectedWord?.sentence || '';
+    if (!updatedCard.source) updatedCard.source = book?.title || 'Yoru Reader';
     
     db.saveSrsCard(word, updatedCard);
-    setSrsCard(updatedCard);
+    db.addSrsHistory(word, grade, updatedCard.scheduled_days ?? updatedCard.interval ?? 0, updatedCard.source || 'Yoru Reader');
+    setSrsCard(db.getSrsCard(word));
     
     if (wordStatuses[word] !== 'learning') {
       onSetWordStatus(word, 'learning');
     }
     
     const gradeName = grade === 1 ? 'Again' : grade === 2 ? 'Hard' : grade === 3 ? 'Good' : 'Easy';
-    const nextText = grade === 1 ? '10m' : `${newInterval}d`;
+    const nextText = grade === 1 ? '10m' : `${updatedCard.scheduled_days}d`;
     showToast(`SRS: ${gradeName} (${nextText})`, 'success');
   };
 
@@ -2053,7 +2161,7 @@ export default function Reader({
                       } else {
                         const wordData = {
                           reading: selectedWord.reading || selectedWord.surface,
-                          meaning: dictEntry?.definitions?.slice(0, 3).join(' / ') || ''
+                          meaning: dictEntry?.definitions?.slice(0, 3).map((d: any) => typeof d === 'string' ? d : (d.glossary || '')).join(' / ') || ''
                         };
                         onSetWordStatus(selectedWord.basicForm, 'known', wordData);
                       }
@@ -2099,30 +2207,158 @@ export default function Reader({
                     Blacklist
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isLearning) {
-                        onSetWordStatus(selectedWord.basicForm, 'new');
-                      } else {
-                        onSetWordStatus(selectedWord.basicForm, 'learning');
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeckSelectorWord(prev => prev ? null : selectedWord.basicForm);
+                      }}
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        borderRadius: '5px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                        background: isLearning ? 'rgba(59, 130, 246, 0.15)' : 'rgba(255,255,255,0.02)',
+                        border: isLearning ? '1.5px solid rgba(59, 130, 246, 0.5)' : '1px solid rgba(255,255,255,0.1)',
+                        color: isLearning ? '#60a5fa' : '#3b82f6',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      {isLearning ? 'Deck -' : 'Deck +'}
+                    </button>
+                    
+                    {deckSelectorWord === selectedWord.basicForm && (() => {
+                      const srsData = db.getSrsData();
+                      const deckNamesSet = new Set<string>();
+                      deckNamesSet.add('Yoru Reader');
+                      
+                      if (book?.title) {
+                        deckNamesSet.add(book.title);
                       }
-                    }}
-                    style={{
-                      padding: '4px 10px',
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      borderRadius: '5px',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s',
-                      background: isLearning ? 'rgba(59, 130, 246, 0.15)' : 'rgba(255,255,255,0.02)',
-                      border: isLearning ? '1.5px solid rgba(59, 130, 246, 0.5)' : '1px solid rgba(255,255,255,0.1)',
-                      color: isLearning ? '#60a5fa' : '#3b82f6',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    {isLearning ? 'Deck -' : 'Deck +'}
-                  </button>
+                      
+                      Object.entries(srsData).forEach(([word, card]: [string, any]) => {
+                        if (word.startsWith('_deck_')) {
+                          const deckName = word.substring(6);
+                          if (deckName) deckNamesSet.add(deckName);
+                        } else if (card && card.source) {
+                          deckNamesSet.add(card.source);
+                        }
+                      });
+                      
+                      const allDecks = Array.from(deckNamesSet);
+                      const currentCard = db.getSrsCard(selectedWord.basicForm);
+                      const currentDeck = currentCard?.source || '';
+                      
+                      return (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          right: 0,
+                          marginTop: '6px',
+                          background: 'rgba(24, 24, 27, 0.96)',
+                          backdropFilter: 'blur(8px)',
+                          WebkitBackdropFilter: 'blur(8px)',
+                          border: '1px solid var(--border-light)',
+                          borderRadius: '8px',
+                          padding: '10px',
+                          zIndex: 100,
+                          minWidth: '150px',
+                          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.5)'
+                        }}>
+                          <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                            {lang === 'es' ? 'Añadir al mazo' : 'Add to deck'}
+                          </div>
+                          
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}>
+                            {allDecks.map(deckName => {
+                              const isSelected = isLearning && currentDeck === deckName;
+                              return (
+                                <button
+                                  key={deckName}
+                                  type="button"
+                                  onClick={() => {
+                                    const wordData = {
+                                      reading: selectedWord.reading || selectedWord.surface,
+                                      sentence: selectedWord.sentenceText || selectedWord.surface || '',
+                                      source: deckName
+                                    };
+                                    
+                                    const card = db.getSrsCard(selectedWord.basicForm) || {
+                                      word: selectedWord.basicForm,
+                                      reading: wordData.reading,
+                                      sentence: wordData.sentence,
+                                      state: 0,
+                                      dueDate: new Date().toISOString(),
+                                      due: new Date().toISOString()
+                                    };
+                                    card.source = deckName;
+                                    db.saveSrsCard(selectedWord.basicForm, card);
+                                    
+                                    setSrsCard(card);
+                                    onSetWordStatus(selectedWord.basicForm, 'learning', wordData);
+                                    setDeckSelectorWord(null);
+                                  }}
+                                  style={{
+                                    background: isSelected ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
+                                    border: isSelected ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid transparent',
+                                    borderRadius: '5px',
+                                    padding: '6px 10px',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 700,
+                                    color: isSelected ? '#a78bfa' : 'var(--text-main)',
+                                    cursor: 'pointer',
+                                    textAlign: 'left',
+                                    transition: 'all 0.15s'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (!isSelected) e.currentTarget.style.background = 'transparent';
+                                  }}
+                                >
+                                  {deckName}
+                                </button>
+                              );
+                            })}
+                            
+                            {isLearning && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onSetWordStatus(selectedWord.basicForm, 'new');
+                                  setDeckSelectorWord(null);
+                                }}
+                                style={{
+                                  background: 'rgba(239, 68, 68, 0.08)',
+                                  border: '1px solid rgba(239, 68, 68, 0.2)',
+                                  borderRadius: '5px',
+                                  padding: '6px 10px',
+                                  fontSize: '0.74rem',
+                                  fontWeight: 700,
+                                  color: '#f87171',
+                                  cursor: 'pointer',
+                                  textAlign: 'center',
+                                  marginTop: '6px',
+                                  transition: 'all 0.15s'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)';
+                                }}
+                              >
+                                {lang === 'es' ? 'Quitar del mazo' : 'Remove from deck'}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
 
                 {isLearning && (() => {
@@ -2220,19 +2456,48 @@ export default function Reader({
                     justifyContent: 'space-between',
                     marginTop: '2px'
                   }}>
-                    <span>Intervalo: {srsCard.interval}d</span>
-                    <span>Ease: {srsCard.ease.toFixed(2)}</span>
-                    <span>Reps: {srsCard.repetitions}</span>
+                    <span>Intervalo: {srsCard.interval ?? srsCard.scheduled_days ?? 0}d</span>
+                    <span>Ease: {(srsCard.ease ?? 2.5).toFixed(2)}</span>
+                    <span>Reps: {srsCard.repetitions ?? srsCard.reps ?? 0}</span>
                   </div>
                 )}
               </div>
             );
           })()}
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '6px', marginBottom: '8px' }}>
-            <span style={{ fontSize: '1.4rem', fontWeight: 'bold', color: colors.textMain }}>
-              {selectedWord.surface}
-            </span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '6px', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '1.4rem', fontWeight: 'bold', color: colors.textMain }}>
+                {selectedWord.surface}
+              </span>
+              <button
+                type="button"
+                onClick={() => reproducirTexto(selectedWord.reading || selectedWord.surface)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: colors.textMuted,
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '4px',
+                  transition: 'background 0.15s, color 0.15s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.06)';
+                  e.currentTarget.style.color = '#FFE000';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = colors.textMuted;
+                }}
+                title={lang === 'es' ? 'Escuchar pronunciación' : 'Listen pronunciation'}
+              >
+                <Volume2 size={16} />
+              </button>
+            </div>
             {selectedWord.reading && selectedWord.reading !== selectedWord.surface && (
               <span style={{ fontSize: '0.9rem', color: colors.textMuted }}>
                 {selectedWord.reading}
@@ -2240,50 +2505,61 @@ export default function Reader({
             )}
           </div>
 
+          {/* Pitch Accent Graph */}
+          {dictEntry?.pitches && dictEntry.pitches.length > 0 ? (
+            <PitchAccentGraph
+              reading={dictEntry.reading || selectedWord.reading || selectedWord.surface}
+              position={dictEntry.pitches[0]?.pitches[0]?.position ?? 0}
+            />
+          ) : (
+            (dictEntry?.reading || selectedWord.reading) && (
+              <PitchAccentGraph reading={dictEntry?.reading || selectedWord.reading} position={0} />
+            )
+          )}
+
+          {/* Anki button small footprint */}
           <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
             {ankiCardExists ? (
               <button 
                 onClick={handleOpenInAnki}
                 style={{
-                  flex: 1,
-                  background: 'rgba(92, 53, 219, 0.2)',
-                  border: '1px solid rgba(92, 53, 219, 0.5)',
+                  background: 'rgba(92, 53, 219, 0.1)',
+                  border: '1px solid rgba(92, 53, 219, 0.35)',
                   color: '#a78bfa',
-                  padding: '6px',
-                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  borderRadius: '5px',
                   cursor: 'pointer',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  display: 'flex',
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  display: 'inline-flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '4px'
+                  gap: '3px',
+                  width: 'fit-content'
                 }}
               >
-                <ExternalLink size={12} />
+                <ExternalLink size={11} />
                 {lang === 'es' ? 'Ver en Anki' : 'View in Anki'}
               </button>
             ) : (
               <button 
                 onClick={handleMineToAnki}
                 style={{
-                  flex: 1,
-                  background: 'rgba(255, 224, 0, 0.1)',
-                  border: '1px solid rgba(255, 224, 0, 0.3)',
+                  background: 'rgba(255, 224, 0, 0.05)',
+                  border: '1px solid rgba(255, 224, 0, 0.25)',
                   color: '#FFE000',
-                  padding: '6px',
-                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  borderRadius: '5px',
                   cursor: 'pointer',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  display: 'flex',
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
+                  display: 'inline-flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '4px'
+                  gap: '3px',
+                  width: 'fit-content'
                 }}
               >
-                <Plus size={12} />
-                {lang === 'es' ? 'Añadir a Anki' : 'Add to Anki'}
+                <Plus size={11} />
+                {lang === 'es' ? 'Anki' : 'Anki'}
               </button>
             )}
           </div>

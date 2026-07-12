@@ -289,10 +289,10 @@ export default function WelcomeScreen({ onCreateProfile, settings = {}, onSaveSe
     const defaultClientId = '658624509601-2ef33pve1i9mifecbe4n2nk0lmop9ggu.apps.googleusercontent.com';
     const defaultClientSecret = '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';
 
-    const clientId = localStorage.getItem('gdrive_client_id') || defaultClientId;
+    const clientId = localStorage.getItem('gdrive_client_id') !== null ? localStorage.getItem('gdrive_client_id')! : defaultClientId;
     localStorage.setItem('gdrive_client_id', clientId.trim());
 
-    const clientSecret = localStorage.getItem('gdrive_client_secret') || defaultClientSecret;
+    const clientSecret = localStorage.getItem('gdrive_client_secret') !== null ? localStorage.getItem('gdrive_client_secret')! : defaultClientSecret;
     localStorage.setItem('gdrive_client_secret', clientSecret.trim());
 
     try {

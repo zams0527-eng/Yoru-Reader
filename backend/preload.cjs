@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startGoogleOauth: (clientId) => ipcRenderer.invoke('start-google-oauth', clientId),
   speakText: (params) => ipcRenderer.invoke('speak-text', params),
   downloadGoogleDrive: (urlString, id) => ipcRenderer.invoke('download-google-drive', { urlString, id }),
+  readLocalFile: (filePath) => ipcRenderer.invoke('read-local-file', filePath),
   onDownloadProgress: (callback) => {
     const listener = (event, data) => callback(data);
     ipcRenderer.on('download-progress-event', listener);
@@ -34,5 +35,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('parse-text-request', listener);
     return () => ipcRenderer.off('parse-text-request', listener);
   },
-  replyParseText: (result) => ipcRenderer.send('reply-parse-text', result)
+  replyParseText: (result) => ipcRenderer.send('reply-parse-text', result),
+  updateDiscordPresence: (presence) => ipcRenderer.invoke('update-discord-presence', presence)
 });

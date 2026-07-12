@@ -35,7 +35,7 @@ export default function SettingsModal({
 }: SettingsModalProps) {
   if (!isOpen) return null;
   const [isVocabModalOpen, setIsVocabModalOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState('text-style');
+  const [activeSection, setActiveSection] = useState('theme');
   const [searchQuery, setSearchQuery] = useState('');
 
   const { showConfirm, confirmModal } = useConfirm();
@@ -171,37 +171,48 @@ export default function SettingsModal({
     return settings.fontSize || 36;
   };
 
-  const menuStructure = [
+  const sidebarGroups = [
     {
-      category: 'GENERAL',
-      items: [
-        { id: 'theme', label: lang === 'es' ? 'Tema' : 'Theme', icon: <Palette size={16} /> },
-        { id: 'display', label: lang === 'es' ? 'Pantalla' : 'Display', icon: <Clock size={16} /> },
-        { id: 'about', label: lang === 'es' ? 'Acerca de / Versión' : 'About / Version', icon: <Info size={16} /> }
+      id: 'general',
+      label: lang === 'es' ? 'General' : 'General',
+      icon: <Palette size={16} />,
+      tabs: [
+        { id: 'theme', label: lang === 'es' ? 'Tema' : 'Theme' },
+        { id: 'display', label: lang === 'es' ? 'Pantalla' : 'Display' },
+        { id: 'discord', label: 'Discord' },
+        { id: 'about', label: lang === 'es' ? 'Acerca de / Versión' : 'About / Version' }
       ]
     },
     {
-      category: lang === 'es' ? 'LECTOR' : 'READER',
-      items: [
-        { id: 'text-style', label: lang === 'es' ? 'Estilo de texto' : 'Text Style', icon: <Type size={16} /> },
-        { id: 'rendering', label: lang === 'es' ? 'Resaltado' : 'Highlighting', icon: <Target size={16} /> }
+      id: 'lector',
+      label: lang === 'es' ? 'Lector' : 'Reader',
+      icon: <BookOpen size={16} />,
+      tabs: [
+        { id: 'text-style', label: lang === 'es' ? 'Estilo de texto' : 'Text Style' },
+        { id: 'rendering', label: lang === 'es' ? 'Resaltado' : 'Highlighting' }
       ]
     },
     {
-      category: lang === 'es' ? 'INTEGRACIÓN' : 'INTEGRATION',
-      items: [
-        { id: 'sources', label: lang === 'es' ? 'Integración con Anki' : 'Anki Integration', icon: <Layers size={16} /> }
+      id: 'anki',
+      label: 'Anki',
+      icon: <Layers size={16} />,
+      tabs: [
+        { id: 'sources', label: lang === 'es' ? 'Integración con Anki' : 'Anki Integration' }
       ]
     },
     {
-      category: lang === 'es' ? 'DATOS' : 'DATA',
-      items: [
-        { id: 'backups', label: lang === 'es' ? 'Copias de seguridad' : 'Backups', icon: <FolderOpen size={16} /> },
-        { id: 'dictionaries', label: lang === 'es' ? 'Diccionarios' : 'Dictionaries', icon: <BookOpen size={16} /> },
-        { id: 'danger-zone', label: lang === 'es' ? 'Zona de peligro' : 'Danger Zone', icon: <AlertTriangle size={16} />, color: '#f87171' }
+      id: 'datos',
+      label: lang === 'es' ? 'Datos' : 'Data',
+      icon: <FolderOpen size={16} />,
+      tabs: [
+        { id: 'backups', label: lang === 'es' ? 'Copias de seguridad' : 'Backups' },
+        { id: 'dictionaries', label: lang === 'es' ? 'Diccionarios' : 'Dictionaries' },
+        { id: 'danger-zone', label: lang === 'es' ? 'Zona de peligro' : 'Danger Zone' }
       ]
     }
   ];
+
+  const currentGroup = sidebarGroups.find(g => g.tabs.some(t => t.id === activeSection)) || sidebarGroups[0];
 
   // 1. GENERAL / Tema
   const renderThemeContent = () => (
@@ -585,12 +596,126 @@ export default function SettingsModal({
     </div>
   );
 
+  const renderDiscordContent = () => {
+    return (
+      <div className="settings-panel-section">
+        <h4 className="settings-panel-title">Discord Rich Presence</h4>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <label style={{ fontSize: '0.88rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', color: '#fff' }}>
+              <input
+                type="checkbox"
+                checked={settings.discordEnabled || false}
+                onChange={(e) => updateSetting('discordEnabled', e.target.checked)}
+                style={{ width: '16px', height: '16px', accentColor: 'var(--primary)' }}
+              />
+              {lang === 'es' ? 'Habilitar Discord Rich Presence' : 'Enable Discord Rich Presence'}
+            </label>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+              {lang === 'es' ? 'Temporizador de inactividad (segundos)' : 'Inactivity Timer (seconds)'}
+            </label>
+            <input
+              type="number"
+              value={settings.discordInactivityTimer !== undefined ? settings.discordInactivityTimer : 300}
+              onChange={(e) => updateSetting('discordInactivityTimer', parseInt(e.target.value) || 0)}
+              style={{
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '6px',
+                padding: '8px 12px',
+                color: '#fff',
+                fontSize: '0.88rem',
+                width: '100%'
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+              {lang === 'es' ? 'Icono' : 'Icon'}
+            </label>
+            <select
+              value={settings.discordIcon || 'Yoru'}
+              onChange={(e) => updateSetting('discordIcon', e.target.value)}
+              style={{
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '6px',
+                padding: '8px 12px',
+                color: '#fff',
+                fontSize: '0.88rem',
+                width: '100%',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="Yoru">Yoru Reader</option>
+              <option value="GSM">GSM</option>
+            </select>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+              {lang === 'es' ? 'Mostrar Estadísticas' : 'Show Stats'}
+            </label>
+            <select
+              value={settings.discordShowStats || 'None'}
+              onChange={(e) => updateSetting('discordShowStats', e.target.value)}
+              style={{
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '6px',
+                padding: '8px 12px',
+                color: '#fff',
+                fontSize: '0.88rem',
+                width: '100%',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="None">{lang === 'es' ? 'Ninguna' : 'None'}</option>
+              <option value="Progress">{lang === 'es' ? 'Progreso de lectura (%)' : 'Reading progress (%)'}</option>
+              <option value="Time">{lang === 'es' ? 'Tiempo transcurrido' : 'Time elapsed'}</option>
+            </select>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+              {lang === 'es' ? 'Novelas/Escenas en lista negra' : 'Blacklisted Novels/Scenes'}
+            </label>
+            <textarea
+              value={settings.discordBlacklist || ''}
+              onChange={(e) => updateSetting('discordBlacklist', e.target.value)}
+              placeholder={lang === 'es' ? 'Escribe nombres de libros a ignorar, uno por línea...' : 'Enter book names to ignore, one per line...'}
+              style={{
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '6px',
+                padding: '8px 12px',
+                color: '#fff',
+                fontSize: '0.88rem',
+                width: '100%',
+                minHeight: '100px',
+                resize: 'vertical'
+              }}
+            />
+          </div>
+
+        </div>
+      </div>
+    );
+  };
+
   const renderActiveContent = () => {
     switch (activeSection) {
       case 'theme':
         return renderThemeContent();
       case 'display':
         return renderDisplayContent();
+      case 'discord':
+        return renderDiscordContent();
       case 'about':
         return renderAboutContent();
       case 'text-style':
@@ -613,6 +738,7 @@ export default function SettingsModal({
   const allSettingsItems = [
     { id: 'theme', keywords: 'theme tema dark light sepia fondo background', render: renderThemeContent },
     { id: 'display', keywords: 'display visualizacion interfaz idioma language interfaces spanish english pantalla', render: renderDisplayContent },
+    { id: 'discord', keywords: 'discord rich presence rpc estado actividad juego', render: renderDiscordContent },
     { id: 'about', keywords: 'about version changelog acerca de info info-version cambios novedades', render: renderAboutContent },
     { id: 'text-style', keywords: 'text style estilo texto fuente font size tamaño slider furigana tarjetas library covers', render: renderTextStyleContent },
     { id: 'rendering', keywords: 'rendering renderizado acento pitch learning status cursor hover resaltado', render: renderRenderingContent },
@@ -653,29 +779,30 @@ export default function SettingsModal({
 
           {!searchQuery.trim() && (
             <div className="settings-sidebar-menu-list">
-              {menuStructure.map((group, idx) => (
-                <div key={idx} className="settings-menu-group">
-                  <div className="settings-group-header">
-                    <span>{group.category}</span>
-                  </div>
-                  <div className="settings-group-items">
-                    {group.items.map((item) => (
+              <div className="settings-menu-group">
+                <div className="settings-group-header">
+                  <span>{lang === 'es' ? 'Configuración Clave' : 'Key Settings'}</span>
+                </div>
+                <div className="settings-group-items">
+                  {sidebarGroups.map((group) => {
+                    const isActive = currentGroup.id === group.id;
+                    return (
                       <button
-                        key={item.id}
+                        key={group.id}
                         onClick={() => {
-                          setActiveSection(item.id);
+                          setActiveSection(group.tabs[0].id);
                           setMobileSubView('content');
                         }}
-                        className={`settings-menu-item-btn ${activeSection === item.id ? 'active' : ''}`}
-                        style={{ color: item.color || 'rgba(255, 255, 255, 0.65)' }}
+                        className={`settings-menu-item-btn ${isActive ? 'active' : ''}`}
+                        style={{ color: isActive ? 'var(--primary)' : 'rgba(255, 255, 255, 0.65)' }}
                       >
-                        {item.icon}
-                        <span>{item.label}</span>
+                        {group.icon}
+                        <span>{group.label}</span>
                       </button>
-                    ))}
-                  </div>
+                    );
+                  })}
                 </div>
-              ))}
+              </div>
             </div>
           )}
 
@@ -687,7 +814,7 @@ export default function SettingsModal({
                 </div>
                 <div className="settings-group-items">
                   {filteredItems.map(item => {
-                    const labelObj = menuStructure.flatMap(g => g.items).find(i => i.id === item.id) || { label: item.id };
+                    const labelObj = sidebarGroups.flatMap(g => g.tabs).find(t => t.id === item.id) || { label: item.id };
                     return (
                       <button
                         key={item.id}
@@ -721,7 +848,7 @@ export default function SettingsModal({
               ← {lang === 'es' ? 'Atrás' : 'Back'}
             </button>
             <span className="settings-header-label">
-              {lang === 'es' ? 'Ajustes Generales' : 'General Settings'}
+              {currentGroup.label}
             </span>
             <button className="settings-close-x-btn" onClick={onClose} title={lang === 'es' ? 'Cerrar' : 'Close'}>
               <X size={18} />
@@ -729,6 +856,40 @@ export default function SettingsModal({
           </div>
 
           <div className="settings-right-content-viewport">
+            {/* Tabs at the top */}
+            {!searchQuery.trim() && (
+              <div style={{ 
+                display: 'flex', 
+                gap: '8px', 
+                borderBottom: '1px solid rgba(255, 255, 255, 0.08)', 
+                paddingBottom: '12px', 
+                marginBottom: '20px' 
+              }}>
+                {currentGroup.tabs.map(tab => {
+                  const isActive = activeSection === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveSection(tab.id)}
+                      style={{
+                        padding: '6px 16px',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s',
+                        background: isActive ? 'var(--primary)' : 'rgba(255, 255, 255, 0.02)',
+                        border: isActive ? '1px solid var(--primary)' : '1px solid rgba(255, 255, 255, 0.08)',
+                        color: isActive ? '#000' : 'rgba(255, 255, 255, 0.65)'
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {searchQuery.trim() && filteredItems.length > 0 ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                 {filteredItems.map((item, idx) => (

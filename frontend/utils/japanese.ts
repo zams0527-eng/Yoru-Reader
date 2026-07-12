@@ -201,7 +201,7 @@ export async function tokenizeText(text: string): Promise<TokenInfo[][]> {
   const tokenizer = await initTokenizer();
   if (!text) return [];
   
-  const paragraphs = text.split('\n');
+  const paragraphs = text.split(/\r?\n/);
   const resultParagraphs: TokenInfo[][] = [];
   
   for (const para of paragraphs) {

@@ -14,77 +14,129 @@ export interface DictionaryEntry {
   pitches?: any[];
 }
 
-const JISHO_CACHE = new Map<string, DictionaryEntry>();
+const JITEN_CACHE = new Map<string, DictionaryEntry>();
 
-// Look up a word (first in local database, then on Jisho.org API via CORS proxy)
+// Look up a word (first in local database, then on Jiten.moe API via CORS proxy)
 export async function lookupWord(word: string, reading: string = ''): Promise<DictionaryEntry | null> {
   // 1. Clean the word: remove trailing particles or spaces
   const cleanWord = word.trim();
   if (!cleanWord) return null;
 
+  // Split spelling and reading if formatted as spelling:reading (Yomitan key format)
+  let searchWord = cleanWord;
+  let searchReading = reading;
+  if (cleanWord.includes(':')) {
+    const parts = cleanWord.split(':');
+    searchWord = parts[0].trim();
+    searchReading = parts[1]?.trim() || reading;
+  }
+
   let entry: DictionaryEntry | null = null;
 
   // 2. Prioritize Yomitan DB (IndexedDB) first, so user's installed dictionaries (Spanish, etc.) take precedence!
+  // We use a 1.5-second timeout to prevent any IndexedDB locks/upgrades from hanging the UI
   try {
-    const yomitanMatch = await searchYomitanDB(cleanWord, reading) as DictionaryEntry | null;
+    const yomitanPromise = searchYomitanDB(searchWord, searchReading);
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500));
+    
+    const yomitanMatch = await Promise.race([yomitanPromise, timeoutPromise]) as any;
     if (yomitanMatch) {
-      entry = yomitanMatch;
+      entry = {
+        ...yomitanMatch,
+        definitions: yomitanMatch.fullDefinitions || yomitanMatch.definitions
+      };
     }
   } catch (err) {
     console.error('Yomitan DB search error:', err);
   }
 
-  // 3. Fallback to Jisho cache
-  if (!entry && JISHO_CACHE.has(cleanWord)) {
-    entry = { ...JISHO_CACHE.get(cleanWord)! };
-  }
-
-  // 4. Query Jisho.org via allorigins CORS Proxy if not found
-  if (!entry) {
-    try {
-      const jishoUrl = `https://jisho.org/api/v1/search/words?keyword=${encodeURIComponent(cleanWord)}`;
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(jishoUrl)}`;
-      
-      const response = await fetch(proxyUrl);
-      if (response.ok) {
-        const json = await response.json();
-        const contents = JSON.parse(json.contents);
-        
-        if (contents && contents.data && contents.data.length > 0) {
-          const match = contents.data[0];
-          const definitions = match.senses.map((s: any) => s.english_definitions.join(', '));
-          const partsOfSpeech = match.senses[0] ? match.senses[0].parts_of_speech : [];
-          
-          entry = {
-            word: match.japanese[0].word || cleanWord,
-            reading: match.japanese[0].reading || '',
-            definitions: definitions.slice(0, 4), // Limit to top 4 definitions
-            partsOfSpeech: partsOfSpeech,
-            isFromJisho: true
-          };
-          
-          // Cache it locally with eviction policy (max 20 items)
-          JISHO_CACHE.set(cleanWord, entry);
-          if (JISHO_CACHE.size > 20) {
-            const firstKey = JISHO_CACHE.keys().next().value;
-            if (firstKey) {
-              JISHO_CACHE.delete(firstKey);
+  // 3. Fallback to Jiten online definitions if Yomitan DB found nothing OR returned empty definitions
+  if (!entry || !entry.definitions || entry.definitions.length === 0) {
+    let jitenEntry: DictionaryEntry | null = null;
+    if (JITEN_CACHE.has(searchWord)) {
+      jitenEntry = { ...JITEN_CACHE.get(searchWord)! };
+    } else {
+      try {
+        const jitenUrl = `https://api.jiten.moe/api/vocabulary/search?query=${encodeURIComponent(searchWord)}`;
+        const directController = new AbortController();
+        const directId = setTimeout(() => directController.abort(), 2500);
+        let fetchedJson: any = null;
+        try {
+          const response = await fetch(jitenUrl, { signal: directController.signal });
+          clearTimeout(directId);
+          if (response.ok) {
+            fetchedJson = await response.json();
+          }
+        } catch {
+          clearTimeout(directId);
+          const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(jitenUrl)}`;
+          const proxyController = new AbortController();
+          const proxyId = setTimeout(() => proxyController.abort(), 2500);
+          try {
+            const response = await fetch(proxyUrl, { signal: proxyController.signal });
+            clearTimeout(proxyId);
+            if (response.ok) {
+              const json = await response.json();
+              fetchedJson = JSON.parse(json.contents);
             }
+          } catch {
+            clearTimeout(proxyId);
           }
         }
+        
+        if (fetchedJson && fetchedJson.results && fetchedJson.results.length > 0) {
+          const definitions: any[] = [];
+          fetchedJson.results.slice(0, 4).forEach((res: any) => {
+            if (res.meanings && res.meanings.length > 0) {
+              res.meanings.forEach((m: string) => {
+                definitions.push({
+                  dictionary: 'Jiten',
+                  glossary: m,
+                  partsOfSpeech: res.partsOfSpeech || []
+                });
+              });
+            }
+          });
+          
+          if (definitions.length > 0) {
+            const match = fetchedJson.results[0];
+            jitenEntry = {
+              word: match.text || searchWord,
+              reading: match.rubyText || '',
+              definitions: definitions.slice(0, 5),
+              partsOfSpeech: match.partsOfSpeech || [],
+              isFromJisho: false
+            };
+            
+            JITEN_CACHE.set(searchWord, jitenEntry);
+          }
+        }
+      } catch (error) {
+        console.warn('Jiten API lookup failed.', error);
       }
-    } catch (error) {
-      console.warn('Jisho API lookup failed or was blocked by CORS.', error);
+    }
+
+    if (jitenEntry) {
+      if (entry) {
+        entry.definitions = jitenEntry.definitions;
+        if (!entry.reading) entry.reading = jitenEntry.reading;
+      } else {
+        entry = jitenEntry;
+      }
     }
   }
 
-  // Fallback if nothing is found
+  // Fallback if nothing is found at all
   if (!entry) {
     entry = {
-      word: cleanWord,
-      reading: reading || '',
+      word: searchWord,
+      reading: searchReading || '',
       partsOfSpeech: ['Unknown'],
-      definitions: ['No translation found. Click "Search Jisho" for online lookup.'],
+      definitions: [{
+        dictionary: 'Fallback',
+        glossary: 'No se encontraron definiciones en el diccionario local. Pulsa Buscar en Jiten para una búsqueda online.',
+        partsOfSpeech: ['Unknown']
+      }],
       isFallback: true
     };
   }

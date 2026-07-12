@@ -73,6 +73,10 @@ interface SettingsValues {
   parseKey: string;
   showPopupKey: string;
   lookupSelectionKey: string;
+  // FSRS 6
+  fsrsRetentionRate: number;
+  fsrsMaxInterval: number;
+  fsrsEnableFuzz: boolean;
   // Word Styling Config
   wordStyleConfig: WordStyleThemeConfig;
 }
@@ -287,6 +291,9 @@ const DEFAULTS: SettingsValues = {
   parseKey: 'Alt+P',
   showPopupKey: 'Shift',
   lookupSelectionKey: 'Alt+L',
+  fsrsRetentionRate: 0.90,
+  fsrsMaxInterval: 36500,
+  fsrsEnableFuzz: true,
   wordStyleConfig: structuredClone(PRESET_THEMES.default.config),
 };
 
@@ -498,6 +505,9 @@ const YoruParserSettings: React.FC<YoruParserSettingsProps> = ({
         parseKey: parseKeybindDisplay(vals.parseKey, DEFAULTS.parseKey),
         showPopupKey: parseKeybindDisplay(vals.showPopupKey, DEFAULTS.showPopupKey),
         lookupSelectionKey: parseKeybindDisplay(vals.lookupSelectionKey, DEFAULTS.lookupSelectionKey),
+        fsrsRetentionRate: parseNum(vals.fsrsRetentionRate, DEFAULTS.fsrsRetentionRate),
+        fsrsMaxInterval: parseNum(vals.fsrsMaxInterval, DEFAULTS.fsrsMaxInterval),
+        fsrsEnableFuzz: parseBool(vals.fsrsEnableFuzz, DEFAULTS.fsrsEnableFuzz),
         wordStyleConfig: loadedConfig,
       });
       setLoaded(true);
@@ -1257,6 +1267,37 @@ const YoruParserSettings: React.FC<YoruParserSettingsProps> = ({
           colors={colors} labelStyle={labelStyle} descStyle={descStyle}
         />
       </div>
+
+      <div style={{ ...sectionTitleStyle, marginTop: '24px' }}>{t('Repetición Espaciada (FSRS 6)', 'Spaced Repetition (FSRS 6)')}</div>
+      <div style={cardStyle}>
+        <SliderRow
+          label={t('Retención Deseada', 'Desired Retention')}
+          value={settings.fsrsRetentionRate} min={0.70} max={0.99} step={0.01} unit=""
+          onChange={(v) => updateSetting('fsrsRetentionRate', v)}
+          colors={colors} labelStyle={labelStyle}
+        />
+        <div style={{ ...descStyle, marginTop: '4px' }}>
+          {t('La probabilidad deseada de recordar una palabra en su fecha de repaso (por defecto 0.90).', 'The desired probability of recalling a word on its review date (default 0.90).')}
+        </div>
+      </div>
+      <div style={cardStyle}>
+        <NumberRow
+          label={t('Intervalo Máximo (días)', 'Maximum Interval (days)')}
+          desc={t('El intervalo de repaso máximo permitido en días.', 'The maximum allowed review interval in days.')}
+          value={settings.fsrsMaxInterval} min={7} max={36500}
+          onChange={(v) => updateSetting('fsrsMaxInterval', v)}
+          colors={colors} labelStyle={labelStyle} descStyle={descStyle}
+        />
+      </div>
+      <div style={cardStyle}>
+        <ToggleRow
+          label={t('Dispersión de Intervalos (Fuzz)', 'Interval Dispersion (Fuzz)')}
+          desc={t('Añade aleatoriedad a los intervalos largos para evitar acumulación de repasos.', 'Adds randomness to long intervals to avoid review pileups.')}
+          value={settings.fsrsEnableFuzz}
+          onChange={(v) => updateSetting('fsrsEnableFuzz', v)}
+          colors={colors} labelStyle={labelStyle} descStyle={descStyle}
+        />
+      </div>
     </>
   );
 
@@ -1588,6 +1629,51 @@ const SliderRow: React.FC<SliderRowProps> = ({ label, value, min, max, step, uni
         outline: 'none',
         cursor: 'pointer',
         accentColor: colors.accent,
+      }}
+    />
+  </div>
+);
+
+interface NumberRowProps {
+  label: string;
+  desc?: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+  colors: YoruParserSettingsProps['colors'];
+  labelStyle: React.CSSProperties;
+  descStyle: React.CSSProperties;
+}
+
+const NumberRow: React.FC<NumberRowProps> = ({ label, desc, value, min, max, onChange, colors, labelStyle, descStyle }) => (
+  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+    <div style={{ flex: 1 }}>
+      <div style={labelStyle}>{label}</div>
+      {desc && <div style={descStyle}>{desc}</div>}
+    </div>
+    <input
+      type="number"
+      min={min}
+      max={max}
+      value={value}
+      onChange={(e) => {
+        const val = parseInt(e.target.value, 10);
+        if (!isNaN(val)) {
+          onChange(Math.max(min, Math.min(max, val)));
+        }
+      }}
+      style={{
+        width: '100px',
+        padding: '6px 10px',
+        borderRadius: '6px',
+        border: `1px solid ${colors.border}`,
+        background: 'rgba(0,0,0,0.2)',
+        color: colors.textMain,
+        outline: 'none',
+        fontSize: '0.85rem',
+        textAlign: 'right',
+        fontFamily: 'monospace',
       }}
     />
   </div>

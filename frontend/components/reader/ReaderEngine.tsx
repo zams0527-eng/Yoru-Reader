@@ -78,7 +78,7 @@ const ReaderEngine = React.memo(function ReaderEngine({
     let charAccum = 0;
 
     return book.chapters.map((chapter, idx) => {
-      const lines = (chapter.content || '').split('\n');
+      const lines = (chapter.content || '').split(/\r?\n/);
       let sectionHtml = '';
       const startChars = charAccum;
 

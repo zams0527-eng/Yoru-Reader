@@ -35,6 +35,11 @@ export interface Settings {
   audioVoiceOption: string;
   readingOrientation: string;
   keepStatsOnDelete?: boolean;
+  discordEnabled?: boolean;
+  discordInactivityTimer?: number;
+  discordIcon?: string;
+  discordShowStats?: string;
+  discordBlacklist?: string;
 }
 
 export interface Profile {
@@ -64,7 +69,12 @@ const DEFAULT_SETTINGS: Settings = {
   audioSpeed: '1.0',
   audioGender: 'male',
   audioVoiceOption: 'masaru',
-  readingOrientation: 'horizontal'
+  readingOrientation: 'horizontal',
+  discordEnabled: false,
+  discordInactivityTimer: 300,
+  discordIcon: 'Yoru',
+  discordShowStats: 'None',
+  discordBlacklist: ''
 };
 
 const DEFAULT_PROFILES: Profile[] = [];
@@ -608,11 +618,58 @@ export const db = {
     return statuses;
   },
 
+  cleanVolumeNumber(title: string): string {
+    if (!title) return title;
+    let cleaned = title.trim();
+
+    // 1. volume indicators: vol. 5, vol 5, volume 5, tomo 5, t. 5, part 5, bk 5, etc.
+    cleaned = cleaned.replace(/\s*(?:vol|volume|tomo|t|part|pt|bk|book|巻)\.?\s*([0-9０-９一二三四五六七八九十百]+)\s*$/i, '');
+
+    // 2. Trailing numbers half/full-width (e.g. "冴えない彼女の育てかた 5", "冴えない彼女の育てかた5")
+    cleaned = cleaned.replace(/\s*([0-9]+|[０-９]+)\s*$/, '');
+
+    // 3. Trailing kanji numbers (e.g. "冴えない彼女の育てかた 五")
+    cleaned = cleaned.replace(/\s*([一二三四五六七八九十]+)\s*$/, '');
+
+    // 4. Trailing Roman numerals (case-insensitive, e.g. "冴えない彼女の育てかた V")
+    cleaned = cleaned.replace(/\s+([ivx]+)\s*$/i, '');
+
+    // 5. Brackets/parentheses enclosing numbers (e.g. "(5)", "[5]", "【5】")
+    cleaned = cleaned.replace(/\s*(?:\(|\[|【|〈|「|『|《)\s*([0-9０-９一二三四五六七八九十]+)\s*(?:\)|\]|】|〉|」|』|》)\s*$/, '');
+    
+    // 6. Unicode circled numbers
+    cleaned = cleaned.replace(/\s*[①-⑳]\s*$/, '');
+
+    return cleaned.trim() || title;
+  },
+
   // --- SRS Spaced Repetition System Management ---
   getSrsData(): Record<string, any> {
     try {
       const data = localStorage.getItem(this._getKey('yoru_reader_srs_data'));
-      return data ? JSON.parse(data) : {};
+      const srsData = data ? JSON.parse(data) : {};
+      
+      let updated = false;
+      Object.entries(srsData).forEach(([word, card]: [string, any]) => {
+        if (word.startsWith('_deck_')) return;
+        
+        if (card && card.source) {
+          const customDeckKey = `_deck_${card.source}`;
+          if (!srsData[customDeckKey]) {
+            const cleanedSource = this.cleanVolumeNumber(card.source);
+            if (cleanedSource !== card.source) {
+              card.source = cleanedSource;
+              updated = true;
+            }
+          }
+        }
+      });
+      
+      if (updated) {
+        this.saveSrsData(srsData);
+      }
+      
+      return srsData;
     } catch (e) {
       console.error('Error loading SRS data:', e);
       return {};
@@ -629,7 +686,31 @@ export const db = {
 
   getSrsCard(word: string): any {
     const srsData = this.getSrsData();
-    return srsData[word] || null;
+    const card = srsData[word] || null;
+    if (card && card.stability === undefined) {
+      // Migrate legacy SM-2 card to FSRS-6 in-memory
+      const ease = card.ease ?? 2.5;
+      const interval = card.interval ?? 0;
+      const reps = card.repetitions ?? 0;
+      
+      const stability = interval > 0 ? interval : 2.3; // Default Good stability
+      const difficulty = Math.max(1, Math.min(10, 5.0 + (2.5 - ease) * 3));
+      
+      card.stability = stability;
+      card.difficulty = difficulty;
+      card.elapsed_days = 0;
+      card.scheduled_days = interval;
+      card.reps = reps;
+      card.lapses = card.lapses ?? 0;
+      card.state = card.state ?? (reps > 0 ? 2 : 0); // Default to Review if reps > 0
+      if (card.dueDate) {
+        card.due = new Date(card.dueDate);
+      }
+      if (card.lastReview) {
+        card.last_review = new Date(card.lastReview);
+      }
+    }
+    return card;
   },
 
   saveSrsCard(word: string, cardData: any) {
@@ -637,7 +718,37 @@ export const db = {
     if (!cardData) {
       delete srsData[word];
     } else {
-      srsData[word] = cardData;
+      const existing = srsData[word] || {};
+      // Ensure all fields are JSON serializable and merge with existing data to preserve metadata!
+      const serialized = { ...existing, ...cardData };
+      
+      // Auto-clean volume numbers if not a custom deck name placeholder
+      if (serialized.source && !word.startsWith('_deck_')) {
+        const customDeckKey = `_deck_${serialized.source}`;
+        if (!srsData[customDeckKey]) {
+          serialized.source = this.cleanVolumeNumber(serialized.source);
+        }
+      }
+
+      if (serialized.due instanceof Date) {
+        serialized.dueDate = serialized.due.toISOString();
+        serialized.due = serialized.due.toISOString(); // Keep both for compatibility
+      }
+      if (serialized.last_review instanceof Date) {
+        serialized.lastReview = serialized.last_review.toISOString();
+        serialized.last_review = serialized.last_review.toISOString();
+      }
+      // Map FSRS 6 fields to legacy fields for backward compatibility with Library stats
+      if (serialized.scheduled_days !== undefined) {
+        serialized.interval = serialized.scheduled_days;
+      }
+      if (serialized.reps !== undefined) {
+        serialized.repetitions = serialized.reps;
+      }
+      if (serialized.difficulty !== undefined) {
+        serialized.ease = Math.max(1.3, Math.min(3.0, 3.0 - (serialized.difficulty - 1) * 0.1888));
+      }
+      srsData[word] = serialized;
     }
     this.saveSrsData(srsData);
   },
@@ -725,6 +836,43 @@ export const db = {
     // Restore active profile
     if (dbExport.activeProfileId) {
       this.setActiveProfileId(dbExport.activeProfileId);
+    }
+  },
+
+  getSrsHistory(): any[] {
+    try {
+      const data = localStorage.getItem(this._getKey('yoru_reader_srs_history'));
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  addSrsHistory(word: string, grade: number, interval: number, deckName: string) {
+    try {
+      const history = this.getSrsHistory();
+      const entry = {
+        word,
+        grade,
+        interval,
+        deckName,
+        timestamp: new Date().toISOString()
+      };
+      history.unshift(entry); // Add to the top
+      if (history.length > 200) {
+        history.length = 200; // Limit to last 200 reviews
+      }
+      localStorage.setItem(this._getKey('yoru_reader_srs_history'), JSON.stringify(history));
+    } catch (e) {
+      console.error('Error saving SRS history:', e);
+    }
+  },
+
+  clearSrsHistory() {
+    try {
+      localStorage.removeItem(this._getKey('yoru_reader_srs_history'));
+    } catch (e) {
+      console.error('Error clearing SRS history:', e);
     }
   },
 

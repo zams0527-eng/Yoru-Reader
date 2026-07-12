@@ -5,7 +5,7 @@ import Reader from './components/Reader';
 import SettingsModal from './components/SettingsModal';
 import { db } from './utils/db';
 import { tokenizeText, parseExtensionText } from './utils/japanese';
-import { clearYomitanCache, migrateEnglishDictName, migrateDictFlags, cleanOrphanedEntries } from './utils/yomitanDB';
+import { clearYomitanCache, migrateEnglishDictName, migrateDictFlags, cleanOrphanedEntries, getDB, importYomitanZip } from './utils/yomitanDB';
 import { useConfirm } from './components/ConfirmModal';
 
 declare global {
@@ -243,6 +243,45 @@ export default function App() {
         await migrateDictFlags();
         await cleanOrphanedEntries();
         console.log("[App] Yomitan database maintenance completed.");
+        
+        // Auto-import native pitch accent dictionary if not already installed
+        try {
+          const idb = await getDB();
+          const installedDicts: any[] = await new Promise((resolve, reject) => {
+            const tx = idb.transaction('dicts', 'readonly');
+            const store = tx.objectStore('dicts');
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+          });
+          
+          const hasPitch = installedDicts.some((d: any) => 
+            d.title.includes('アクセント') || 
+            d.title.toLowerCase().includes('pitch')
+          );
+          
+          if (!hasPitch) {
+            console.log('[App] Pitch accent dictionary not found. Attempting native auto-import...');
+            try {
+              const response = await fetch('./pitch_accent.zip');
+              if (response.ok) {
+                const arrayBuffer = await response.arrayBuffer();
+                const file = new File([arrayBuffer], 'pitch_accent.zip', { type: 'application/zip' });
+                console.log('[App] Starting pitch accent auto-import from bundled assets');
+                await importYomitanZip(file, (msg, pct) => {
+                  console.log(`[App] Auto-importing pitch: ${msg} (${pct}%)`);
+                });
+                console.log('[App] Pitch accent dictionary successfully auto-imported!');
+              } else {
+                console.warn('[App] pitch_accent.zip not found in bundled assets (HTTP:', response.status, ')');
+              }
+            } catch (fetchErr) {
+              console.warn('[App] Failed to fetch bundled pitch_accent.zip:', fetchErr);
+            }
+          }
+        } catch (importErr) {
+          console.warn('[App] Native pitch accent auto-import failed:', importErr);
+        }
       } catch (err) {
         console.warn("[App] Background maintenance failed:", err);
       }
@@ -584,6 +623,26 @@ export default function App() {
   const handleSetWordStatus = async (word: string, status: string, wordData: any = null) => {
     const updatedStatuses = db.setWordStatus(word, status);
     setWordStatuses(updatedStatuses);
+
+    if (status === 'learning') {
+      const existingCard = db.getSrsCard(word);
+      if (!existingCard) {
+        db.saveSrsCard(word, {
+          word,
+          reading: wordData?.reading || '',
+          sentence: wordData?.sentence || '',
+          source: wordData?.source || activeBook?.title || 'Yoru Reader',
+          state: 0, // New
+          dueDate: new Date().toISOString(), // Due immediately
+          due: new Date().toISOString()
+        });
+      } else {
+        if (wordData?.source) {
+          existingCard.source = wordData.source;
+          db.saveSrsCard(word, existingCard);
+        }
+      }
+    }
 
     if (status !== 'known') return;
 
