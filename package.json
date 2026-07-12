@@ -5,7 +5,7 @@
   "author": "Yoru cafe",
   "description": "Lector de novelas ligeras en japonés con integración de diccionarios y Anki.",
   "type": "module",
-  "main": "electron/electron-main.cjs",
+  "main": "backend/electron-main.cjs",
   "scripts": {
     "dev": "vite",
     "build:svelte": "cd yoru-reader-svelte && npm run build && node ../build/copy-svelte-build.js",
@@ -80,7 +80,7 @@
     },
     "files": [
       "dist/**/*",
-      "electron/**/*",
+      "backend/**/*",
       "package.json"
     ]
   }
