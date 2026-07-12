@@ -19,6 +19,7 @@ interface Section {
   content: string;
   lastIndex: number;
   startChars: number;
+  charCount?: number;
   isFromToc?: boolean;
 }
 
@@ -38,6 +39,8 @@ interface ReaderEngineProps {
   children?: ReactNode;
   targetSection?: number | null;
   targetParagraphId?: number | null;
+  targetCharPosition?: number | null;
+  colors: any;
 }
 
 /**
@@ -56,6 +59,8 @@ const ReaderEngine = React.memo(function ReaderEngine({
   children,
   targetSection,
   targetParagraphId,
+  targetCharPosition,
+  colors,
 }: ReaderEngineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -123,6 +128,7 @@ const ReaderEngine = React.memo(function ReaderEngine({
         content: sectionHtml,
         lastIndex: paragraphId - 1,
         startChars,
+        charCount: charAccum - startChars,
         isFromToc: chapter.isFromToc,
       };
     });
@@ -130,18 +136,8 @@ const ReaderEngine = React.memo(function ReaderEngine({
 
   const totalChars = useMemo(() => {
     if (sections.length === 0) return 0;
-    // charAccum at the end of last section
     const lastSection = sections[sections.length - 1];
-    // We can compute from the HTML by finding the last characumm
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = lastSection.content;
-    const allP = tempDiv.querySelectorAll('[characumm]');
-    if (allP.length === 0) return 0;
-    const lastP = allP[allP.length - 1];
-    const lastCharacumm = parseInt(lastP.getAttribute('characumm') || '0', 10);
-    // Add one more approximate count for the last paragraph
-    const lastText = lastP.textContent || '';
-    return lastCharacumm + countJapaneseChars(lastText);
+    return lastSection.startChars + (lastSection.charCount || 0);
   }, [sections]);
 
   const { vertical, paginated, fontSize, lineHeight, verticalPadding, horizontalPadding, fontFamily } = readerSettings;
@@ -154,8 +150,10 @@ const ReaderEngine = React.memo(function ReaderEngine({
       height: '100%',
       overflow: 'hidden',
       position: 'relative',
+      backgroundColor: colors.bg,
+      color: colors.textMain,
     };
-  }, [fontFamily]);
+  }, [fontFamily, colors.bg, colors.textMain]);
 
   // Content div styles — CSS columns for pagination
   const contentStyle = useMemo<React.CSSProperties>(() => {
@@ -168,6 +166,8 @@ const ReaderEngine = React.memo(function ReaderEngine({
       fontSize: `${fontSize}px`,
       lineHeight: `${lineHeight}`,
       padding: `${vp} ${hp}`,
+      backgroundColor: colors.bg,
+      color: colors.textMain,
     };
 
     if (paginated && vertical) {
@@ -209,7 +209,7 @@ const ReaderEngine = React.memo(function ReaderEngine({
         overflowY: 'auto',
       };
     }
-  }, [fontSize, lineHeight, verticalPadding, horizontalPadding, vertical, paginated, fontFamily]);
+  }, [fontSize, lineHeight, verticalPadding, horizontalPadding, vertical, paginated, fontFamily, colors.bg, colors.textMain]);
 
   // Handle resize → update CSS variables
   useEffect(() => {
@@ -447,6 +447,40 @@ const ReaderEngine = React.memo(function ReaderEngine({
       }
     }
   }, [targetParagraphId]);
+
+  // Navigate to specific character position
+  useEffect(() => {
+    if (typeof targetCharPosition === 'number' && targetCharPosition >= 0 && sections.length > 0) {
+      const sectionIdx = sections.findIndex((s, idx) => {
+        const nextSection = sections[idx + 1];
+        if (!nextSection) return true;
+        return targetCharPosition >= s.startChars && targetCharPosition < nextSection.startChars;
+      });
+
+      if (sectionIdx !== -1) {
+        setCurrSection(sectionIdx);
+        requestAnimationFrame(() => {
+          const content = contentRef.current;
+          if (content) {
+            const pTags = content.querySelectorAll('[characumm]');
+            let targetP: HTMLElement | null = null;
+            for (let i = 0; i < pTags.length; i++) {
+              const accum = parseInt(pTags[i].getAttribute('characumm') || '0', 10);
+              if (accum <= targetCharPosition) {
+                targetP = pTags[i] as HTMLElement;
+              } else {
+                break;
+              }
+            }
+            if (targetP) {
+              targetP.scrollIntoView({ inline: 'center', block: 'center' });
+            }
+          }
+          updateChars();
+        });
+      }
+    }
+  }, [targetCharPosition, sections, updateChars]);
 
   // Build the current section HTML
   const currentHtml = useMemo(() => {

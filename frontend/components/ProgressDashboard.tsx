@@ -19,13 +19,22 @@ interface DbStatistic {
 interface ProgressDashboardProps {
   books: Book[];
   lang?: string;
+  excludedBookIds?: string[];
 }
 
-export default function ProgressDashboard({ books, lang = 'es' }: ProgressDashboardProps) {
+export default function ProgressDashboard({ books, lang = 'es', excludedBookIds = [] }: ProgressDashboardProps) {
   const [dbStats, setDbStats] = useState<DbStatistic[]>([]);
   const [timeWindow, setTimeWindow] = useState<'7D' | '30D' | '90D' | 'All'>('30D');
   const [hoveredDay, setHoveredDay] = useState<{ dateStr: string; time: number; chars: number } | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+
+  const filteredDbStats = useMemo(() => {
+    if (!excludedBookIds || excludedBookIds.length === 0) return dbStats;
+    const excludedTitles = new Set(
+      books.filter((b) => excludedBookIds.includes(String(b.id))).map((b) => b.title)
+    );
+    return dbStats.filter((s) => !excludedTitles.has(s.title));
+  }, [dbStats, books, excludedBookIds]);
 
   const t = {
     progress: lang === 'es' ? 'Progreso' : 'Progress',
@@ -88,7 +97,7 @@ export default function ProgressDashboard({ books, lang = 'es' }: ProgressDashbo
   const todayStr = useMemo(() => new Date().toLocaleDateString('sv').slice(0, 10), []);
 
   // 1. TODAY'S TOTALS
-  const todayStats = useMemo(() => dbStats.filter((s) => s.dateKey === todayStr), [dbStats, todayStr]);
+  const todayStats = useMemo(() => filteredDbStats.filter((s) => s.dateKey === todayStr), [filteredDbStats, todayStr]);
   const todayChars = useMemo(() => todayStats.reduce((acc, s) => acc + (s.charactersRead || 0), 0), [todayStats]);
   const todaySeconds = useMemo(() => todayStats.reduce((acc, s) => acc + (s.readingTime || 0), 0), [todayStats]);
 
@@ -105,7 +114,7 @@ export default function ProgressDashboard({ books, lang = 'es' }: ProgressDashbo
 
   // 2. STREAK CALCULATION
   const streakDays = useMemo(() => {
-    const readDates = new Set(dbStats.filter((s) => (s.charactersRead || 0) > 0 || (s.readingTime || 0) > 0).map((s) => s.dateKey));
+    const readDates = new Set(filteredDbStats.filter((s) => (s.charactersRead || 0) > 0 || (s.readingTime || 0) > 0).map((s) => s.dateKey));
     if (readDates.size === 0) return 0;
 
     let streak = 0;
@@ -124,7 +133,7 @@ export default function ProgressDashboard({ books, lang = 'es' }: ProgressDashbo
       checkDateStr = checkDate.toLocaleDateString('sv').slice(0, 10);
     }
     return streak;
-  }, [dbStats]);
+  }, [filteredDbStats]);
 
   // 3. TIME WINDOW DATA FILTERING
   const windowDaysLimit = useMemo(() => {
@@ -141,9 +150,9 @@ export default function ProgressDashboard({ books, lang = 'es' }: ProgressDashbo
   }, [windowDaysLimit]);
 
   const windowStats = useMemo(() => {
-    if (timeWindow === 'All') return dbStats;
-    return dbStats.filter((s) => s.dateKey >= windowStartDateStr && s.dateKey <= todayStr);
-  }, [dbStats, timeWindow, windowStartDateStr, todayStr]);
+    if (timeWindow === 'All') return filteredDbStats;
+    return filteredDbStats.filter((s) => s.dateKey >= windowStartDateStr && s.dateKey <= todayStr);
+  }, [filteredDbStats, timeWindow, windowStartDateStr, todayStr]);
 
   const windowChars = useMemo(() => windowStats.reduce((acc, s) => acc + (s.charactersRead || 0), 0), [windowStats]);
   const windowSeconds = useMemo(() => windowStats.reduce((acc, s) => acc + (s.readingTime || 0), 0), [windowStats]);
@@ -168,7 +177,7 @@ export default function ProgressDashboard({ books, lang = 'es' }: ProgressDashbo
         currentDate.setDate(start.getDate() + i);
         const dateKey = currentDate.toLocaleDateString('sv').slice(0, 10);
         
-        const dayStats = dbStats.filter((s) => s.dateKey === dateKey);
+        const dayStats = filteredDbStats.filter((s) => s.dateKey === dateKey);
         const chars = dayStats.reduce((acc, s) => acc + (s.charactersRead || 0), 0);
         const time = dayStats.reduce((acc, s) => acc + (s.readingTime || 0), 0);
         
@@ -182,7 +191,7 @@ export default function ProgressDashboard({ books, lang = 'es' }: ProgressDashbo
         currentDate.setDate(start.getDate() + i);
         const dateKey = currentDate.toLocaleDateString('sv').slice(0, 10);
         
-        const dayStats = dbStats.filter((s) => s.dateKey === dateKey);
+        const dayStats = filteredDbStats.filter((s) => s.dateKey === dateKey);
         const chars = dayStats.reduce((acc, s) => acc + (s.charactersRead || 0), 0);
         const time = dayStats.reduce((acc, s) => acc + (s.readingTime || 0), 0);
         
@@ -190,7 +199,7 @@ export default function ProgressDashboard({ books, lang = 'es' }: ProgressDashbo
       }
     }
     return cells;
-  }, [dbStats, timeWindow, windowDaysLimit]);
+  }, [filteredDbStats, timeWindow, windowDaysLimit]);
 
   const getCellColor = (chars: number) => {
     if (chars === 0) return 'var(--border-light)';
@@ -202,7 +211,7 @@ export default function ProgressDashboard({ books, lang = 'es' }: ProgressDashbo
 
   // 5. RECENT SESSIONS LIST
   const recentSessionsList = useMemo(() => {
-    const list = dbStats
+    const list = filteredDbStats
       .filter((s) => s.charactersRead > 0 || s.readingTime > 0)
       .map((s) => {
         const bookObj = books.find((b) => b.title === s.title);
@@ -218,12 +227,12 @@ export default function ProgressDashboard({ books, lang = 'es' }: ProgressDashbo
       })
       .sort((a, b) => b.modified - a.modified || b.dateKey.localeCompare(a.dateKey));
     return list.slice(0, 10);
-  }, [dbStats, books, lang]);
+  }, [filteredDbStats, books, lang]);
 
   // 6. BY BOOK AGGREGATION LIST
   const byBookList = useMemo(() => {
     const map = new Map<string, { chars: number; time: number }>();
-    dbStats.forEach((s) => {
+    filteredDbStats.forEach((s) => {
       const cur = map.get(s.title) || { chars: 0, time: 0 };
       map.set(s.title, {
         chars: cur.chars + (s.charactersRead || 0),
@@ -244,19 +253,19 @@ export default function ProgressDashboard({ books, lang = 'es' }: ProgressDashbo
       })
       .sort((a, b) => b.chars - a.chars);
     return list;
-  }, [dbStats, books, lang]);
+  }, [filteredDbStats, books, lang]);
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', color: '#f1f5f9', background: '#0b0c0e', minHeight: '100vh', fontFamily: "'Outfit', 'Inter', sans-serif" }}>
+    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', color: 'var(--text-main)', background: 'transparent', minHeight: '100vh', fontFamily: "'Outfit', 'Inter', sans-serif" }}>
       {/* HEADER SECTION */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
         <div>
-          <h1 style={{ fontSize: '2rem', fontWeight: 800, margin: 0, color: '#ffffff', letterSpacing: '-0.02em' }}>{t.progress}</h1>
-          <p style={{ fontSize: '0.9rem', color: '#94a3b8', margin: '4px 0 0 0' }}>{t.subtitle}</p>
+          <h1 style={{ fontSize: '2rem', fontWeight: 800, margin: 0, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>{t.progress}</h1>
+          <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>{t.subtitle}</p>
         </div>
 
         {/* TIME WINDOW PICKER */}
-        <div style={{ display: 'flex', gap: '4px', background: 'rgba(255,255,255,0.04)', padding: '4px', borderRadius: '8px' }}>
+        <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-card)', border: '1px solid var(--border-light)', padding: '4px', borderRadius: '8px' }}>
           {(['7D', '30D', '90D', 'All'] as const).map((opt) => {
             const active = timeWindow === opt;
             return (
@@ -271,8 +280,8 @@ export default function ProgressDashboard({ books, lang = 'es' }: ProgressDashbo
                   border: 'none',
                   cursor: 'pointer',
                   transition: 'all 0.2s',
-                  background: active ? '#ffe000' : 'transparent',
-                  color: active ? '#000000' : '#94a3b8',
+                  background: active ? 'var(--primary)' : 'transparent',
+                  color: active ? 'var(--bg-panel)' : 'var(--text-muted)',
                 }}
               >
                 {opt === 'All' ? t.allTime : opt}
@@ -282,101 +291,69 @@ export default function ProgressDashboard({ books, lang = 'es' }: ProgressDashbo
         </div>
       </div>
 
-      {/* SESSION SYNC BANNER */}
-      <div
-        style={{
-          background: '#13151a',
-          border: '1px solid rgba(255,255,255,0.06)',
-          borderRadius: '12px',
-          padding: '16px 20px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '20px',
-        }}
-      >
-        <div>
-          <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#ffffff', fontWeight: 700 }}>{t.sessionSync}</h4>
-          <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: '#94a3b8' }}>{t.sessionSyncDesc}</p>
-        </div>
-        <button
-          style={{
-            background: 'transparent',
-            border: '1px solid rgba(255,255,255,0.15)',
-            color: '#ffe000',
-            padding: '8px 16px',
-            borderRadius: '8px',
-            fontSize: '0.8rem',
-            fontWeight: 700,
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-          }}
-        >
-          {t.signInSync}
-        </button>
-      </div>
+
 
       {/* GRID OF 4 CARDS */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '20px' }}>
         {/* CARD 1: TODAY */}
-        <div style={{ background: '#13151a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.72rem', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.05em' }}>
-            <Clock size={14} style={{ color: '#ffe000' }} />
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
+            <Clock size={14} style={{ color: 'var(--primary)' }} />
             <span>{t.today}</span>
           </div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffffff', margin: '8px 0' }}>{todayTimeStr}</div>
-          <div style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
-            {todayChars.toLocaleString()} <span style={{ color: 'rgba(255,255,255,0.4)' }}>{t.chars}</span>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-main)', margin: '8px 0' }}>{todayTimeStr}</div>
+          <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+            {todayChars.toLocaleString()} <span style={{ opacity: 0.6 }}>{t.chars}</span>
           </div>
         </div>
 
         {/* CARD 2: TODAY SPEED */}
-        <div style={{ background: '#13151a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.72rem', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.05em' }}>
-            <RefreshCw size={14} style={{ color: '#ffe000' }} />
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
+            <RefreshCw size={14} style={{ color: 'var(--primary)' }} />
             <span>{t.todaySpeed}</span>
           </div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffffff', margin: '8px 0' }}>
-            {todaySpeedVal} <span style={{ fontSize: '0.9rem', color: '#ffe000', fontWeight: 700 }}>{t.charSpeed}</span>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-main)', margin: '8px 0' }}>
+            {todaySpeedVal} <span style={{ fontSize: '0.9rem', color: 'var(--primary)', fontWeight: 700 }}>{t.charSpeed}</span>
           </div>
-          <div style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
-            {todaySessionsCount} <span style={{ color: 'rgba(255,255,255,0.4)' }}>{todaySessionsCount === 1 ? t.session : t.sessions}</span>
+          <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+            {todaySessionsCount} <span style={{ opacity: 0.6 }}>{todaySessionsCount === 1 ? t.session : t.sessions}</span>
           </div>
         </div>
 
         {/* CARD 3: STREAK */}
-        <div style={{ background: '#13151a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.72rem', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.05em' }}>
-            <Flame size={14} style={{ color: '#ffe000' }} />
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
+            <Flame size={14} style={{ color: 'var(--primary)' }} />
             <span>{t.streak}</span>
           </div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffffff', margin: '8px 0' }}>
-            {streakDays} <span style={{ fontSize: '0.9rem', color: '#ffe000', fontWeight: 700 }}>{streakDays === 1 ? t.day : t.days}</span>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-main)', margin: '8px 0' }}>
+            {streakDays} <span style={{ fontSize: '0.9rem', color: 'var(--primary)', fontWeight: 700 }}>{streakDays === 1 ? t.day : t.days}</span>
           </div>
-          <div style={{ fontSize: '0.82rem', color: '#94a3b8' }}>{t.consecutiveDays}</div>
+          <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{t.consecutiveDays}</div>
         </div>
 
         {/* CARD 4: WINDOW TIME */}
-        <div style={{ background: '#13151a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.72rem', fontWeight: 800, color: '#94a3b8', letterSpacing: '0.05em' }}>
-            <Calendar size={14} style={{ color: '#ffe000' }} />
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
+            <Calendar size={14} style={{ color: 'var(--primary)' }} />
             <span>{timeWindow === 'All' ? t.allTime.toUpperCase() : `${timeWindow} TIME`}</span>
           </div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: '#ffffff', margin: '8px 0' }}>{windowTimeStr}</div>
-          <div style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
-            {windowChars.toLocaleString()} <span style={{ color: 'rgba(255,255,255,0.4)' }}>{t.chars}</span>
+          <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text-main)', margin: '8px 0' }}>{windowTimeStr}</div>
+          <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+            {windowChars.toLocaleString()} <span style={{ opacity: 0.6 }}>{t.chars}</span>
           </div>
         </div>
       </div>
 
       {/* HEATMAP PANEL */}
-      <div style={{ background: '#13151a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
           <div>
-            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>{t.heatmap}</h3>
-            <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: '#94a3b8' }}>{t.heatmapDesc}</p>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-main)' }}>{t.heatmap}</h3>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>{t.heatmapDesc}</p>
           </div>
-          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ffe000', padding: '4px 10px', background: 'rgba(255,224,0,0.08)', borderRadius: '6px' }}>
+          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary)', padding: '4px 10px', background: 'var(--bg-app)', border: '1px solid var(--border-light)', borderRadius: '6px' }}>
             {hoveredDay ? (
               `${hoveredDay.dateStr}: ${formatDuration(hoveredDay.time)} — ${hoveredDay.chars.toLocaleString()} ${t.chars}`
             ) : (
@@ -442,16 +419,16 @@ export default function ProgressDashboard({ books, lang = 'es' }: ProgressDashbo
       {/* TWO COLUMNS: RECENT SESSIONS & BY BOOK */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
         {/* COLUMN 1: RECENT SESSIONS */}
-        <div style={{ background: '#13151a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '20px' }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>{t.recentSessions}</h3>
-            <span style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '10px', color: '#94a3b8' }}>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-main)' }}>{t.recentSessions}</h3>
+            <span style={{ fontSize: '0.75rem', background: 'var(--bg-app)', border: '1px solid var(--border-light)', padding: '2px 8px', borderRadius: '10px', color: 'var(--text-muted)' }}>
               {recentSessionsList.length} {t.shown}
             </span>
           </div>
 
           {recentSessionsList.length === 0 ? (
-            <p style={{ fontSize: '0.85rem', color: '#64748b', textAlign: 'center', padding: '30px 0' }}>{t.noSessions}</p>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', opacity: 0.8, textAlign: 'center', padding: '30px 0' }}>{t.noSessions}</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {recentSessionsList.map((session, idx) => (
@@ -462,27 +439,27 @@ export default function ProgressDashboard({ books, lang = 'es' }: ProgressDashbo
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     paddingBottom: '12px',
-                    borderBottom: idx < recentSessionsList.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                    borderBottom: idx < recentSessionsList.length - 1 ? '1px solid var(--border-light)' : 'none',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     {session.cover ? (
                       <img src={session.cover} alt="" style={{ width: '36px', height: '50px', objectFit: 'cover', borderRadius: '4px' }} />
                     ) : (
-                      <div style={{ width: '36px', height: '50px', background: 'rgba(255,255,255,0.04)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <BookOpen size={14} style={{ color: 'rgba(255,255,255,0.2)' }} />
+                      <div style={{ width: '36px', height: '50px', background: 'var(--bg-app)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <BookOpen size={14} style={{ color: 'var(--text-muted)', opacity: 0.4 }} />
                       </div>
                     )}
                     <div>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ffffff', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {session.title}
                       </div>
-                      <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '2px' }}>{session.dateKey}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>{session.dateKey}</div>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ffe000' }}>+{session.chars.toLocaleString()} chars</div>
-                    <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{formatDuration(session.time)}</div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary)' }}>+{session.chars.toLocaleString()} chars</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{formatDuration(session.time)}</div>
                   </div>
                 </div>
               ))}
@@ -491,16 +468,16 @@ export default function ProgressDashboard({ books, lang = 'es' }: ProgressDashbo
         </div>
 
         {/* COLUMN 2: BY BOOK */}
-        <div style={{ background: '#13151a', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '20px' }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: '#ffffff' }}>{t.byBook}</h3>
-            <span style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.06)', padding: '2px 8px', borderRadius: '10px', color: '#94a3b8' }}>
+            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-main)' }}>{t.byBook}</h3>
+            <span style={{ fontSize: '0.75rem', background: 'var(--bg-app)', border: '1px solid var(--border-light)', padding: '2px 8px', borderRadius: '10px', color: 'var(--text-muted)' }}>
               {byBookList.length} {t.shown}
             </span>
           </div>
 
           {byBookList.length === 0 ? (
-            <p style={{ fontSize: '0.85rem', color: '#64748b', textAlign: 'center', padding: '30px 0' }}>{t.bookTotalsDesc}</p>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', opacity: 0.8, textAlign: 'center', padding: '30px 0' }}>{t.bookTotalsDesc}</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {byBookList.map((book, idx) => (
@@ -511,27 +488,27 @@ export default function ProgressDashboard({ books, lang = 'es' }: ProgressDashbo
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     paddingBottom: '12px',
-                    borderBottom: idx < byBookList.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none',
+                    borderBottom: idx < byBookList.length - 1 ? '1px solid var(--border-light)' : 'none',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     {book.cover ? (
                       <img src={book.cover} alt="" style={{ width: '36px', height: '50px', objectFit: 'cover', borderRadius: '4px' }} />
                     ) : (
-                      <div style={{ width: '36px', height: '50px', background: 'rgba(255,255,255,0.04)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <BookOpen size={14} style={{ color: 'rgba(255,255,255,0.2)' }} />
+                      <div style={{ width: '36px', height: '50px', background: 'var(--bg-app)', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <BookOpen size={14} style={{ color: 'var(--text-muted)', opacity: 0.4 }} />
                       </div>
                     )}
                     <div>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ffffff', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {book.title}
                       </div>
-                      <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '2px' }}>{book.author}</div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>{book.author}</div>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#ffe000' }}>{book.chars.toLocaleString()} chars</div>
-                    <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{formatDuration(book.time)}</div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary)' }}>{book.chars.toLocaleString()} chars</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{formatDuration(book.time)}</div>
                   </div>
                 </div>
               ))}

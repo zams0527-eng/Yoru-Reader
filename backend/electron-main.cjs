@@ -346,14 +346,14 @@ ipcMain.handle('get-reader-extension-id', () => {
   return readerExtensionId;
 });
 
-ipcMain.handle('open-reader-extension-settings', () => {
+ipcMain.handle('open-reader-extension-settings', (event, theme) => {
   try {
-    console.log(`[main] open-reader-extension-settings invoked. Extension ID: ${readerExtensionId}`);
+    console.log(`[main] open-reader-extension-settings invoked. Extension ID: ${readerExtensionId}, Theme: ${theme}`);
     if (!readerExtensionId) {
       console.error("[main] readerExtensionId is null!");
       return false;
     }
-    const settingsUrl = `chrome-extension://${readerExtensionId}/views/settings.html`;
+    const settingsUrl = `chrome-extension://${readerExtensionId}/views/settings.html?theme=${theme || 'dark'}`;
     console.log(`[main] Loading settings URL: ${settingsUrl}`);
     
     const settingsWin = new BrowserWindow({

@@ -42,7 +42,7 @@ export default function ReaderSettings({
 
   // State for custom theme creator
   const [customThemeName, setCustomThemeName] = useState('Custom');
-  const [customBg, setCustomBg] = useState(() => localStorage.getItem('reader:customBg') || '#18181c');
+  const [customBg, setCustomBg] = useState(() => localStorage.getItem('reader:customBg') || '#08080a');
   const [customText, setCustomText] = useState(() => localStorage.getItem('reader:customText') || '#ffffff');
 
   // Helper to adjust numerical settings with bounds
@@ -94,7 +94,7 @@ export default function ReaderSettings({
   const activeDirection = direction || 'auto';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', color: '#fff', fontSize: '0.85rem' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', color: 'inherit', fontSize: '0.85rem' }}>
       
       {/* READER Section */}
       <div className="flow-container" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -294,7 +294,7 @@ export default function ReaderSettings({
         {/* Book theme */}
         <div>
           <div style={{ fontSize: '0.8rem', fontWeight: 600, opacity: 0.9, textAlign: 'left', marginBottom: '2px' }}>Book theme</div>
-          <div style={{ fontSize: '0.7rem', color: 'rgba(255, 255, 255, 0.4)', textAlign: 'left', marginBottom: '10px' }}>Applies only to the book page</div>
+          <div style={{ fontSize: '0.7rem', opacity: 0.6, textAlign: 'left', marginBottom: '10px' }}>Applies only to the book page</div>
           <div className="theme-cards-container">
             {/* White theme */}
             <div
@@ -332,7 +332,7 @@ export default function ReaderSettings({
         </div>
 
         {/* Create custom theme option */}
-        <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '12px' }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '12px' }}>
           <div style={{ fontSize: '0.8rem', fontWeight: 600, opacity: 0.9, textAlign: 'left', marginBottom: '8px' }}>
             Create custom theme
           </div>
@@ -345,9 +345,9 @@ export default function ReaderSettings({
                 flex: 1,
                 padding: '8px 10px',
                 borderRadius: '8px',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                background: 'rgba(255, 255, 255, 0.03)',
-                color: '#fff',
+                border: '1.5px solid var(--border-light)',
+                background: 'var(--bg-app)',
+                color: 'inherit',
                 fontSize: '0.8rem',
                 outline: 'none',
               }}
@@ -382,8 +382,8 @@ export default function ReaderSettings({
               padding: '8px',
               borderRadius: '8px',
               border: 'none',
-              background: colors.accent || '#818cf8',
-              color: '#fff',
+              background: 'var(--primary)',
+              color: activeTheme === 'dark' ? '#050506' : '#ffffff',
               fontSize: '0.8rem',
               fontWeight: 600,
               cursor: 'pointer',

@@ -381,6 +381,131 @@ export const db = {
     return updatedBooks;
   },
 
+  async saveReadingStatsEntry(title: string, charsToAdd: number, secondsToAdd: number): Promise<void> {
+    return new Promise((resolve) => {
+      const request = indexedDB.open('books', 4);
+      request.onupgradeneeded = (e: any) => {
+        const dbInstance = e.target.result;
+        if (!dbInstance.objectStoreNames.contains('statistic')) {
+          const statisticsStore = dbInstance.createObjectStore('statistic', {
+            keyPath: ['title', 'dateKey']
+          });
+          statisticsStore.createIndex('dateKey', 'dateKey');
+          statisticsStore.createIndex('completedBook', ['completedBook', 'title']);
+        }
+      };
+      request.onsuccess = (e: any) => {
+        const dbInstance = e.target.result;
+        if (!dbInstance.objectStoreNames.contains('statistic')) {
+          // If version was already >=4 but store didn't exist for some reason, create it by recreating connection (rare fallback)
+          dbInstance.close();
+          const reqUpgrade = indexedDB.open('books', dbInstance.version + 1);
+          reqUpgrade.onupgradeneeded = (ev: any) => {
+            const upDb = ev.target.result;
+            const statisticsStore = upDb.createObjectStore('statistic', {
+              keyPath: ['title', 'dateKey']
+            });
+            statisticsStore.createIndex('dateKey', 'dateKey');
+            statisticsStore.createIndex('completedBook', ['completedBook', 'title']);
+          };
+          reqUpgrade.onsuccess = (ev: any) => {
+            const upDb = ev.target.result;
+            const tx = upDb.transaction('statistic', 'readwrite');
+            const store = tx.objectStore('statistic');
+            const todayStr = new Date().toLocaleDateString('sv').slice(0, 10);
+            const req = store.get([title, todayStr]);
+            req.onsuccess = () => {
+              const record = req.result;
+              if (record) {
+                record.charactersRead = (record.charactersRead || 0) + charsToAdd;
+                record.readingTime = (record.readingTime || 0) + secondsToAdd;
+                record.lastStatisticModified = Date.now();
+                store.put(record);
+              } else {
+                store.put({
+                  title,
+                  dateKey: todayStr,
+                  charactersRead: charsToAdd,
+                  readingTime: secondsToAdd,
+                  lastStatisticModified: Date.now()
+                });
+              }
+            };
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => resolve();
+          };
+          reqUpgrade.onerror = () => resolve();
+          return;
+        }
+
+        const tx = dbInstance.transaction('statistic', 'readwrite');
+        const store = tx.objectStore('statistic');
+        
+        const todayStr = new Date().toLocaleDateString('sv').slice(0, 10);
+        const req = store.get([title, todayStr]);
+        
+        req.onsuccess = () => {
+          const record = req.result;
+          if (record) {
+            record.charactersRead = (record.charactersRead || 0) + charsToAdd;
+            record.readingTime = (record.readingTime || 0) + secondsToAdd;
+            record.lastStatisticModified = Date.now();
+            store.put(record);
+          } else {
+            store.put({
+              title,
+              dateKey: todayStr,
+              charactersRead: charsToAdd,
+              readingTime: secondsToAdd,
+              lastStatisticModified: Date.now()
+            });
+          }
+        };
+        tx.oncomplete = () => {
+          resolve();
+        };
+        tx.onerror = () => {
+          resolve();
+        };
+      };
+      request.onerror = () => {
+        resolve();
+      };
+    });
+  },
+
+  async deleteReadingStatsForBook(title: string): Promise<void> {
+    return new Promise((resolve) => {
+      const request = indexedDB.open('books', 4);
+      request.onsuccess = (e: any) => {
+        const dbInstance = e.target.result;
+        if (!dbInstance.objectStoreNames.contains('statistic')) {
+          resolve();
+          return;
+        }
+        const tx = dbInstance.transaction('statistic', 'readwrite');
+        const store = tx.objectStore('statistic');
+        try {
+          const keyRange = IDBKeyRange.bound([title, ''], [title, '\uffff']);
+          const req = store.openCursor(keyRange);
+          req.onsuccess = (event: any) => {
+            const cursor = event.target.result;
+            if (cursor) {
+              cursor.delete();
+              cursor.continue();
+            } else {
+              resolve();
+            }
+          };
+          req.onerror = () => resolve();
+        } catch (err) {
+          resolve();
+        }
+      };
+      request.onerror = () => resolve();
+    });
+  },
+
   async saveBookBookmarks(bookId: string, bookmarks: any[]): Promise<Book[]> {
     const books = await this.getBooks();
     const updatedBooks = books.map(book => {
@@ -403,6 +528,10 @@ export const db = {
     if (settings.keepStatsOnDelete !== false) {
       updatedBooks = books.map(b => b.id === bookId ? { ...b, isDeleted: true, chapters: [] } : b);
     } else {
+      const book = books.find(b => b.id === bookId);
+      if (book && book.title) {
+        await this.deleteReadingStatsForBook(book.title);
+      }
       updatedBooks = books.filter(b => b.id !== bookId);
     }
     await this.saveBooks(updatedBooks);
@@ -416,6 +545,12 @@ export const db = {
     if (settings.keepStatsOnDelete !== false) {
       updatedBooks = books.map(b => bookIds.includes(b.id) ? { ...b, isDeleted: true, chapters: [] } : b);
     } else {
+      const deletedBooks = books.filter(b => bookIds.includes(b.id));
+      for (const b of deletedBooks) {
+        if (b.title) {
+          await this.deleteReadingStatsForBook(b.title);
+        }
+      }
       updatedBooks = books.filter(b => !bookIds.includes(b.id));
     }
     await this.saveBooks(updatedBooks);
@@ -424,6 +559,12 @@ export const db = {
 
   async clearDeletedBooks(): Promise<Book[]> {
     const books = await this.getBooks();
+    const deletedBooks = books.filter(b => b.isDeleted);
+    for (const b of deletedBooks) {
+      if (b.title) {
+        await this.deleteReadingStatsForBook(b.title);
+      }
+    }
     const updatedBooks = books.filter(b => !b.isDeleted);
     await this.saveBooks(updatedBooks);
     return updatedBooks;

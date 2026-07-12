@@ -15,7 +15,7 @@ import ReaderSettings from './reader/ReaderSettings';
 import ReaderSettingsPopover from './reader/ReaderSettingsPopover';
 import CharacterCounter from './reader/CharacterCounter';
 import SelectionToolbar from './reader/SelectionToolbar';
-import { useReaderSettings } from '../hooks/useReaderSettings';
+import { useReaderSettings, ReaderSettingsState } from '../hooks/useReaderSettings';
 
 // Hash a string ID to a positive 32-bit integer for ttu-reader compatibility
 function hashStringToInt(str: string): number {
@@ -99,6 +99,7 @@ interface ReaderProps {
   onSetWordStatus: (word: string, status: string, wordData?: any) => void;
   settings: any;
   onSaveSettings: (settings: any) => void;
+  onUpdateBookDetails?: (bookId: string, data: any) => Promise<void>;
 }
 
 export default function Reader({ 
@@ -109,7 +110,8 @@ export default function Reader({
   wordStatuses, 
   onSetWordStatus, 
   settings, 
-  onSaveSettings 
+  onSaveSettings,
+  onUpdateBookDetails
 }: ReaderProps) {
   const lang = settings.appLanguage || 'es';
 
@@ -120,7 +122,15 @@ export default function Reader({
     onBack();
   }, [onSaveSettings, onBack]);
 
-  const [readerSettings, setReaderSetting] = useReaderSettings();
+  const [readerSettings, rawSetReaderSetting] = useReaderSettings();
+  const setReaderSetting = useCallback(<K extends keyof ReaderSettingsState>(key: K, value: ReaderSettingsState[K]) => {
+    rawSetReaderSetting(key, value);
+    if (key === 'theme' && (value === 'light' || value === 'sepia' || value === 'dark')) {
+      if (settings.theme !== value) {
+        onSaveSettings({ ...settings, theme: value });
+      }
+    }
+  }, [rawSetReaderSetting, settings, onSaveSettings]);
   const [sidebarMode, setSidebarMode] = useState<'toc' | 'bookmarks' | 'session' | 'settings' | null>(null);
   const [bookmarks, setBookmarks] = useState<any[]>(book.bookmarks || []);
   const [currentProgress, setCurrentProgress] = useState({
@@ -129,6 +139,36 @@ export default function Reader({
     lastIndex: book.progress?.currentPage || 0,
     currSection: book.progress?.currentChapter || 0,
   });
+
+  const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+  const [galleryIndex, setGalleryIndex] = useState(0);
+  const [isJumpModalOpen, setIsJumpModalOpen] = useState(false);
+  const [jumpPosition, setJumpPosition] = useState(1);
+  const [targetCharPosition, setTargetCharPosition] = useState<number | null>(null);
+  const [isExtSettingsOpen, setIsExtSettingsOpen] = useState(false);
+  const [extId, setExtId] = useState<string | null>(null);
+
+  // Extract all images from book chapters
+  const bookImages = useMemo<string[]>(() => {
+    if (!book || !book.chapters) return [];
+    const urls: string[] = [];
+    book.chapters.forEach(chapter => {
+      const lines = (chapter.content || '').split('\n');
+      lines.forEach(line => {
+        if (line.startsWith('{img:') && line.endsWith('}')) {
+          const src = line.substring(5, line.length - 1);
+          if (src) urls.push(src);
+        } else {
+          const regex = /\{img:([^{}]+)\}/gi;
+          let match;
+          while ((match = regex.exec(line)) !== null) {
+            if (match[1]) urls.push(match[1]);
+          }
+        }
+      });
+    });
+    return Array.from(new Set(urls));
+  }, [book]);
 
   const [session, setSession] = useState({
     isActive: false,
@@ -179,6 +219,66 @@ export default function Reader({
     }
   }, []);
 
+  const handleToggleCompleted = useCallback(async () => {
+    const isCompleted = book.status === 'completed';
+    if (isCompleted) {
+      if (onUpdateBookDetails) {
+        await onUpdateBookDetails(book.id, { status: 'reading' });
+      }
+      showToast(lang === 'es' ? 'Libro marcado como en progreso' : 'Book marked as in progress', 'success');
+    } else {
+      if (onUpdateBookDetails) {
+        await onUpdateBookDetails(book.id, { status: 'completed' });
+        onUpdateProgress(book.id, currentProgress.currSection, currentProgress.lastIndex, 100);
+      }
+      showToast(lang === 'es' ? '¡Libro completado al 100%!' : 'Book marked as 100% completed!', 'success');
+    }
+  }, [book.id, book.status, onUpdateBookDetails, onUpdateProgress, currentProgress.currSection, currentProgress.lastIndex, lang, showToast]);
+
+  const handleConfirmJump = useCallback(() => {
+    if (jumpPosition < 0 || jumpPosition > currentProgress.totalChars) {
+      showToast(lang === 'es' ? 'Posición no válida' : 'Invalid position', 'warning');
+      return;
+    }
+    setTargetCharPosition(jumpPosition);
+    setTimeout(() => setTargetCharPosition(null), 100);
+    setIsJumpModalOpen(false);
+    showToast(lang === 'es' ? `Saltando a posición ${jumpPosition}` : `Jumping to position ${jumpPosition}`, 'success');
+  }, [jumpPosition, currentProgress.totalChars, lang, showToast]);
+
+  useEffect(() => {
+    // Automatically hide header after 1.5 seconds when entering reader mode
+    const timer = setTimeout(() => {
+      setIsHeaderVisible(false);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (settings.theme === 'light' || settings.theme === 'sepia' || settings.theme === 'dark') {
+      if (readerSettings.theme !== settings.theme) {
+        rawSetReaderSetting('theme', settings.theme);
+      }
+    }
+  }, [settings.theme, readerSettings.theme, rawSetReaderSetting]);
+
+  useEffect(() => {
+    if (!isGalleryOpen || bookImages.length === 0) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        setGalleryIndex(prev => Math.max(0, prev - 1));
+      } else if (e.key === 'ArrowRight') {
+        setGalleryIndex(prev => Math.min(bookImages.length - 1, prev + 1));
+      } else if (e.key === 'Escape') {
+        setIsGalleryOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isGalleryOpen, bookImages.length]);
+
   const triggerTtuKeyboardAction = useCallback((code: string, key: string) => {
     try {
       const downEvent = new KeyboardEvent('keydown', {
@@ -195,7 +295,31 @@ export default function Reader({
     }
   }, []);
 
+  const handleOpenExtensionSettings = useCallback(async () => {
+    let id = extId;
+    if (!id && window.electronAPI?.getReaderExtId) {
+      try {
+        id = await window.electronAPI.getReaderExtId();
+        setExtId(id);
+      } catch (err) {
+        console.error('Failed to get extension ID:', err);
+      }
+    }
+    if (id) {
+      setIsExtSettingsOpen(true);
+    } else {
+      if (window.electronAPI?.openReaderExtSettings) {
+        window.electronAPI.openReaderExtSettings(readerSettings.theme);
+      } else {
+        alert('Solo disponible en la versión de escritorio de Windows.');
+      }
+    }
+  }, [extId, readerSettings.theme]);
+
   const handleReaderKeydown = useCallback((e: KeyboardEvent) => {
+    if (isExtSettingsOpen || isJumpModalOpen || isGalleryOpen) {
+      return;
+    }
     const target = e.target as HTMLElement;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
       return;
@@ -1231,6 +1355,7 @@ export default function Reader({
     return {
       light: {
         bg: '#ffffff',
+        headerBg: '#ffffff',
         border: 'rgba(0, 0, 0, 0.08)',
         textMain: '#000000',
         textMuted: '#8e8e93',
@@ -1240,6 +1365,7 @@ export default function Reader({
       },
       sepia: {
         bg: '#fcfaf2',
+        headerBg: '#fcfaf2',
         border: 'rgba(92, 75, 55, 0.15)',
         textMain: '#5c4b37',
         textMuted: 'rgba(92, 75, 55, 0.65)',
@@ -1248,22 +1374,24 @@ export default function Reader({
         popoverBg: '#fcfaf2',
       },
       dark: {
-        bg: '#18181c',
+        bg: '#08080a',
+        headerBg: '#08080a',
         border: 'rgba(255, 255, 255, 0.12)',
         textMain: '#ffffff',
         textMuted: 'rgba(255, 255, 255, 0.45)',
         cardBg: 'rgba(255, 255, 255, 0.05)',
         accent: '#FFE000',
-        popoverBg: '#0c0c0e',
+        popoverBg: '#050507',
       }
     }[themeName as 'light' | 'sepia' | 'dark'] || {
-      bg: themeName === 'custom' ? (localStorage.getItem('reader:customBg') || '#18181c') : '#18181c',
+      bg: themeName === 'custom' ? (localStorage.getItem('reader:customBg') || '#08080a') : '#08080a',
+      headerBg: themeName === 'custom' ? (localStorage.getItem('reader:customBg') || '#08080a') : '#08080a',
       border: 'rgba(255, 255, 255, 0.12)',
       textMain: themeName === 'custom' ? (localStorage.getItem('reader:customText') || '#ffffff') : '#ffffff',
       textMuted: 'rgba(255, 255, 255, 0.45)',
       cardBg: 'rgba(255, 255, 255, 0.05)',
       accent: '#FFE000',
-      popoverBg: '#0c0c0e',
+      popoverBg: '#050507',
     };
   }, [readerSettings.theme]);
 
@@ -1272,6 +1400,12 @@ export default function Reader({
     const percentage = payload.totalChars > 0 ? Math.min(100, Math.floor((payload.currChars / payload.totalChars) * 100)) : 0;
     onUpdateProgress(book.id, payload.currSection, payload.lastIndex, percentage);
   }, [book.id, onUpdateProgress]);
+
+  const handleNavbarMouseLeave = useCallback(() => {
+    if (!sidebarMode && !showSettingsPopover && !isJumpModalOpen && !isGalleryOpen) {
+      setIsHeaderVisible(false);
+    }
+  }, [sidebarMode, showSettingsPopover, isJumpModalOpen, isGalleryOpen]);
 
   const handleEngineClick = useCallback(() => {
     setIsHeaderVisible(prev => !prev);
@@ -1291,6 +1425,21 @@ export default function Reader({
         overflow: 'hidden'
       }}
     >
+      {/* Top hover trigger zone to show navbar */}
+      {!isHeaderVisible && (
+        <div 
+          onMouseEnter={() => setIsHeaderVisible(true)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: '24px',
+            zIndex: 9997,
+            background: 'transparent',
+          }}
+        />
+      )}
 
       <ReaderNavbar
         visible={isHeaderVisible}
@@ -1305,6 +1454,21 @@ export default function Reader({
         bookTitle={book?.title || ''}
         colors={colors}
         lang={lang}
+        isBookCompleted={book.status === 'completed'}
+        onToggleFlagCompleted={handleToggleCompleted}
+        onOpenGallery={() => {
+          if (bookImages.length === 0) {
+            showToast(lang === 'es' ? 'Esta novela no contiene imágenes' : 'This novel contains no images', 'warning');
+            return;
+          }
+          setGalleryIndex(0);
+          setIsGalleryOpen(true);
+        }}
+        onOpenJumpModal={() => {
+          setJumpPosition(currentProgress.currChars);
+          setIsJumpModalOpen(true);
+        }}
+        onMouseLeave={handleNavbarMouseLeave}
       />
 
       {isHeaderVisible && showSettingsPopover && (
@@ -1316,13 +1480,7 @@ export default function Reader({
             setShowSettingsPopover(false);
             setSidebarMode('settings');
           }}
-          onOpenExtensionSettings={() => {
-            if (window.electronAPI?.openReaderExtSettings) {
-              window.electronAPI.openReaderExtSettings();
-            } else {
-              alert('Solo disponible en la versión de escritorio de Windows.');
-            }
-          }}
+          onOpenExtensionSettings={handleOpenExtensionSettings}
           lang={lang}
         />
       )}
@@ -1332,9 +1490,368 @@ export default function Reader({
         readerSettings={readerSettings}
         targetSection={navTargetSection}
         targetParagraphId={navTargetParagraphId}
+        targetCharPosition={targetCharPosition}
         onCharsUpdate={handleCharsUpdate}
         onClick={handleEngineClick}
+        colors={colors}
       />
+
+      {/* Jump to Position Modal */}
+      {isJumpModalOpen && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.6)',
+          zIndex: 10020,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backdropFilter: 'blur(4px)',
+        }}>
+          <div style={{
+            background: colors.popoverBg || '#0c0c0e',
+            border: `1px solid ${colors.border || 'rgba(255,255,255,0.1)'}`,
+            borderRadius: '12px',
+            padding: '24px',
+            width: '320px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            color: colors.textMain,
+            fontFamily: 'var(--font-ui), sans-serif',
+          }}>
+            <h3 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', fontWeight: 600 }}>
+              {lang === 'es' ? 'Ir a Posición' : 'Jump to Position'}
+            </h3>
+            <input
+              type="number"
+              value={jumpPosition}
+              onChange={(e) => setJumpPosition(Number(e.target.value))}
+              min={0}
+              max={currentProgress.totalChars}
+              style={{
+                width: '100%',
+                padding: '10px',
+                background: 'rgba(255,255,255,0.05)',
+                border: `1px solid ${colors.border || 'rgba(255,255,255,0.1)'}`,
+                borderRadius: '6px',
+                color: '#fff',
+                fontSize: '1rem',
+                marginBottom: '20px',
+                outline: 'none',
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleConfirmJump();
+                else if (e.key === 'Escape') setIsJumpModalOpen(false);
+              }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button
+                onClick={() => setIsJumpModalOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: colors.textMuted,
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  padding: '8px 16px',
+                }}
+              >
+                {lang === 'es' ? 'Cancelar' : 'Cancel'}
+              </button>
+              <button
+                onClick={handleConfirmJump}
+                style={{
+                  background: '#FFE000',
+                  border: 'none',
+                  color: '#000',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: '0.9rem',
+                  padding: '8px 16px',
+                }}
+              >
+                {lang === 'es' ? 'Confirmar' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image Gallery Viewer Modal */}
+      {isGalleryOpen && bookImages.length > 0 && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: '#08080a',
+          zIndex: 10030,
+          display: 'flex',
+          color: '#fff',
+          fontFamily: 'var(--font-ui), sans-serif',
+          animation: 'fadeIn 0.2s ease-out',
+        }}>
+          <style>{`
+            .gallery-sidebar::-webkit-scrollbar {
+              width: 6px;
+            }
+            .gallery-sidebar::-webkit-scrollbar-track {
+              background: transparent;
+            }
+            .gallery-sidebar::-webkit-scrollbar-thumb {
+              background: rgba(255, 255, 255, 0.15);
+              border-radius: 3px;
+            }
+            .gallery-sidebar::-webkit-scrollbar-thumb:hover {
+              background: rgba(255, 255, 255, 0.3);
+            }
+          `}</style>
+
+          {/* Close button */}
+          <button
+            onClick={() => setIsGalleryOpen(false)}
+            style={{
+              position: 'absolute',
+              top: '16px',
+              left: '16px',
+              background: 'rgba(0,0,0,0.5)',
+              border: 'none',
+              color: '#fff',
+              cursor: 'pointer',
+              zIndex: 10035,
+              padding: '8px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <X size={20} />
+          </button>
+
+          {/* Thumbnails Sidebar (Left) */}
+          <div 
+            className="gallery-sidebar"
+            style={{
+              width: '210px',
+              background: '#0d0d0f',
+              borderRight: '1px solid rgba(255,255,255,0.08)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflowY: 'auto',
+              padding: '80px 16px 20px 16px',
+              gap: '16px',
+              flexShrink: 0,
+              boxSizing: 'border-box',
+            }}
+          >
+            {bookImages.map((src, idx) => (
+              <div
+                key={idx}
+                onClick={() => setGalleryIndex(idx)}
+                style={{
+                  cursor: 'pointer',
+                  borderRadius: '6px',
+                  overflow: 'hidden',
+                  border: galleryIndex === idx ? '2px solid #FFE000' : '2px solid transparent',
+                  transition: 'border-color 0.15s',
+                  background: '#131316',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  aspectRatio: '3/4',
+                  width: '100%',
+                  flexShrink: 0,
+                  boxSizing: 'border-box',
+                }}
+              >
+                <img
+                  src={src}
+                  alt={`Thumbnail ${idx + 1}`}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Main View Area (Center/Right) */}
+          <div style={{
+            flex: 1,
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px 40px',
+          }}>
+            {/* Prev Arrow */}
+            {galleryIndex > 0 && (
+              <button
+                onClick={() => setGalleryIndex(prev => prev - 1)}
+                style={{
+                  position: 'absolute',
+                  left: '20px',
+                  background: 'rgba(0,0,0,0.5)',
+                  border: 'none',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  padding: '16px 12px',
+                  borderRadius: '8px',
+                  zIndex: 10032,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+              </button>
+            )}
+
+            {/* Main Image */}
+            <div style={{
+              maxWidth: '95%',
+              maxHeight: '92vh',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 8px 30px rgba(0,0,0,0.7)',
+              borderRadius: '8px',
+              overflow: 'hidden',
+              background: '#000',
+            }}>
+              <img
+                src={bookImages[galleryIndex]}
+                alt={`Image ${galleryIndex + 1}`}
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '92vh',
+                  objectFit: 'contain',
+                }}
+              />
+            </div>
+
+            {/* Next Arrow */}
+            {galleryIndex < bookImages.length - 1 && (
+              <button
+                onClick={() => setGalleryIndex(prev => prev + 1)}
+                style={{
+                  position: 'absolute',
+                  right: '20px',
+                  background: 'rgba(0,0,0,0.5)',
+                  border: 'none',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  padding: '16px 12px',
+                  borderRadius: '8px',
+                  zIndex: 10032,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </button>
+            )}
+
+            {/* Index Counter (Bottom) */}
+            <div style={{
+              marginTop: '12px',
+              fontSize: '1rem',
+              color: 'rgba(255,255,255,0.7)',
+              background: 'rgba(0,0,0,0.6)',
+              padding: '6px 16px',
+              borderRadius: '20px',
+              userSelect: 'none',
+            }}>
+              {galleryIndex + 1} / {bookImages.length}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isExtSettingsOpen && extId && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.6)',
+          zIndex: 10020,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backdropFilter: 'blur(4px)',
+        }}>
+          <div style={{
+            background: colors.bg || '#0c0c0e',
+            border: `1px solid ${colors.border || 'rgba(255,255,255,0.1)'}`,
+            borderRadius: '16px',
+            width: '90%',
+            maxWidth: '960px',
+            height: '80%',
+            maxHeight: '720px',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+          }}>
+            {/* Modal Header */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '16px 24px',
+              borderBottom: `1px solid ${colors.border || 'rgba(255,255,255,0.1)'}`,
+              background: colors.popoverBg || 'rgba(255,255,255,0.02)',
+            }}>
+              <h3 style={{ margin: 0, color: colors.textMain, fontSize: '1.1rem', fontWeight: 700, fontFamily: 'var(--font-ui), sans-serif' }}>
+                {lang === 'es' ? 'Ajustes de Parseo' : 'Parser Settings'}
+              </h3>
+              <button
+                onClick={() => setIsExtSettingsOpen(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: colors.textMuted,
+                  cursor: 'pointer',
+                  fontSize: '1.2rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '4px',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            {/* Modal Body (Iframe) */}
+            <iframe
+              src={`chrome-extension://${extId}/views/settings.html?theme=${readerSettings.theme}`}
+              style={{
+                flex: 1,
+                border: 'none',
+                width: '100%',
+                height: '100%',
+                background: 'transparent',
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       <CharacterCounter
         currChars={currentProgress.currChars}
@@ -1429,20 +1946,14 @@ export default function Reader({
               padding: '24px 16px 40px 16px',
               display: 'flex',
               justifyContent: 'center',
-              background: colors.bg || '#18181c',
+              background: colors.bg || '#08080a',
             }}
           >
             <div style={{ width: '100%', maxWidth: '560px' }}>
               <ReaderSettings
                 settings={readerSettings}
                 onSettingChange={setReaderSetting}
-                onOpenExtensionSettings={() => {
-                  if (window.electronAPI?.openReaderExtSettings) {
-                    window.electronAPI.openReaderExtSettings();
-                  } else {
-                    alert('Solo disponible en la versión de escritorio de Windows.');
-                  }
-                }}
+                onOpenExtensionSettings={handleOpenExtensionSettings}
                 colors={colors}
                 lang={lang}
               />

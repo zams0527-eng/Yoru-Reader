@@ -1364,3 +1364,237 @@ profile-manager .create-profile-btn:hover {
 .reader-theme-swatch.active {
   box-shadow: 0 0 0 2px #0c0c0e, 0 0 0 4px #FFE000 !important;
 }
+
+/* Light Mode Overrides for Extension Settings Window */
+html.light-mode {
+  --jiten-bg: #f3f0ff !important;
+  --jiten-accent: #5c35db !important;
+}
+html.light-mode * {
+  scrollbar-color: rgba(92, 53, 219, 0.4) #f3f0ff !important;
+}
+html.light-mode *::-webkit-scrollbar-track {
+  background: #f3f0ff !important;
+}
+html.light-mode *::-webkit-scrollbar-thumb {
+  background-color: rgba(92, 53, 219, 0.4) !important;
+}
+html.light-mode *::-webkit-scrollbar-thumb:hover {
+  background-color: #5c35db !important;
+}
+html.light-mode body {
+  background-color: #f3f0ff !important;
+  color: #2e2a38 !important;
+}
+html.light-mode h4 {
+  color: #5c35db !important;
+  background: linear-gradient(to right, #2e2a38, #5c35db) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+html.light-mode .settings-search input[type="search"] {
+  background: #fff !important;
+  border: 1px solid rgba(0, 0, 0, 0.15) !important;
+  color: #2e2a38 !important;
+}
+html.light-mode .settings-search input[type="search"]:focus {
+  border-color: #5c35db !important;
+  box-shadow: 0 0 0 3px rgba(92, 53, 219, 0.15) !important;
+  background: #fff !important;
+}
+html.light-mode #settings-toc {
+  background: transparent !important;
+  border-right: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+html.light-mode #settings-toc a {
+  color: #625c73 !important;
+}
+html.light-mode #settings-toc a:hover {
+  background: rgba(0, 0, 0, 0.03) !important;
+  color: #2e2a38 !important;
+  border-left-color: rgba(92, 53, 219, 0.4) !important;
+}
+html.light-mode #settings-toc a.active {
+  background: rgba(92, 53, 219, 0.08) !important;
+  color: #5c35db !important;
+  border-left-color: #5c35db !important;
+}
+html.light-mode .form-box {
+  background: #fff !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05) !important;
+}
+html.light-mode h6 {
+  color: #5c35db !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
+}
+html.light-mode .form-box p {
+  color: #625c73 !important;
+}
+html.light-mode label {
+  color: #2e2a38 !important;
+}
+html.light-mode input[type="text"],
+html.light-mode input[type="number"],
+html.light-mode input[type="password"],
+html.light-mode textarea,
+html.light-mode select {
+  background-color: #fff !important;
+  border: 1px solid rgba(0, 0, 0, 0.15) !important;
+  color: #2e2a38 !important;
+}
+html.light-mode input[type="text"]:focus,
+html.light-mode input[type="number"]:focus,
+html.light-mode input[type="password"]:focus,
+html.light-mode textarea:focus,
+html.light-mode select:focus {
+  border-color: #5c35db !important;
+  box-shadow: 0 0 0 3px rgba(92, 53, 219, 0.15) !important;
+  background-color: #fff !important;
+}
+html.light-mode .button,
+html.light-mode button,
+html.light-mode input[type="button"],
+html.light-mode input[type="submit"] {
+  background-color: #5c35db !important;
+  color: #fff !important;
+  box-shadow: 0 2px 6px rgba(92, 53, 219, 0.15) !important;
+}
+html.light-mode .button:hover,
+html.light-mode button:hover,
+html.light-mode input[type="button"]:hover,
+html.light-mode input[type="submit"]:hover {
+  box-shadow: 0 4px 12px rgba(92, 53, 219, 0.3) !important;
+}
+html.light-mode .button.outline,
+html.light-mode button.outline,
+html.light-mode input[type="button"].outline {
+  background-color: transparent !important;
+  border: 1px solid rgba(0, 0, 0, 0.15) !important;
+  color: #625c73 !important;
+  box-shadow: none !important;
+}
+html.light-mode .button.outline:hover,
+html.light-mode button.outline:hover,
+html.light-mode input[type="button"].outline:hover {
+  background-color: rgba(0, 0, 0, 0.03) !important;
+  border-color: rgba(92, 53, 219, 0.3) !important;
+  color: #5c35db !important;
+}
+
+/* Sepia Mode Overrides for Extension Settings Window */
+html.sepia-mode {
+  --jiten-bg: #fcfaf2 !important;
+  --jiten-accent: #8b5a2b !important;
+}
+html.sepia-mode * {
+  scrollbar-color: rgba(139, 90, 43, 0.4) #fcfaf2 !important;
+}
+html.sepia-mode *::-webkit-scrollbar-track {
+  background: #fcfaf2 !important;
+}
+html.sepia-mode *::-webkit-scrollbar-thumb {
+  background-color: rgba(139, 90, 43, 0.4) !important;
+}
+html.sepia-mode *::-webkit-scrollbar-thumb:hover {
+  background-color: #8b5a2b !important;
+}
+html.sepia-mode body {
+  background-color: #fcfaf2 !important;
+  color: #4a3c31 !important;
+}
+html.sepia-mode h4 {
+  color: #8b5a2b !important;
+  background: linear-gradient(to right, #4a3c31, #8b5a2b) !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+html.sepia-mode .settings-search input[type="search"] {
+  background: #fbf9f0 !important;
+  border: 1px solid rgba(74, 60, 49, 0.18) !important;
+  color: #4a3c31 !important;
+}
+html.sepia-mode .settings-search input[type="search"]:focus {
+  border-color: #8b5a2b !important;
+  box-shadow: 0 0 0 3px rgba(139, 90, 43, 0.15) !important;
+  background: #fbf9f0 !important;
+}
+html.sepia-mode #settings-toc {
+  background: transparent !important;
+  border-right: 1px solid rgba(74, 60, 49, 0.1) !important;
+}
+html.sepia-mode #settings-toc a {
+  color: #706053 !important;
+}
+html.sepia-mode #settings-toc a:hover {
+  background: rgba(74, 60, 49, 0.04) !important;
+  color: #4a3c31 !important;
+  border-left-color: rgba(139, 90, 43, 0.4) !important;
+}
+html.sepia-mode #settings-toc a.active {
+  background: rgba(139, 90, 43, 0.08) !important;
+  color: #8b5a2b !important;
+  border-left-color: #8b5a2b !important;
+}
+html.sepia-mode .form-box {
+  background: #f7f4eb !important;
+  border: 1px solid rgba(74, 60, 49, 0.1) !important;
+  box-shadow: 0 4px 20px rgba(74, 60, 49, 0.04) !important;
+}
+html.sepia-mode h6 {
+  color: #8b5a2b !important;
+  border-bottom: 1px solid rgba(74, 60, 49, 0.1) !important;
+}
+html.sepia-mode .form-box p {
+  color: #706053 !important;
+}
+html.sepia-mode label {
+  color: #4a3c31 !important;
+}
+html.sepia-mode input[type="text"],
+html.sepia-mode input[type="number"],
+html.sepia-mode input[type="password"],
+html.sepia-mode textarea,
+html.sepia-mode select {
+  background-color: #fbf9f0 !important;
+  border: 1px solid rgba(74, 60, 49, 0.18) !important;
+  color: #4a3c31 !important;
+}
+html.sepia-mode input[type="text"]:focus,
+html.sepia-mode input[type="number"]:focus,
+html.sepia-mode input[type="password"]:focus,
+html.sepia-mode textarea:focus,
+html.sepia-mode select:focus {
+  border-color: #8b5a2b !important;
+  box-shadow: 0 0 0 3px rgba(139, 90, 43, 0.15) !important;
+  background-color: #fbf9f0 !important;
+}
+html.sepia-mode .button,
+html.sepia-mode button,
+html.sepia-mode input[type="button"],
+html.sepia-mode input[type="submit"] {
+  background-color: #8b5a2b !important;
+  color: #fff !important;
+  box-shadow: 0 2px 6px rgba(139, 90, 43, 0.15) !important;
+}
+html.sepia-mode .button:hover,
+html.sepia-mode button:hover,
+html.sepia-mode input[type="button"]:hover,
+html.sepia-mode input[type="submit"]:hover {
+  box-shadow: 0 4px 12px rgba(139, 90, 43, 0.3) !important;
+}
+html.sepia-mode .button.outline,
+html.sepia-mode button.outline,
+html.sepia-mode input[type="button"].outline {
+  background-color: transparent !important;
+  border: 1px solid rgba(74, 60, 49, 0.2) !important;
+  color: #706053 !important;
+  box-shadow: none !important;
+}
+html.sepia-mode .button.outline:hover,
+html.sepia-mode button.outline:hover,
+html.sepia-mode input[type="button"].outline:hover {
+  background-color: rgba(74, 60, 49, 0.03) !important;
+  border-color: rgba(139, 90, 43, 0.3) !important;
+  color: #8b5a2b !important;
+}

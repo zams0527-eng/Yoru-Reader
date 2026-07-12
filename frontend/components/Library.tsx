@@ -2353,6 +2353,10 @@ const Library = React.memo(function Library({
     });
     if (ok) {
       for (const bookId of selectedBookIds) {
+        const book = books.find(b => b.id === bookId);
+        if (book && book.title) {
+          await db.deleteReadingStatsForBook(book.title);
+        }
         await onUpdateBookDetails(bookId, {
           progress: { ...((books.find(b => b.id === bookId) || {}).progress || {}), charactersRead: 0, secondsRead: 0 },
           lastRead: null
@@ -2874,13 +2878,13 @@ const Library = React.memo(function Library({
               {/* Book Details */}
               {(showCardTitle || showCardAuthor || showCardSeries || showCardTags) && (
                 <div className="book-info" style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                  {showCardTitle && <h4 className="book-title" title={book.title} style={{ margin: 0, fontSize: '0.82rem', fontWeight: 600, color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.title}</h4>}
-                  {showCardSeries && book.series && <p className="book-series" style={{ margin: 0, fontSize: '0.72rem', color: 'rgba(255,224,0,0.85)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.series}</p>}
-                  {showCardAuthor && <p className="book-author" style={{ margin: 0, fontSize: '0.72rem', color: 'rgba(255,255,255,0.5)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.author}</p>}
+                  {showCardTitle && <h4 className="book-title" title={book.title} style={{ margin: 0, fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-main)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.title}</h4>}
+                  {showCardSeries && book.series && <p className="book-series" style={{ margin: 0, fontSize: '0.72rem', color: 'var(--primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.series}</p>}
+                  {showCardAuthor && <p className="book-author" style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.author}</p>}
                   {showCardTags && book.tags && book.tags.length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
                       {book.tags.slice(0, 2).map(tag => (
-                        <span key={tag} style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }}>
+                        <span key={tag} style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px', background: 'var(--bg-app)', border: '1px solid var(--border-light)', color: 'var(--text-muted)' }}>
                           #{tag}
                         </span>
                       ))}
@@ -2993,13 +2997,13 @@ const Library = React.memo(function Library({
                       {/* Book Details */}
                       {(showCardTitle || showCardAuthor || showCardSeries || showCardTags) && (
                         <div className="book-info" style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                          {showCardTitle && <h4 className="book-title" title={book.title} style={{ margin: 0, fontSize: '0.82rem', fontWeight: 600, color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.title}</h4>}
-                          {showCardSeries && book.series && <p className="book-series" style={{ margin: 0, fontSize: '0.72rem', color: 'rgba(255,224,0,0.85)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.series}</p>}
-                          {showCardAuthor && <p className="book-author" style={{ margin: 0, fontSize: '0.72rem', color: 'rgba(255,255,255,0.5)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.author}</p>}
+                          {showCardTitle && <h4 className="book-title" title={book.title} style={{ margin: 0, fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-main)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.title}</h4>}
+                          {showCardSeries && book.series && <p className="book-series" style={{ margin: 0, fontSize: '0.72rem', color: 'var(--primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.series}</p>}
+                          {showCardAuthor && <p className="book-author" style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.author}</p>}
                           {showCardTags && book.tags && book.tags.length > 0 && (
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
                               {book.tags.slice(0, 2).map(tag => (
-                                <span key={tag} style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }}>
+                                <span key={tag} style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px', background: 'var(--bg-app)', border: '1px solid var(--border-light)', color: 'var(--text-muted)' }}>
                                   #{tag}
                                 </span>
                               ))}
@@ -3138,13 +3142,13 @@ const Library = React.memo(function Library({
                       {/* Book Details */}
                       {(showCardTitle || showCardAuthor || showCardSeries || showCardTags) && (
                         <div className="book-info" style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                          {showCardTitle && <h4 className="book-title" title={book.title} style={{ margin: 0, fontSize: '0.82rem', fontWeight: 600, color: '#fff', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.title}</h4>}
-                          {showCardSeries && book.series && <p className="book-series" style={{ margin: 0, fontSize: '0.72rem', color: 'rgba(255,224,0,0.85)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.series}</p>}
-                          {showCardAuthor && <p className="book-author" style={{ margin: 0, fontSize: '0.72rem', color: 'rgba(255,255,255,0.5)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.author}</p>}
+                          {showCardTitle && <h4 className="book-title" title={book.title} style={{ margin: 0, fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-main)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.title}</h4>}
+                          {showCardSeries && book.series && <p className="book-series" style={{ margin: 0, fontSize: '0.72rem', color: 'var(--primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.series}</p>}
+                          {showCardAuthor && <p className="book-author" style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.author}</p>}
                           {showCardTags && book.tags && book.tags.length > 0 && (
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
                               {book.tags.slice(0, 2).map(tag => (
-                                <span key={tag} style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.7)' }}>
+                                <span key={tag} style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px', background: 'var(--bg-app)', border: '1px solid var(--border-light)', color: 'var(--text-muted)' }}>
                                   #{tag}
                                 </span>
                               ))}
@@ -3164,7 +3168,7 @@ const Library = React.memo(function Library({
   };
 
   const renderStatisticsTab = () => {
-    return <ProgressDashboard books={books} lang={lang} />;
+    return <ProgressDashboard books={books} lang={lang} excludedBookIds={statsExcludedBookIds} />;
   };
 
   const handleDeleteAllData = async () => {
@@ -3539,7 +3543,7 @@ const Library = React.memo(function Library({
         {/* Left Sidebar */}
         {showSidebar && (
           <div className="yomitan-settings-sidebar" style={{ width: isMobile ? '100%' : '250px', borderRight: isMobile ? 'none' : '1px solid rgba(255,255,255,0.08)', paddingRight: isMobile ? '0' : '20px', display: 'flex', flexDirection: 'column', gap: '20px', flexShrink: 0, overflowY: 'auto', height: '100%' }}>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#fff', margin: '10px 0 0 0' }}>{lang === 'es' ? 'Configuración' : 'Settings'}</h2>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)', margin: '10px 0 0 0' }}>{lang === 'es' ? 'Configuración' : 'Settings'}</h2>
             
             <div className="yomitan-search-wrapper" style={{ position: 'relative', width: '100%' }}>
               <input 
@@ -3547,12 +3551,12 @@ const Library = React.memo(function Library({
                 placeholder={lang === 'es' ? 'Buscar...' : 'Search...'} 
                 value={settingsSearchQuery}
                 onChange={(e) => setSettingsSearchQuery(e.target.value)}
-                style={{ width: '100%', background: '#1c1c20', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px', padding: '8px 12px 8px 32px', fontSize: '0.85rem', color: '#fff', outline: 'none' }}
+                style={{ width: '100%', background: 'var(--bg-app)', border: '1px solid var(--border-light)', borderRadius: '6px', padding: '8px 12px 8px 32px', fontSize: '0.85rem', color: 'var(--text-main)', outline: 'none' }}
               />
               <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', display: 'flex', alignItems: 'center' }}>
-                <Search size={14} style={{ color: 'rgba(255,255,255,0.3)' }} />
+                <Search size={14} style={{ color: 'var(--text-muted)' }} />
               </span>
-              {!isMobile && <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.68rem', color: 'rgba(255,255,255,0.4)', background: '#2d2d34', padding: '2px 5px', borderRadius: '4px', border: '1px solid rgba(255,255,255,0.08)', fontWeight: 'bold' }}>CTRL F</span>}
+              {!isMobile && <span style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.68rem', color: 'var(--text-muted)', background: 'var(--bg-card)', padding: '2px 5px', borderRadius: '4px', border: '1px solid var(--border-light)', fontWeight: 'bold' }}>CTRL F</span>}
             </div>
   
             <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
@@ -3606,26 +3610,26 @@ const Library = React.memo(function Library({
             </div>
             
             {/* Dashboard de Estado */}
-            <div style={{ marginTop: '20px', padding: '14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '8px', boxSizing: 'border-box' }}>
+            <div style={{ marginTop: '20px', padding: '14px', background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '8px', boxSizing: 'border-box' }}>
               <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 {lang === 'es' ? 'Estado del Lector' : 'Reader Status'}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.78rem', color: 'rgba(255,255,255,0.5)' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>{lang === 'es' ? 'Perfil:' : 'Profile:'}</span>
-                  <span style={{ color: '#fff', fontWeight: 600 }}>{settings.profileName || 'Zams'}</span>
+                  <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>{settings.profileName || 'Zams'}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>{lang === 'es' ? 'Diccionarios:' : 'Dictionaries:'}</span>
-                  <span style={{ color: '#fff', fontWeight: 600 }}>{installedDicts.length}</span>
+                  <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>{installedDicts.length}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>{lang === 'es' ? 'Libros:' : 'Books:'}</span>
-                  <span style={{ color: '#fff', fontWeight: 600 }}>{books.length}</span>
+                  <span style={{ color: 'var(--text-main)', fontWeight: 600 }}>{books.length}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>{lang === 'es' ? 'Google Drive:' : 'Google Drive:'}</span>
-                  <span style={{ color: gDriveTokens ? '#34d399' : 'rgba(255,255,255,0.3)', fontWeight: 600 }}>
+                  <span style={{ color: gDriveTokens ? '#34d399' : 'var(--text-muted)', fontWeight: 600 }}>
                     {gDriveTokens ? (lang === 'es' ? 'Conectado' : 'Connected') : (lang === 'es' ? 'Desconectado' : 'Disconnected')}
                   </span>
                 </div>
@@ -3891,7 +3895,7 @@ const Library = React.memo(function Library({
                       padding: '10px',
                       borderRadius: '6px',
                       border: settings.theme === 'dark' ? '2px solid var(--primary)' : '1px solid rgba(255,255,255,0.1)',
-                      background: '#18181c',
+                      background: '#08080a',
                       color: '#ffffff',
                       fontWeight: 600,
                       cursor: 'pointer',
@@ -4781,23 +4785,23 @@ const Library = React.memo(function Library({
         {/* Premium Dashboard Summary Card (Image 1 style) */}
         <div className="vocab-dashboard-card">
           {/* Main Counter */}
-          <h2 style={{ margin: '0 0 10px 0', fontSize: '1.75rem', fontWeight: 800, color: '#fff', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
+          <h2 style={{ margin: '0 0 10px 0', fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
             <span style={{ color: 'var(--status-known)' }}>{totalKnown.toLocaleString()}</span>
             <span>{lang === 'es' ? 'Palabras conocidas' : 'Known words'}</span>
           </h2>
 
           {/* Subtitle counters */}
-          <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '16px', fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>
+          <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '16px', fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600 }}>
             <span>
               <span style={{ color: 'var(--status-learning)', marginRight: '4px' }}>{totalLearning}</span>
               {lang === 'es' ? 'aprendiendo' : 'learning'}
             </span>
-            <span style={{ color: 'rgba(255,255,255,0.3)' }}>•</span>
+            <span style={{ opacity: 0.4 }}>•</span>
             <span>
               <span style={{ color: '#ab47bc', marginRight: '4px' }}>{totalStarred}</span>
               {lang === 'es' ? 'destacada(s)' : 'starred'}
             </span>
-            <span style={{ color: 'rgba(255,255,255,0.3)' }}>•</span>
+            <span style={{ opacity: 0.4 }}>•</span>
             <span>
               <span style={{ color: 'var(--text-muted)', marginRight: '4px' }}>{totalIgnored}</span>
               {lang === 'es' ? 'ignorada(s)' : 'ignored'}
@@ -4820,8 +4824,8 @@ const Library = React.memo(function Library({
               className="vocab-action-btn"
               onClick={() => { setIsSrsReviewOpen(true); setSrsUpdateTrigger(t => t + 1); }}
               style={{
-                background: dueCount > 0 ? 'rgba(168, 85, 247, 0.08)' : 'rgba(255,255,255,0.02)',
-                borderColor: dueCount > 0 ? 'rgba(168, 85, 247, 0.6)' : 'rgba(255,255,255,0.08)',
+                background: dueCount > 0 ? 'rgba(168, 85, 247, 0.08)' : 'var(--bg-app)',
+                borderColor: dueCount > 0 ? 'rgba(168, 85, 247, 0.6)' : 'var(--border-light)',
                 color: dueCount > 0 ? '#c084fc' : 'var(--text-muted)',
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -4942,7 +4946,7 @@ const Library = React.memo(function Library({
                       width: '100%',
                       background: notesSort === opt.value ? 'rgba(255,224,0,0.1)' : 'transparent',
                       border: 'none',
-                      color: notesSort === opt.value ? 'var(--primary)' : '#fff',
+                      color: notesSort === opt.value ? 'var(--primary)' : 'var(--text-main)',
                       padding: '8px 12px',
                       borderRadius: '8px',
                       fontSize: '0.8rem',
@@ -4991,7 +4995,7 @@ const Library = React.memo(function Library({
                       width: '100%',
                       background: notesFilterStatus === opt.value ? 'rgba(255,224,0,0.1)' : 'transparent',
                       border: 'none',
-                      color: notesFilterStatus === opt.value ? 'var(--primary)' : '#fff',
+                      color: notesFilterStatus === opt.value ? 'var(--primary)' : 'var(--text-main)',
                       padding: '8px 12px',
                       borderRadius: '8px',
                       fontSize: '0.8rem',
@@ -5016,7 +5020,7 @@ const Library = React.memo(function Library({
             value={notesSearch}
             onChange={(e) => setNotesSearch(e.target.value)}
             className="create-profile-input"
-            style={{ width: '100%', maxWidth: 'none', borderRadius: '12px', padding: '12px 16px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)' }}
+            style={{ width: '100%', maxWidth: 'none', borderRadius: '12px', padding: '12px 16px', background: 'var(--bg-card)', border: '1px solid var(--border-light)', color: 'var(--text-main)' }}
           />
         </div>
         
@@ -5092,7 +5096,7 @@ const Library = React.memo(function Library({
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#fff',
+                color: 'var(--text-main)',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
@@ -5921,20 +5925,20 @@ const Library = React.memo(function Library({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <RefreshCw size={20} className="animate-spin" style={{ color: '#3b82f6', animationDuration: '4s', flexShrink: 0 }} />
                   <div>
-                    <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 700, color: '#fff' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-main)' }}>
                       {lang === 'es' 
                         ? (appStatus === 'out-of-date' && backendStatus === 'out-of-date'
                             ? '¡Actualización de Yoru (Aplicación y Backend) Disponible!'
                             : appStatus === 'out-of-date'
-                              ? '¡Actualización de Aplicación Yoru Disponible!'
-                              : '¡Actualización de Backend de Yoru Disponible!')
+                                ? '¡Actualización de Aplicación Yoru Disponible!'
+                                : '¡Actualización de Backend de Yoru Disponible!')
                         : (appStatus === 'out-of-date' && backendStatus === 'out-of-date'
                             ? 'Yoru Update (Application & Backend) Available!'
                             : appStatus === 'out-of-date'
-                              ? 'Yoru Application Update Available!'
-                              : 'Yoru Backend Update Available!')}
+                                ? 'Yoru Application Update Available!'
+                                : 'Yoru Backend Update Available!')}
                     </h4>
-                    <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: 'rgba(255, 255, 255, 0.7)', lineHeight: 1.3 }}>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.3 }}>
                       {lang === 'es' 
                         ? `Hay una nueva versión estable lista (v${latestAppVersion !== 'Unknown' ? latestAppVersion : latestBackendVersion}). Haz clic para ver detalles y actualizar.`
                         : `A new stable version is ready (v${latestAppVersion !== 'Unknown' ? latestAppVersion : latestBackendVersion}). Click to view details and update.`}
@@ -5969,7 +5973,7 @@ const Library = React.memo(function Library({
                     style={{
                       background: 'transparent',
                       border: 'none',
-                      color: 'rgba(255, 255, 255, 0.4)',
+                      color: 'var(--text-muted)',
                       cursor: 'pointer',
                       padding: '4px',
                       display: 'flex',

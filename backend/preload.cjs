@@ -10,7 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.off('download-progress-event', listener);
   },
   getReaderExtId: () => ipcRenderer.invoke('get-reader-extension-id'),
-  openReaderExtSettings: () => ipcRenderer.invoke('open-reader-extension-settings'),
+  openReaderExtSettings: (theme) => ipcRenderer.invoke('open-reader-extension-settings', theme),
   onQueryWordStatuses: (callback) => {
     const listener = (event, words) => callback(words);
     ipcRenderer.on('query-word-statuses', listener);

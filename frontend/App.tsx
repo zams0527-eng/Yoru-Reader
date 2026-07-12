@@ -539,6 +539,12 @@ export default function App() {
   const handleIncrementReadingStats = useCallback(async (bookId: string, chars: number, seconds: number) => {
     const updatedBooks = await db.incrementReadingStats(bookId, chars, seconds);
     setBooks(updatedBooks);
+    
+    // Save to daily statistics database
+    const book = updatedBooks.find(b => b.id === bookId);
+    if (book && book.title) {
+      await db.saveReadingStatsEntry(book.title, chars, seconds);
+    }
   }, []);
 
   const handleAddBooks = async (booksData: any[]) => {
@@ -791,6 +797,7 @@ export default function App() {
             onSetWordStatus={handleSetWordStatus}
             settings={settings}
             onSaveSettings={handleSaveSettings}
+            onUpdateBookDetails={handleUpdateBookDetails}
           />
         </React.Suspense>
       ) : (
