@@ -1,6 +1,6 @@
 {
-  "appVersion": "1.2.17",
+  "appVersion": "1.2.18",
   "backendVersion": "1.2.0",
   "url": "https://github.com/zams0527-eng/Yoru-Reader/releases/latest",
-  "description": "Yoru Reader v1.2.17: Añadido selector de 'Tipo de nota de Anki' en la pestaña Importar de Gestión de Vocabulario y auto-selección de campos al cambiar el tipo de nota, permitiendo importar palabras desde cualquier modelo y mapear campos como 'Vocab' o 'Front' correctamente."
+  "description": "Yoru Reader v1.2.18: Corregido el gráfico de conteo de tarjetas al importar desde Anki. Ahora las palabras importadas guardan también sus estadísticas de SRS (intervalo, repeticiones, mazo) en la base de datos local para que se reflejen correctamente en la distribución (Jóvenes, Maduras, etc.) y en el total general del gráfico."
 }

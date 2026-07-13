@@ -324,9 +324,11 @@ export default function VocabularyModal({
       if (!infoData.result) throw new Error('Failed to retrieve card info.');
 
       setProgressMsg(lang === 'es' ? 'Procesando y extrayendo vocabulario...' : 'Processing and extracting vocabulary...');
+      const wordsMap: Record<string, { interval: number; reps: number; deck: string }> = {};
       const words: string[] = [];
-      for (const card of infoData.result) {
-        const fields = card.fields;
+
+      for (const cardObj of infoData.result) {
+        const fields = cardObj.fields;
         if (fields) {
           let val = fields[wordField] ? fields[wordField].value : '';
           if (!val && readingField && fields[readingField]) {
@@ -335,6 +337,10 @@ export default function VocabularyModal({
           if (val) {
             const cleaned = cleanWord(val);
             if (cleaned) {
+              const cardDeck = cardObj.deckName || deck;
+              const cardInterval = cardObj.interval || 0;
+              const cardReps = cardObj.reps || 0;
+              
               const isSentence = parseWords && (
                 cleaned.length > 5 || 
                 cleaned.includes('。') || 
@@ -350,14 +356,25 @@ export default function VocabularyModal({
                   paragraphs.flat().forEach(tok => {
                     if (tok && tok.isWord && tok.basicForm) {
                       const subClean = cleanWord(tok.basicForm);
-                      if (subClean) words.push(subClean);
+                      if (subClean) {
+                        words.push(subClean);
+                        if (!wordsMap[subClean]) {
+                          wordsMap[subClean] = { interval: cardInterval, reps: cardReps, deck: cardDeck };
+                        }
+                      }
                     }
                   });
                 } catch {
                   words.push(cleaned);
+                  if (!wordsMap[cleaned]) {
+                    wordsMap[cleaned] = { interval: cardInterval, reps: cardReps, deck: cardDeck };
+                  }
                 }
               } else {
                 words.push(cleaned);
+                if (!wordsMap[cleaned]) {
+                  wordsMap[cleaned] = { interval: cardInterval, reps: cardReps, deck: cardDeck };
+                }
               }
             }
           }
@@ -388,7 +405,30 @@ export default function VocabularyModal({
       if (ok) {
         const current = db.getWordStatuses();
         const updated = { ...current };
-        words.forEach(w => { updated[w] = 'known'; });
+        
+        words.forEach(w => {
+          updated[w] = 'known';
+          
+          const details = wordsMap[w];
+          if (details) {
+            let state = 0;
+            if (details.interval > 0) {
+              state = 2; // Review
+            }
+            
+            const cardData = {
+              state: state,
+              reps: details.reps || 1,
+              scheduled_days: details.interval || 0,
+              dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * (details.interval || 1)).toISOString(),
+              source: details.deck,
+              word: w
+            };
+            
+            db.saveSrsCard(w, cardData);
+          }
+        });
+        
         db.saveWordStatuses(updated);
         loadVocabStats();
         await showConfirm({

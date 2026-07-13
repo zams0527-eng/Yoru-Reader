@@ -1,7 +1,7 @@
 {
   "name": "lector",
   "private": true,
-  "version": "1.2.17",
+  "version": "1.2.18",
   "author": "Yoru cafe",
   "description": "Lector de novelas ligeras en japonés con integración de diccionarios y Anki.",
   "type": "module",
