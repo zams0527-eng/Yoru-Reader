@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   startGoogleOauth: (clientId) => ipcRenderer.invoke('start-google-oauth', clientId),
   speakText: (params) => ipcRenderer.invoke('speak-text', params),
+  ankiRequest: (host, body) => ipcRenderer.invoke('anki-request', { host, body }),
   downloadGoogleDrive: (urlString, id) => ipcRenderer.invoke('download-google-drive', { urlString, id }),
   readLocalFile: (filePath) => ipcRenderer.invoke('read-local-file', filePath),
   onDownloadProgress: (callback) => {
@@ -36,5 +37,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.off('parse-text-request', listener);
   },
   replyParseText: (result) => ipcRenderer.send('reply-parse-text', result),
-  updateDiscordPresence: (presence) => ipcRenderer.invoke('update-discord-presence', presence)
+  updateDiscordPresence: (presence) => ipcRenderer.invoke('update-discord-presence', presence),
+  downloadAndInstallUpdate: (urlString) => ipcRenderer.invoke('download-and-install-update', { urlString }),
+  onUpdateDownloadProgress: (callback) => {
+    const listener = (event, data) => callback(data);
+    ipcRenderer.on('update-download-progress', listener);
+    return () => ipcRenderer.off('update-download-progress', listener);
+  }
 });

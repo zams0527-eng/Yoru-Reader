@@ -200,6 +200,7 @@ export default function SrsReviewModal({ isOpen, onClose, filterDeck = null }: S
   const [isFinished, setIsFinished] = useState(false);
   const [sessionCount, setSessionCount] = useState(0);
   const [sessionStats, setSessionStats] = useState({ correct: 0, incorrect: 0 });
+  const [newCardsLearned, setNewCardsLearned] = useState(0);
   const [isTtsPlaying, setIsTtsPlaying] = useState(false);
   const ttsAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -210,6 +211,65 @@ export default function SrsReviewModal({ isOpen, onClose, filterDeck = null }: S
 
   // Timer state
   const [timerSeconds, setTimerSeconds] = useState(0);
+
+  const getStudyStreak = (): number => {
+    let streak = 0;
+    const today = new Date();
+    let checkDate = new Date(today);
+    
+    const formatDate = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    
+    const todayKey = `yoru_reader_srs_study_time_${formatDate(checkDate)}`;
+    const todayTime = Number(localStorage.getItem(todayKey) || 0);
+    
+    if (todayTime === 0) {
+      checkDate.setDate(checkDate.getDate() - 1);
+      const yesterdayKey = `yoru_reader_srs_study_time_${formatDate(checkDate)}`;
+      const yesterdayTime = Number(localStorage.getItem(yesterdayKey) || 0);
+      if (yesterdayTime === 0) {
+        return 0;
+      }
+    }
+    
+    while (streak < 365) {
+      const key = `yoru_reader_srs_study_time_${formatDate(checkDate)}`;
+      const time = Number(localStorage.getItem(key) || 0);
+      if (time > 0) {
+        streak++;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+    return streak;
+  };
+
+  const getFutureDueCounts = () => {
+    const srsData = db.getSrsData();
+    const now = new Date();
+    const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    
+    let dueWithinHour = 0;
+    let dueTomorrow = 0;
+    
+    Object.values(srsData).forEach((card: any) => {
+      if (!card || !card.dueDate) return;
+      const dueDate = new Date(card.dueDate);
+      if (dueDate > now && dueDate <= oneHourLater) {
+        dueWithinHour++;
+      } else if (dueDate > now && dueDate <= tomorrow) {
+        dueTomorrow++;
+      }
+    });
+    
+    return { dueWithinHour, dueTomorrow };
+  };
 
   // Load reviews list
   useEffect(() => {
@@ -284,19 +344,51 @@ export default function SrsReviewModal({ isOpen, onClose, filterDeck = null }: S
       return new Date(card.dueDate) <= now;
     });
 
-    // Fallback: If no cards are due, load all cards for study ahead / cram session
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const newCardsKey = `yoru_reader_srs_new_cards_studied_today_${todayStr}`;
+    const newCardsStudiedToday = JSON.parse(localStorage.getItem(newCardsKey) || '[]');
+    const newLimit = rawSettings.srsNewCardsPerDay !== undefined ? Number(rawSettings.srsNewCardsPerDay) : 20;
+    const newCardsLeftToday = Math.max(0, newLimit - newCardsStudiedToday.length);
+
+    const reviewsKey = `yoru_reader_srs_reviews_done_today_${todayStr}`;
+    const reviewsDoneToday = JSON.parse(localStorage.getItem(reviewsKey) || '[]');
+    const maxReviewsLimit = rawSettings.srsMaxReviewsPerDay !== undefined ? Number(rawSettings.srsMaxReviewsPerDay) : 200;
+    const reviewsLeftToday = Math.max(0, maxReviewsLimit - reviewsDoneToday.length);
+
+    let finalDue: string[] = [];
     const isCramSession = due.length === 0 && learningWords.length > 0;
+    
     if (isCramSession) {
-      due = learningWords;
+      finalDue = learningWords;
+    } else {
+      let dueReviews = due.filter(word => {
+        const card = srsData[word];
+        const reps = card ? (card.repetitions || card.reps || 0) : 0;
+        const isNewCard = !card || card.state === undefined || card.state === 0 || reps === 0;
+        return !isNewCard;
+      });
+
+      let dueNew = due.filter(word => {
+        const card = srsData[word];
+        const reps = card ? (card.repetitions || card.reps || 0) : 0;
+        const isNewCard = !card || card.state === undefined || card.state === 0 || reps === 0;
+        return isNewCard;
+      });
+
+      const limitedReviews = dueReviews.slice(0, reviewsLeftToday);
+      const limitedNew = dueNew.slice(0, newCardsLeftToday);
+      
+      finalDue = [...limitedReviews, ...limitedNew];
     }
 
-    const shuffled = due.sort(() => Math.random() - 0.5);
+    const shuffled = finalDue.sort(() => Math.random() - 0.5);
     setDueCards(shuffled);
     setCurrentIndex(0);
     setShowAnswer(false);
     setIsFinished(false);
     setSessionCount(shuffled.length);
     setSessionStats({ correct: 0, incorrect: 0 });
+    setNewCardsLearned(0);
     setTimerSeconds(0);
     setHistoryStack([]);
   };
@@ -454,8 +546,36 @@ export default function SrsReviewModal({ isOpen, onClose, filterDeck = null }: S
     const currentCard = db.getSrsCard(word);
     pushHistory(word, currentCard);
 
+    const isNew = !currentCard || !currentCard.repetitions || currentCard.repetitions === 0;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    if (isNew && grade !== 1) {
+      setNewCardsLearned(prev => prev + 1);
+      const newCardsKey = `yoru_reader_srs_new_cards_studied_today_${todayStr}`;
+      const newStudiedList = JSON.parse(localStorage.getItem(newCardsKey) || '[]');
+      if (!newStudiedList.includes(word)) {
+        newStudiedList.push(word);
+        localStorage.setItem(newCardsKey, JSON.stringify(newStudiedList));
+      }
+    }
+
+    // Track total reviews done today
+    const reviewsKey = `yoru_reader_srs_reviews_done_today_${todayStr}`;
+    const reviewsList = JSON.parse(localStorage.getItem(reviewsKey) || '[]');
+    reviewsList.push(word);
+    localStorage.setItem(reviewsKey, JSON.stringify(reviewsList));
+
     const intervals = calculateSrsIntervals(currentCard, fsrs);
-    const updatedCard = (intervals.repeats as any)[grade];
+    const updatedCard = { ...(intervals.repeats as any)[grade] };
+
+    // Ensure all metadata fields are preserved and do not fall back to default
+    if (!updatedCard.word) updatedCard.word = word;
+    if (currentCard) {
+      if (!updatedCard.reading) updatedCard.reading = currentCard.reading || '';
+      if (!updatedCard.sentence) updatedCard.sentence = currentCard.sentence || '';
+      if (!updatedCard.source) updatedCard.source = currentCard.source || 'Yoru Reader';
+    } else {
+      updatedCard.source = 'Yoru Reader';
+    }
 
     if (grade === 1) {
       setSessionStats(s => ({ ...s, incorrect: s.incorrect + 1 }));
@@ -464,7 +584,7 @@ export default function SrsReviewModal({ isOpen, onClose, filterDeck = null }: S
     }
 
     db.saveSrsCard(word, updatedCard);
-    db.addSrsHistory(word, grade, updatedCard.scheduled_days ?? updatedCard.interval ?? 0, currentCard?.source || 'Yoru Reader');
+    db.addSrsHistory(word, grade, updatedCard.scheduled_days ?? updatedCard.interval ?? 0, updatedCard.source || 'Yoru Reader');
 
     if (grade === 1) {
       setDueCards(prev => {
@@ -592,47 +712,139 @@ export default function SrsReviewModal({ isOpen, onClose, filterDeck = null }: S
               {lang === 'es' ? 'Volver' : 'Go Back'}
             </button>
           </div>
-        ) : isFinished ? (
-          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: '#71717a', maxWidth: '450px', width: '100%' }}>
-            <div style={{ fontSize: '4.5rem', marginBottom: '24px' }}>🎉</div>
-            <h3 style={{ fontSize: '1.6rem', color: '#ffffff', marginBottom: '10px', fontWeight: 800 }}>
-              {lang === 'es' ? '¡Sesión Completada!' : 'Session Completed!'}
-            </h3>
-            <p style={{ fontSize: '0.9rem', marginBottom: '28px', textAlign: 'center', color: '#a1a1aa' }}>
-              {lang === 'es' 
-                ? `Has repasado ${sessionCount} palabras en esta sesión.` 
-                : `You reviewed ${sessionCount} words in this session.`}
-            </p>
+        ) : isFinished ? (() => {
+          const totalReviews = sessionStats.correct + sessionStats.incorrect;
+          const passRate = totalReviews > 0 ? Math.round((sessionStats.correct / totalReviews) * 100) : 100;
+          const streak = getStudyStreak();
+          const streakText = lang === 'es'
+            ? (streak > 0 ? `¡Racha de ${streak} días — un gran comienzo!` : '¡Buen comienzo! Sigue repasando a diario.')
+            : (streak > 0 ? `${streak} day streak — great start!` : 'Great start! Keep reviewing daily.');
+          
+          const formatTimeSpent = (sec: number) => {
+            if (sec < 60) return `${sec}s`;
+            const mins = Math.floor(sec / 60);
+            const secs = sec % 60;
+            return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+          };
 
-            <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', marginBottom: '36px', width: '100%' }}>
-              <div style={{ flex: 1, background: 'rgba(34, 197, 94, 0.04)', border: '1px solid rgba(34, 197, 94, 0.25)', padding: '16px 20px', borderRadius: '12px', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 800, color: '#22c55e', letterSpacing: '0.04em' }}>{lang === 'es' ? 'Aciertos' : 'Correct'}</div>
-                <div style={{ fontSize: '2rem', fontWeight: 900, color: '#22c55e', marginTop: '6px' }}>{sessionStats.correct}</div>
+          const { dueWithinHour, dueTomorrow } = getFutureDueCounts();
+          const correctLabel = lang === 'es' ? 'Correctas' : 'Good';
+          const incorrectLabel = lang === 'es' ? 'Repetir' : 'Again';
+          const distributionText = `${sessionStats.correct} ${correctLabel} · ${sessionStats.incorrect} ${incorrectLabel}`;
+          const queueText = lang === 'es'
+            ? `${dueWithinHour} pendientes en la próxima hora · ${dueTomorrow} pendientes mañana`
+            : `${dueWithinHour} due within the hour · ${dueTomorrow} due tomorrow`;
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: '#71717a', maxWidth: '450px', width: '100%' }}>
+              <div style={{ fontSize: '4.5rem', marginBottom: '24px' }}>🎉</div>
+              <h3 style={{ fontSize: '1.6rem', color: '#ffffff', marginBottom: '4px', fontWeight: 800 }}>
+                {lang === 'es' ? '¡Sesión Completada!' : 'Session Completed!'}
+              </h3>
+              <p style={{ fontSize: '0.9rem', marginBottom: '28px', textAlign: 'center', color: '#a1a1aa', fontWeight: 500 }}>
+                {streakText}
+              </p>
+
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                gap: '16px',
+                width: '100%',
+                marginBottom: '24px'
+              }}>
+                {/* Reviews */}
+                <div style={{
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  textAlign: 'center'
+                }}>
+                  <div style={{ fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 800, color: '#a1a1aa', letterSpacing: '0.04em' }}>
+                    {lang === 'es' ? 'Repasos' : 'Reviews'}
+                  </div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#ffffff', marginTop: '6px' }}>
+                    {totalReviews}
+                  </div>
+                </div>
+
+                {/* New Cards */}
+                <div style={{
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  textAlign: 'center'
+                }}>
+                  <div style={{ fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 800, color: '#a1a1aa', letterSpacing: '0.04em' }}>
+                    {lang === 'es' ? 'Tarjetas Nuevas' : 'New Cards'}
+                  </div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#60a5fa', marginTop: '6px' }}>
+                    {newCardsLearned}
+                  </div>
+                </div>
+
+                {/* Pass Rate */}
+                <div style={{
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  textAlign: 'center'
+                }}>
+                  <div style={{ fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 800, color: '#a1a1aa', letterSpacing: '0.04em' }}>
+                    {lang === 'es' ? 'Aciertos' : 'Pass Rate'}
+                  </div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#4ade80', marginTop: '6px' }}>
+                    {passRate}%
+                  </div>
+                </div>
+
+                {/* Time Spent */}
+                <div style={{
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  textAlign: 'center'
+                }}>
+                  <div style={{ fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 800, color: '#a1a1aa', letterSpacing: '0.04em' }}>
+                    {lang === 'es' ? 'Tiempo' : 'Time Spent'}
+                  </div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 900, color: '#fb923c', marginTop: '6px' }}>
+                    {formatTimeSpent(timerSeconds)}
+                  </div>
+                </div>
               </div>
-              <div style={{ flex: 1, background: 'rgba(239, 68, 68, 0.04)', border: '1px solid rgba(239, 68, 68, 0.25)', padding: '16px 20px', borderRadius: '12px', textAlign: 'center' }}>
-                <div style={{ fontSize: '0.74rem', textTransform: 'uppercase', fontWeight: 800, color: '#ef4444', letterSpacing: '0.04em' }}>{lang === 'es' ? 'Fallos' : 'Forgot'}</div>
-                <div style={{ fontSize: '2rem', fontWeight: 900, color: '#ef4444', marginTop: '6px' }}>{sessionStats.incorrect}</div>
+
+              <div style={{ color: '#71717a', fontSize: '0.78rem', textAlign: 'center', marginBottom: '28px', display: 'flex', flexDirection: 'column', gap: '4px', fontWeight: 500 }}>
+                <span>{distributionText}</span>
+                <span style={{ opacity: 0.7 }}>{queueText}</span>
+              </div>
+
+              <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
+                <button 
+                  type="button" 
+                  onClick={initSession} 
+                  style={{ flex: 1, padding: '12px 24px', background: 'rgba(255,255,255,0.04)', color: '#ffffff', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+                >
+                  {lang === 'es' ? 'Estudiar más' : 'Study More'}
+                </button>
+                <button 
+                  type="button" 
+                  onClick={onClose} 
+                  style={{ flex: 1, padding: '12px 28px', background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)', color: '#ffffff', border: 'none', borderRadius: '8px', fontWeight: 800, cursor: 'pointer', transition: 'all 0.15s' }}
+                  onMouseEnter={e => e.currentTarget.style.filter = 'brightness(1.1)'}
+                  onMouseLeave={e => e.currentTarget.style.filter = 'none'}
+                >
+                  {lang === 'es' ? 'Listo' : 'Done'}
+                </button>
               </div>
             </div>
-
-            <div style={{ display: 'flex', gap: '12px', width: '100%' }}>
-              <button 
-                type="button" 
-                onClick={initSession} 
-                style={{ flex: 1, padding: '12px 24px', background: '#18181b', color: '#ffffff', border: '1px solid #27272a', borderRadius: '8px', fontWeight: 700, cursor: 'pointer', transition: 'all 0.15s' }}
-              >
-                {lang === 'es' ? 'Reiniciar' : 'Restart'}
-              </button>
-              <button 
-                type="button" 
-                onClick={onClose} 
-                style={{ flex: 1, padding: '12px 28px', background: 'var(--primary)', color: '#000000', border: 'none', borderRadius: '8px', fontWeight: 800, cursor: 'pointer', transition: 'all 0.15s' }}
-              >
-                {lang === 'es' ? 'Finalizar' : 'Finish'}
-              </button>
-            </div>
-          </div>
-        ) : (
+          );
+        })() : (
           <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', maxWidth: '720px', margin: '0 auto' }}>
             
             {/* Card Container */}

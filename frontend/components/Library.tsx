@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Plus, Info, Trash2, ListChecks, Check, BarChart3, HelpCircle, Pencil, X, ArrowUpDown, Settings, SlidersHorizontal, Calendar, BookOpen, Clock, Flame, Download, Upload, MoreVertical, Search, EyeOff, User, Tag, RotateCcw, CircleSlash, Play, Pause, ChevronDown, Database, Palette, Cloud, FolderOpen, Globe, Type, Plug, Layers, AlertTriangle, Keyboard, Bug, Megaphone, Maximize, Menu, Zap, RefreshCw } from 'lucide-react';
+import { Plus, Info, Trash2, ListChecks, Check, BarChart3, HelpCircle, Pencil, X, ArrowUpDown, Settings, SlidersHorizontal, Calendar, BookOpen, Clock, Flame, Download, Upload, MoreVertical, Search, EyeOff, User, Tag, RotateCcw, CircleSlash, Play, Pause, ChevronDown, Database, Palette, Cloud, FolderOpen, Globe, Type, Plug, Layers, AlertTriangle, Keyboard, Bug, Megaphone, Maximize, Menu, Zap, RefreshCw, MessageSquare } from 'lucide-react';
 import SettingsModal from './SettingsModal';
 import JSZip from 'jszip';
 import { importBookFile } from '../utils/fileImport';
@@ -15,6 +15,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { useConfirm } from './ConfirmModal';
 import stableManifest from '../../stable.json';
 import ProgressDashboard from './ProgressDashboard';
+import { updateDiscordLibrary } from '../utils/discordRpc';
 
 const resizeImage = (file, maxDimension = 128) => {
   return new Promise((resolve, reject) => {
@@ -94,6 +95,20 @@ const Library = React.memo(function Library({
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
   const [remoteManifest, setRemoteManifest] = useState<any>(null);
   const [bindingKeyAction, setBindingKeyAction] = useState(null);
+  const [updateProgress, setUpdateProgress] = useState(0);
+
+  useEffect(() => {
+    if (window.electronAPI && window.electronAPI.onUpdateDownloadProgress) {
+      const unsubscribe = window.electronAPI.onUpdateDownloadProgress((data: any) => {
+        if (data && typeof data.percent === 'number') {
+          setUpdateProgress(data.percent);
+        }
+      });
+      return () => {
+        unsubscribe();
+      };
+    }
+  }, []);
 
   useEffect(() => {
     if (!bindingKeyAction) return;
@@ -195,6 +210,10 @@ const Library = React.memo(function Library({
     checkForUpdates();
   }, []);
 
+  useEffect(() => {
+    updateDiscordLibrary(settings);
+  }, [settings]);
+
   const handleCheckUpdates = async () => {
     setCheckingUpdates(true);
     try {
@@ -247,29 +266,53 @@ const Library = React.memo(function Library({
     setCheckingUpdates(false);
   };
 
-  const handleUpdateNow = () => {
-    setUpdating(true);
-    
-    // Open the official downloads folder or the raw file url in the browser
+  const handleUpdateNow = async () => {
     const isAndroid = window.Capacitor && window.Capacitor.getPlatform && window.Capacitor.getPlatform() === 'android';
-    const targetUrl = remoteManifest?.url 
-      ? remoteManifest.url 
-      : (isAndroid 
-          ? 'https://github.com/zams0527-eng/Yoru-Reader/raw/main/downloads/Yoru-Reader-1.1.0.apk'
-          : 'https://github.com/zams0527-eng/Yoru-Reader/raw/main/downloads/Yoru-Reader%20Setup%201.1.0.exe'
+    const isElectron = window.electronAPI !== undefined;
+
+    if (isElectron) {
+      setUpdating(true);
+      setUpdateProgress(0);
+      
+      const version = remoteManifest?.appVersion || '1.1.0';
+      const targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/yorureader/Yoru-Reader.Setup.${version}.exe`;
+      
+      try {
+        await window.electronAPI.downloadAndInstallUpdate(targetUrl);
+      } catch (err: any) {
+        console.error('Error during auto-update:', err);
+        setUpdating(false);
+        showToast(
+          lang === 'es'
+            ? 'Error al descargar el instalador. Intenta descargarlo manualmente.'
+            : 'Error downloading installer. Try downloading manually.',
+          'error'
         );
-        
-    window.open(targetUrl, '_blank');
-    
-    setTimeout(() => {
-      setUpdating(false);
-      showToast(
-        lang === 'es'
-          ? 'Se abrió la página de descargas en tu navegador. Descarga e instala la última versión.'
-          : 'Download page opened in your browser. Download and install the latest version.',
-        'info'
-      );
-    }, 1500);
+        // Fallback to opening browser
+        const browserUrl = remoteManifest?.url || 'https://github.com/zams0527-eng/Yoru-Reader/releases/latest';
+        window.open(browserUrl, '_blank');
+      }
+    } else {
+      setUpdating(true);
+      const targetUrl = remoteManifest?.url 
+        ? remoteManifest.url 
+        : (isAndroid 
+            ? 'https://github.com/zams0527-eng/Yoru-Reader/raw/main/downloads/Yoru-Reader-1.1.0.apk'
+            : 'https://github.com/zams0527-eng/Yoru-Reader/raw/main/downloads/Yoru-Reader%20Setup%201.1.0.exe'
+          );
+          
+      window.open(targetUrl, '_blank');
+      
+      setTimeout(() => {
+        setUpdating(false);
+        showToast(
+          lang === 'es'
+            ? 'Se abrió la página de descargas en tu navegador. Descarga e instala la última versión.'
+            : 'Download page opened in your browser. Download and install the latest version.',
+          'info'
+        );
+      }, 1500);
+    }
   };
   
   // Book Manager states
@@ -3623,6 +3666,7 @@ const Library = React.memo(function Library({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
                   {renderSidebarBtn('sec-vocab-manage', lang === 'es' ? 'Gestión de Vocabulario y Anki' : 'Vocabulary & Anki Management', Database, 'vocabulario vocabulary import export jpdb anki file frequency')}
                   {renderSidebarBtn('sec-cloud-sync', lang === 'es' ? 'Sincronización Cloud' : 'Cloud Sync', Cloud, 'sync merge sincronizar combinar conflicto storage sync settings gdrive drive cloud cloud-sync')}
+                  {renderSidebarBtn('sec-discord', 'Discord', MessageSquare, 'discord rpc presence enabled timer icon stats blacklist')}
                 </div>
               </div>
   
@@ -4412,6 +4456,131 @@ const Library = React.memo(function Library({
             </div>
           )}
 
+          {/* Card: Discord Rich Presence */}
+          {matchesSearch('discord rpc presence enabled timer icon stats blacklist') && (settingsSearchQuery || activeSettingsSection === 'sec-discord') && (
+            <div id="sec-discord" className="settings-section-card">
+              <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <MessageSquare size={18} style={{ color: 'var(--primary)' }} />
+                <span>{lang === 'es' ? 'Discord Rich Presence' : 'Discord Rich Presence'}</span>
+              </h3>
+              <p className="settings-card-desc">
+                {lang === 'es' 
+                  ? 'Configura la integración de presencia en Discord.' 
+                  : 'Configure the Discord presence integration.'}
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '16px' }}>
+                {/* Enabled */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+                  <span>{lang === 'es' ? 'Habilitar Discord Rich Presence:' : 'Enable Discord Rich Presence:'}</span>
+                  <input 
+                    type="checkbox" 
+                    checked={settings.discordEnabled || false}
+                    onChange={(e) => onSaveSettings({ ...settings, discordEnabled: e.target.checked })}
+                    style={{ accentColor: 'var(--primary)', width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                </div>
+
+                {/* Inactivity Timer */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    {lang === 'es' ? 'Temporizador de inactividad (segundos):' : 'Inactivity Timer (seconds):'}
+                  </label>
+                  <input
+                    type="number"
+                    value={settings.discordInactivityTimer !== undefined ? settings.discordInactivityTimer : 300}
+                    onChange={(e) => onSaveSettings({ ...settings, discordInactivityTimer: parseInt(e.target.value) || 0 })}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: '6px',
+                      padding: '8px 12px',
+                      color: 'var(--text-main)',
+                      fontSize: '0.88rem',
+                      width: '100%'
+                    }}
+                  />
+                </div>
+
+                {/* Icon */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    {lang === 'es' ? 'Icono:' : 'Icon:'}
+                  </label>
+                  <select
+                    value={settings.discordIcon || 'Yoru'}
+                    onChange={(e) => onSaveSettings({ ...settings, discordIcon: e.target.value })}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: '6px',
+                      padding: '8px 12px',
+                      color: 'var(--text-main)',
+                      fontSize: '0.88rem',
+                      width: '100%',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="Yoru">Yoru</option>
+                    <option value="Cute">Cute</option>
+                    <option value="Jacked">Jacked</option>
+                    <option value="Cursed">Cursed</option>
+                  </select>
+                </div>
+
+                {/* Show Stats */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    {lang === 'es' ? 'Mostrar Estadísticas:' : 'Show Stats:'}
+                  </label>
+                  <select
+                    value={settings.discordShowStats || 'None'}
+                    onChange={(e) => onSaveSettings({ ...settings, discordShowStats: e.target.value })}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: '6px',
+                      padding: '8px 12px',
+                      color: 'var(--text-main)',
+                      fontSize: '0.88rem',
+                      width: '100%',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="None">{lang === 'es' ? 'Ninguna' : 'None'}</option>
+                    <option value="Characters per Hour">{lang === 'es' ? 'Caracteres por hora' : 'Characters per Hour'}</option>
+                    <option value="Total Characters">{lang === 'es' ? 'Caracteres totales' : 'Total Characters'}</option>
+                    <option value="Cards Mined">{lang === 'es' ? 'Tarjetas creadas' : 'Cards Mined'}</option>
+                    <option value="Active Reading Time">{lang === 'es' ? 'Tiempo activo de lectura' : 'Active Reading Time'}</option>
+                  </select>
+                </div>
+
+                {/* Blacklisted Scenes */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    {lang === 'es' ? 'Novelas/Escenas en lista negra:' : 'Blacklisted Novels/Scenes:'}
+                  </label>
+                  <textarea
+                    value={settings.discordBlacklist || ''}
+                    onChange={(e) => onSaveSettings({ ...settings, discordBlacklist: e.target.value })}
+                    placeholder={lang === 'es' ? 'Escribe nombres de libros a ignorar, uno por línea...' : 'Enter book names to ignore, one per line...'}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: '6px',
+                      padding: '8px 12px',
+                      color: 'var(--text-main)',
+                      fontSize: '0.88rem',
+                      width: '100%',
+                      height: '120px',
+                      resize: 'vertical'
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Card: Vocabulary Management */}
           {matchesSearch('vocabulario vocabulary import export jpdb anki file frequency') && (settingsSearchQuery || activeSettingsSection === 'sec-vocab-manage') && (
             <div id="sec-vocab-manage" className="settings-section-card">
@@ -4668,19 +4837,43 @@ const Library = React.memo(function Library({
                   </span>
                 </div>
 
+                {/* Progress Bar */}
+                {updating && window.electronAPI && (
+                  <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                      <span>{lang === 'es' ? 'Descargando actualización...' : 'Downloading update...'}</span>
+                      <span>{updateProgress >= 0 ? `${updateProgress}%` : ''}</span>
+                    </div>
+                    <div style={{
+                      width: '100%',
+                      height: '6px',
+                      background: 'var(--border-light)',
+                      borderRadius: '3px',
+                      overflow: 'hidden'
+                    }}>
+                      <div style={{
+                        width: `${updateProgress >= 0 ? updateProgress : 0}%`,
+                        height: '100%',
+                        background: 'var(--primary)',
+                        transition: 'width 0.2s ease-out'
+                      }} />
+                    </div>
+                  </div>
+                )}
+
                 {/* Buttons */}
                 <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>
                   <button
                     type="button"
                     onClick={handleCheckUpdates}
-                    disabled={checkingUpdates}
+                    disabled={checkingUpdates || updating}
                     style={{
                       flex: 1,
                       padding: '10px',
                       borderRadius: '8px',
                       fontSize: '0.85rem',
                       fontWeight: 600,
-                      cursor: checkingUpdates ? 'not-allowed' : 'pointer',
+                      cursor: (checkingUpdates || updating) ? 'not-allowed' : 'pointer',
                       background: 'rgba(37, 99, 235, 0.1)',
                       border: '1px solid #2563eb',
                       color: '#3b82f6',
@@ -4696,24 +4889,34 @@ const Library = React.memo(function Library({
                   <button
                     type="button"
                     onClick={handleUpdateNow}
-                    disabled={appStatus === 'up-to-date' && backendStatus === 'up-to-date'}
+                    disabled={(appStatus === 'up-to-date' && backendStatus === 'up-to-date') || updating}
                     style={{
                       flex: 1,
                       padding: '10px',
                       borderRadius: '8px',
                       fontSize: '0.85rem',
                       fontWeight: 600,
-                      background: (appStatus === 'up-to-date' && backendStatus === 'up-to-date') ? 'var(--bg-card)' : 'rgba(16, 185, 129, 0.1)',
-                      border: (appStatus === 'up-to-date' && backendStatus === 'up-to-date') ? '1px solid var(--border-light)' : '1px solid #10b981',
-                      color: (appStatus === 'up-to-date' && backendStatus === 'up-to-date') ? 'var(--text-muted)' : '#10b981',
-                      cursor: (appStatus === 'up-to-date' && backendStatus === 'up-to-date') ? 'not-allowed' : 'pointer',
+                      background: ((appStatus === 'up-to-date' && backendStatus === 'up-to-date') || updating) ? 'var(--bg-card)' : 'rgba(16, 185, 129, 0.1)',
+                      border: ((appStatus === 'up-to-date' && backendStatus === 'up-to-date') || updating) ? '1px solid var(--border-light)' : '1px solid #10b981',
+                      color: ((appStatus === 'up-to-date' && backendStatus === 'up-to-date') || updating) ? 'var(--text-muted)' : '#10b981',
+                      cursor: ((appStatus === 'up-to-date' && backendStatus === 'up-to-date') || updating) ? 'not-allowed' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                       transition: 'all 0.2s'
                     }}
                   >
-                    {updating ? (lang === 'es' ? 'Actualizando...' : 'Updating...') : (lang === 'es' ? 'Actualizar ahora' : 'Update now')}
+                    {updating ? (
+                      window.electronAPI ? (
+                        lang === 'es'
+                          ? `Descargando (${updateProgress}%)...`
+                          : `Downloading (${updateProgress}%)...`
+                      ) : (
+                        lang === 'es' ? 'Actualizando...' : 'Updating...'
+                      )
+                    ) : (
+                      lang === 'es' ? 'Actualizar ahora' : 'Update now'
+                    )}
                   </button>
                 </div>
               </div>
@@ -4919,6 +5122,17 @@ const Library = React.memo(function Library({
     }> = {};
     let totalDueCount = 0;
     
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const newCardsKey = `yoru_reader_srs_new_cards_studied_today_${todayStr}`;
+    const newCardsStudiedToday = JSON.parse(localStorage.getItem(newCardsKey) || '[]');
+    const newLimit = settings.srsNewCardsPerDay !== undefined ? settings.srsNewCardsPerDay : 20;
+    const newCardsLeftToday = Math.max(0, newLimit - newCardsStudiedToday.length);
+
+    const reviewsKey = `yoru_reader_srs_reviews_done_today_${todayStr}`;
+    const reviewsDoneToday = JSON.parse(localStorage.getItem(reviewsKey) || '[]');
+    const maxReviewsLimit = settings.srsMaxReviewsPerDay !== undefined ? settings.srsMaxReviewsPerDay : 200;
+    const reviewsLeftToday = Math.max(0, maxReviewsLimit - reviewsDoneToday.length);
+
     const learningWords = Object.keys(statuses).filter(w => statuses[w] === 'learning');
     
     const initDeck = (name: string) => {
@@ -4975,13 +5189,21 @@ const Library = React.memo(function Library({
         // Count due cards
         const isDue = !card.dueDate || new Date(card.dueDate) <= now;
         if (isDue) {
-          totalDueCount++;
-          if (card.state === 0) {
-            decks[deckName].newCount++;
-          } else if (card.state === 1 || card.state === 3) {
-            decks[deckName].learningCount++;
+          const isNewCard = card.state === undefined || card.state === 0 || reps === 0;
+          if (isNewCard) {
+            if (newCardsLeftToday > 0) {
+              decks[deckName].newCount++;
+              totalDueCount++;
+            }
           } else {
-            decks[deckName].reviewCount++;
+            if (reviewsLeftToday > 0) {
+              totalDueCount++;
+              if (card.state === 1 || card.state === 3) {
+                decks[deckName].learningCount++;
+              } else {
+                decks[deckName].reviewCount++;
+              }
+            }
           }
         }
       }
@@ -4995,8 +5217,10 @@ const Library = React.memo(function Library({
         
         decks[deckName].totalCards++;
         decks[deckName].totalNew++;
-        decks[deckName].newCount++;
-        totalDueCount++;
+        if (newCardsLeftToday > 0) {
+          decks[deckName].newCount++;
+          totalDueCount++;
+        }
       }
     });
 
@@ -5628,20 +5852,22 @@ const Library = React.memo(function Library({
                           <button
                             type="button"
                             onClick={() => {
+                              if (!isDue) return; // Prevent review if completed
                               setSelectedDeckFilter(deck.name);
                               setIsSrsReviewOpen(true);
                             }}
                             disabled={deck.totalCards === 0}
+                            title={deck.totalCards > 0 && !isDue ? (lang === 'es' ? 'Completado por hoy' : 'Completed for today') : undefined}
                             style={{
                               background: isDue 
                                 ? 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)' 
-                                : (deck.totalCards > 0 ? 'rgba(168, 85, 247, 0.06)' : 'rgba(255,255,255,0.02)'),
+                                : (deck.totalCards > 0 ? 'rgba(34, 197, 94, 0.08)' : 'rgba(255,255,255,0.02)'),
                               border: isDue 
                                 ? 'none' 
-                                : (deck.totalCards > 0 ? '1px solid rgba(168, 85, 247, 0.3)' : 'none'),
+                                : (deck.totalCards > 0 ? '1px solid rgba(34, 197, 94, 0.3)' : 'none'),
                               color: isDue 
                                 ? '#ffffff' 
-                                : (deck.totalCards > 0 ? 'var(--primary)' : 'var(--text-muted)'),
+                                : (deck.totalCards > 0 ? '#22c55e' : 'var(--text-muted)'),
                               borderRadius: '8px',
                               padding: '6px 14px',
                               fontSize: '0.75rem',
@@ -5649,13 +5875,22 @@ const Library = React.memo(function Library({
                               display: 'inline-flex',
                               alignItems: 'center',
                               gap: '6px',
-                              cursor: deck.totalCards > 0 ? 'pointer' : 'not-allowed',
+                              cursor: (deck.totalCards > 0 && isDue) ? 'pointer' : 'not-allowed',
                               boxShadow: isDue ? '0 2px 8px rgba(168, 85, 247, 0.2)' : 'none',
                               transition: 'all 0.15s'
                             }}
                           >
-                            <Play size={12} fill={isDue ? '#ffffff' : 'none'} />
-                            <span>{lang === 'es' ? 'Repasar' : 'Review'}</span>
+                            {isDue ? (
+                              <Play size={12} fill="#ffffff" />
+                            ) : (
+                              deck.totalCards > 0 ? <Check size={12} style={{ color: '#22c55e' }} /> : <Play size={12} />
+                            )}
+                            <span>
+                              {isDue 
+                                ? (lang === 'es' ? 'Repasar' : 'Review') 
+                                : (deck.totalCards > 0 ? (lang === 'es' ? 'Completado' : 'Completed') : (lang === 'es' ? 'Repasar' : 'Review'))
+                              }
+                            </span>
                           </button>
 
                           <button

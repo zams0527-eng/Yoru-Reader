@@ -331,6 +331,112 @@ ipcMain.handle('download-google-drive', async (event, { urlString, id }) => {
   });
 });
 
+ipcMain.handle('download-and-install-update', async (event, { urlString }) => {
+  console.log('[update-downloader] Starting update download from:', urlString);
+  const installerPath = path.join(app.getPath('temp'), 'Yoru-Reader-Setup.exe');
+  
+  // Clean up existing installer if it exists
+  try {
+    if (fs.existsSync(installerPath)) {
+      fs.unlinkSync(installerPath);
+    }
+  } catch (e) {
+    console.error('[update-downloader] Error unlinking existing installer:', e);
+  }
+
+  return new Promise((resolve, reject) => {
+    let fileStream = null;
+    
+    function download(urlToDownload) {
+      const options = {
+        headers: {
+          'User-Agent': 'Yoru-Reader-Updater'
+        }
+      };
+      
+      https.get(urlToDownload, options, (res) => {
+        console.log('[update-downloader] Response status:', res.statusCode);
+        
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          console.log('[update-downloader] Redirecting to:', res.headers.location);
+          download(res.headers.location);
+          return;
+        }
+        
+        if (res.statusCode !== 200) {
+          if (res.statusCode === 404 && urlToDownload.includes('.Setup.')) {
+            const fallbackUrl = urlToDownload.replace('.Setup.', '%20Setup%20');
+            console.log('[update-downloader] 404 encountered, trying fallback URL:', fallbackUrl);
+            download(fallbackUrl);
+            return;
+          }
+          reject(new Error(`HTTP status code ${res.statusCode}`));
+          return;
+        }
+        
+        const totalLength = parseInt(res.headers['content-length'], 10) || 0;
+        let downloadedLength = 0;
+        
+        fileStream = fs.createWriteStream(installerPath);
+        
+        fileStream.on('error', (err) => {
+          console.error('[update-downloader] Write stream error:', err);
+          fs.unlink(installerPath, () => {});
+          reject(err);
+        });
+        
+        res.on('data', (chunk) => {
+          fileStream.write(chunk);
+          downloadedLength += chunk.length;
+          if (totalLength > 0) {
+            const percent = Math.round((downloadedLength / totalLength) * 100);
+            event.sender.send('update-download-progress', { percent, downloadedBytes: downloadedLength, totalBytes: totalLength });
+          } else {
+            event.sender.send('update-download-progress', { percent: -1, downloadedBytes: downloadedLength, totalBytes: -1 });
+          }
+        });
+        
+        res.on('end', () => {
+          fileStream.end();
+        });
+        
+        fileStream.on('finish', () => {
+          console.log('[update-downloader] Download completed. Installer saved to:', installerPath);
+          
+          // Now execute the installer and exit
+          try {
+            console.log('[update-downloader] Launching installer...');
+            const child = spawn(installerPath, [], {
+              detached: true,
+              stdio: 'ignore'
+            });
+            child.unref();
+            
+            // Quit app after a short delay to allow spawn to complete
+            setTimeout(() => {
+              app.quit();
+            }, 1000);
+            
+            resolve({ success: true });
+          } catch (spawnErr) {
+            console.error('[update-downloader] Error spawning installer:', spawnErr);
+            reject(spawnErr);
+          }
+        });
+        
+      }).on('error', (err) => {
+        console.error('[update-downloader] Request error:', err);
+        if (fileStream) {
+          fileStream.end();
+        }
+        reject(err);
+      });
+    }
+    
+    download(urlString);
+  });
+});
+
 ipcMain.handle('speak-text', async (event, { text, voice, rate }) => {
   console.log('[speak-text] Requesting Edge TTS. Voice:', voice, 'Rate:', rate);
   try {
@@ -338,6 +444,21 @@ ipcMain.handle('speak-text', async (event, { text, voice, rate }) => {
     return audioBuffer;
   } catch (error) {
     console.error('[speak-text] Edge TTS error:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('anki-request', async (event, { host, body }) => {
+  try {
+    const response = await fetch(host, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('[anki-request] Proxy error:', error);
     throw error;
   }
 });
@@ -871,48 +992,92 @@ let discordRpcSocket = null;
 let discordRpcClientId = '1326462719280054363'; // Registered Client ID for Yoru Reader
 let discordRpcActivePresence = null;
 
+let isDiscordConnecting = false;
+
 function connectDiscordRpc() {
   if (discordRpcSocket) return Promise.resolve(discordRpcSocket);
+  if (isDiscordConnecting) return Promise.resolve(null);
+
+  isDiscordConnecting = true;
 
   return new Promise((resolve, reject) => {
     const isWin = process.platform === 'win32';
-    const pipePath = isWin ? '\\\\.\\pipe\\discord-ipc-0' : '/tmp/discord-ipc-0';
+    let index = 0;
 
-    console.log('[Discord RPC] Connecting to socket at:', pipePath);
-    const client = net.createConnection(pipePath);
-
-    client.on('connect', () => {
-      console.log('[Discord RPC] Connected successfully. Performing handshake...');
-      
-      const handshake = JSON.stringify({
-        v: 1,
-        client_id: discordRpcClientId
-      });
-      sendDiscordRpcFrame(client, 0, handshake);
-      discordRpcSocket = client;
-      
-      if (discordRpcActivePresence) {
-        setTimeout(() => {
-          updateDiscordRpcPresence(discordRpcActivePresence);
-        }, 1000);
+    function tryConnect() {
+      if (index > 9) {
+        console.error('[Discord RPC] Failed to connect to any Discord IPC pipes (0-9)');
+        isDiscordConnecting = false;
+        reject(new Error('All pipes failed'));
+        return;
       }
-      resolve(client);
-    });
 
-    client.on('error', (err) => {
-      console.warn('[Discord RPC] Connection error:', err.message);
-      discordRpcSocket = null;
-      reject(err);
-    });
+      const pipePath = isWin 
+        ? `\\\\?\\pipe\\discord-ipc-${index}` 
+        : `${process.env.XDG_RUNTIME_DIR || process.env.TMPDIR || process.env.TMP || process.env.TEMP || '/tmp'}/discord-ipc-${index}`;
 
-    client.on('close', () => {
-      console.log('[Discord RPC] Connection closed.');
-      discordRpcSocket = null;
-    });
+      console.log(`[Discord RPC] Trying to connect to socket at: ${pipePath}`);
+      const client = net.createConnection(pipePath);
+      let hasFinished = false;
 
-    client.on('data', (data) => {
-      // Consume data
-    });
+      const timeoutId = setTimeout(() => {
+        if (hasFinished) return;
+        hasFinished = true;
+        console.error(`[Discord RPC] Pipe ${index} connection timed out.`);
+        client.destroy();
+        index++;
+        tryConnect();
+      }, 1000);
+
+      client.on('connect', () => {
+        if (hasFinished) return;
+        hasFinished = true;
+        clearTimeout(timeoutId);
+        console.log(`[Discord RPC] Connected successfully to ${pipePath}. Performing handshake...`);
+        isDiscordConnecting = false;
+        
+        const handshake = JSON.stringify({
+          v: 1,
+          client_id: discordRpcClientId
+        });
+        sendDiscordRpcFrame(client, 0, handshake);
+        discordRpcSocket = client;
+
+        client.on('close', () => {
+          console.log('[Discord RPC] Connection closed.');
+          if (discordRpcSocket === client) {
+            discordRpcSocket = null;
+          }
+        });
+
+        client.on('error', (err) => {
+          console.error('[Discord RPC] Connected socket error:', err.message);
+        });
+
+        client.on('data', (data) => {
+          // Consume data
+        });
+        
+        if (discordRpcActivePresence) {
+          setTimeout(() => {
+            updateDiscordRpcPresence(discordRpcActivePresence);
+          }, 1000);
+        }
+        resolve(client);
+      });
+
+      client.on('error', (err) => {
+        if (hasFinished) return;
+        hasFinished = true;
+        clearTimeout(timeoutId);
+        console.error(`[Discord RPC] Pipe ${index} connection failed:`, err.message);
+        client.destroy();
+        index++;
+        tryConnect();
+      });
+    }
+
+    tryConnect();
   });
 }
 
@@ -932,6 +1097,24 @@ function sendDiscordRpcFrame(socket, opcode, jsonPayload) {
 
 function updateDiscordRpcPresence(presence) {
   discordRpcActivePresence = presence;
+
+  let targetClientId = '1326462719280054363'; // Yoru Reader default
+  if (presence && presence.assets && presence.assets.large_image) {
+    const img = presence.assets.large_image;
+    if (img === 'gsm_cute' || img === 'gsm_jacked' || img === 'gsm_cursed') {
+      targetClientId = '1441571345942052935'; // GSM Client ID
+    }
+  }
+
+  if (discordRpcClientId !== targetClientId) {
+    console.log(`[Discord RPC] Switching client ID from ${discordRpcClientId} to ${targetClientId}`);
+    discordRpcClientId = targetClientId;
+    if (discordRpcSocket) {
+      discordRpcSocket.destroy();
+      discordRpcSocket = null;
+    }
+  }
+
   if (!discordRpcSocket) {
     connectDiscordRpc().catch(() => {});
     return;

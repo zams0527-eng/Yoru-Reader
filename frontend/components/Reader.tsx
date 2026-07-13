@@ -303,11 +303,11 @@ export default function Reader({
 
   // Discord Rich Presence Integration
   useEffect(() => {
-    updateDiscordReading(book, settings);
+    updateDiscordReading(book, settings, currentProgress);
     return () => {
       clearDiscordPresence();
     };
-  }, [book, settings, currentProgress.currSection]);
+  }, [book, settings, currentProgress.currSection, currentProgress.currChars]);
 
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [galleryIndex, setGalleryIndex] = useState(0);

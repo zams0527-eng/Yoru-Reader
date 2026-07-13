@@ -1,6 +1,6 @@
 {
-  "appVersion": "1.1.0",
-  "backendVersion": "1.1.0",
+  "appVersion": "1.2.17",
+  "backendVersion": "1.2.0",
   "url": "https://github.com/zams0527-eng/Yoru-Reader/releases/latest",
-  "description": "Lanzamiento oficial de Yoru Reader v1.1.0 con soporte nativo de Discord RPC, interfaz de ajustes reorganizada con navegación por pestañas y correcciones importantes para la sincronización con Google Drive (puertos dinámicos y compatibilidad de retornos de carro CRLF para imágenes en Windows)."
+  "description": "Yoru Reader v1.2.17: Añadido selector de 'Tipo de nota de Anki' en la pestaña Importar de Gestión de Vocabulario y auto-selección de campos al cambiar el tipo de nota, permitiendo importar palabras desde cualquier modelo y mapear campos como 'Vocab' o 'Front' correctamente."
 }

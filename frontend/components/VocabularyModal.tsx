@@ -133,8 +133,43 @@ export default function VocabularyModal({
         ]);
         const deckData = await deckRes.json();
         const modelData = await modelRes.json();
-        if (deckData.result) setAvailableDecks(deckData.result);
-        if (modelData.result) setAvailableModels(modelData.result);
+        
+        let updatedSettings = { ...ankiSettings };
+        let settingsChanged = false;
+
+        if (deckData.result) {
+          setAvailableDecks(deckData.result);
+          const currentDeck = ankiSettings.expression?.deck;
+          if (deckData.result.length > 0 && (!currentDeck || !deckData.result.includes(currentDeck))) {
+            updatedSettings = {
+              ...updatedSettings,
+              expression: {
+                ...(updatedSettings.expression || {}),
+                deck: deckData.result[0]
+              }
+            };
+            settingsChanged = true;
+          }
+        }
+        
+        if (modelData.result) {
+          setAvailableModels(modelData.result);
+          const currentModel = ankiSettings.expression?.noteType;
+          if (modelData.result.length > 0 && (!currentModel || !modelData.result.includes(currentModel))) {
+            updatedSettings = {
+              ...updatedSettings,
+              expression: {
+                ...(updatedSettings.expression || {}),
+                noteType: modelData.result[0]
+              }
+            };
+            settingsChanged = true;
+          }
+        }
+
+        if (settingsChanged) {
+          saveAnkiSettings(updatedSettings);
+        }
       } else {
         setConnectionStatus('error');
       }
@@ -164,6 +199,19 @@ export default function VocabularyModal({
         const data = await res.json();
         if (data && data.result && active) {
           setExpressionFields(data.result);
+          
+          setAnkiSettings((prev: any) => {
+            const currentField = prev.importWordField;
+            if (data.result.length > 0 && (!currentField || !data.result.includes(currentField))) {
+              const updated = {
+                ...prev,
+                importWordField: data.result[0]
+              };
+              localStorage.setItem('anki_settings_v2', JSON.stringify(updated));
+              return updated;
+            }
+            return prev;
+          });
         }
       } catch (err) {
         console.warn('Failed to fetch expression fields:', err);
@@ -985,6 +1033,23 @@ export default function VocabularyModal({
                         ) : (
                           <option value={ankiSettings.expression?.deck || 'sentence mining'} style={{ background: '#1c1c20' }}>
                             {ankiSettings.expression?.deck || 'sentence mining'}
+                          </option>
+                        )}
+                      </select>
+                    </div>
+
+                    <div className="yomitan-anki-field-group">
+                      <span className="yomitan-anki-field-title">{lang === 'es' ? 'Tipo de nota de Anki' : 'Anki Note Type'}</span>
+                      <select
+                        className="yomitan-anki-input"
+                        value={ankiSettings.expression?.noteType || ''}
+                        onChange={e => saveAnkiSettings({ ...ankiSettings, expression: { ...ankiSettings.expression, noteType: e.target.value } })}
+                      >
+                        {availableModels.length > 0 ? (
+                          availableModels.map(m => <option key={m} value={m} style={{ background: '#1c1c20' }}>{m}</option>)
+                        ) : (
+                          <option value={ankiSettings.expression?.noteType || 'Lapis'} style={{ background: '#1c1c20' }}>
+                            {ankiSettings.expression?.noteType || 'Lapis'}
                           </option>
                         )}
                       </select>

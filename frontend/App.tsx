@@ -15,6 +15,39 @@ declare global {
   }
 }
 
+// Intercept AnkiConnect fetch requests to bypass CORS in Electron
+if (typeof window !== 'undefined' && (window as any).electronAPI && (window as any).electronAPI.ankiRequest) {
+  const originalFetch = window.fetch;
+  window.fetch = async function(input, init) {
+    let url = '';
+    if (typeof input === 'string') {
+      url = input;
+    } else if (input instanceof URL) {
+      url = input.toString();
+    } else if (input && typeof input === 'object' && 'url' in input) {
+      url = (input as any).url;
+    }
+
+    if (url.includes(':8765') || url.includes('127.0.0.1:8765') || url.includes('localhost:8765')) {
+      try {
+        let bodyParsed = null;
+        if (init && init.body) {
+          bodyParsed = typeof init.body === 'string' ? JSON.parse(init.body) : init.body;
+        }
+        const data = await (window as any).electronAPI.ankiRequest(url, bodyParsed);
+        return new Response(JSON.stringify(data), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      } catch (e) {
+        console.error('Anki fetch proxy error:', e);
+        return originalFetch.apply(this, arguments as any);
+      }
+    }
+    return originalFetch.apply(this, arguments as any);
+  };
+}
+
 const SAMPLE_BOOKS = [
   {
     title: 'また、同じ夢を見ていた',
@@ -573,11 +606,23 @@ export default function App() {
   const handleUpdateProgress = useCallback(async (bookId: string, currentChapter: number, currentPage: number, percent: number) => {
     const updatedBooks = await db.updateBookProgress(bookId, currentChapter, currentPage, percent);
     setBooks(updatedBooks);
+    setActiveBook(prev => {
+      if (prev && prev.id === bookId) {
+        return updatedBooks.find(b => b.id === bookId) || prev;
+      }
+      return prev;
+    });
   }, []);
 
   const handleIncrementReadingStats = useCallback(async (bookId: string, chars: number, seconds: number) => {
     const updatedBooks = await db.incrementReadingStats(bookId, chars, seconds);
     setBooks(updatedBooks);
+    setActiveBook(prev => {
+      if (prev && prev.id === bookId) {
+        return updatedBooks.find(b => b.id === bookId) || prev;
+      }
+      return prev;
+    });
     
     // Save to daily statistics database
     const book = updatedBooks.find(b => b.id === bookId);

@@ -652,8 +652,10 @@ export default function SettingsModal({
                 cursor: 'pointer'
               }}
             >
-              <option value="Yoru">Yoru Reader</option>
-              <option value="GSM">GSM</option>
+              <option value="Yoru">Yoru</option>
+              <option value="Cute">Cute</option>
+              <option value="Jacked">Jacked</option>
+              <option value="Cursed">Cursed</option>
             </select>
           </div>
 
@@ -676,8 +678,10 @@ export default function SettingsModal({
               }}
             >
               <option value="None">{lang === 'es' ? 'Ninguna' : 'None'}</option>
-              <option value="Progress">{lang === 'es' ? 'Progreso de lectura (%)' : 'Reading progress (%)'}</option>
-              <option value="Time">{lang === 'es' ? 'Tiempo transcurrido' : 'Time elapsed'}</option>
+              <option value="Characters per Hour">{lang === 'es' ? 'Caracteres por hora' : 'Characters per Hour'}</option>
+              <option value="Total Characters">{lang === 'es' ? 'Caracteres totales' : 'Total Characters'}</option>
+              <option value="Cards Mined">{lang === 'es' ? 'Tarjetas creadas' : 'Cards Mined'}</option>
+              <option value="Active Reading Time">{lang === 'es' ? 'Tiempo activo de lectura' : 'Active Reading Time'}</option>
             </select>
           </div>
 
