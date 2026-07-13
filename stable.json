@@ -1,6 +1,6 @@
 {
-  "appVersion": "1.2.18",
+  "appVersion": "1.1.4",
   "backendVersion": "1.2.0",
   "url": "https://github.com/zams0527-eng/Yoru-Reader/releases/latest",
-  "description": "Yoru Reader v1.2.18: Corregido el gráfico de conteo de tarjetas al importar desde Anki. Ahora las palabras importadas guardan también sus estadísticas de SRS (intervalo, repeticiones, mazo) en la base de datos local para que se reflejen correctamente en la distribución (Jóvenes, Maduras, etc.) y en el total general del gráfico."
+  "description": "Yoru Reader v1.1.4: Enforce daily review limits, resolve AnkiConnect connection/import CORS issues and fix card statistics chart."
 }
