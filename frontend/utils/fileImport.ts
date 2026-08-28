@@ -771,39 +771,166 @@ export async function parsePDF(arrayBuffer: ArrayBuffer, fallbackTitle?: string)
     cover = getRandomGradient();
   }
 
-  // Extract text by page
+  // Extract text by page using smart vertical and horizontal layout analysis
   const pageTexts: { pageNum: number; text: string }[] = [];
   for (let pageNum = 1; pageNum <= numPages; pageNum++) {
     try {
       const page = await pdfDoc.getPage(pageNum);
       const textContent = await page.getTextContent();
+      const rawItems = (textContent.items || []).filter((item: any) => item && typeof item.str === 'string' && item.str.trim().length > 0);
+      
+      if (rawItems.length === 0) continue;
 
-      let lastY: number | null = null;
-      const lines: string[] = [];
-      let currentLine = '';
+      interface TextItemData {
+        str: string;
+        x: number;
+        y: number;
+        w: number;
+        h: number;
+        dir?: string;
+      }
 
-      for (const item of textContent.items as any[]) {
-        if (!('str' in item)) continue;
-        const str = item.str;
-        if (!str && str !== '') continue;
+      const items: TextItemData[] = rawItems.map((item: any) => {
+        const t = item.transform || [1, 0, 0, 1, 0, 0];
+        return {
+          str: item.str,
+          x: t[4] || 0,
+          y: t[5] || 0,
+          w: item.width || 0,
+          h: item.height || 0,
+          dir: item.dir
+        };
+      });
 
-        const currentY = item.transform ? Math.round(item.transform[5]) : null;
-        if (lastY !== null && currentY !== null && Math.abs(currentY - lastY) > 4) {
-          if (currentLine.trim()) {
-            lines.push(currentLine.trim());
-          }
-          currentLine = str;
-        } else {
-          currentLine += str;
+      // Detect whether the text is predominantly vertical (tate-gaki 縦書き) or horizontal
+      let verticalScore = 0;
+      let horizontalScore = 0;
+
+      for (let i = 0; i < items.length - 1; i++) {
+        const a = items[i];
+        const b = items[i + 1];
+        const dx = Math.abs(a.x - b.x);
+        const dy = Math.abs(a.y - b.y);
+
+        if (a.dir === 'ttb' || b.dir === 'ttb') {
+          verticalScore += 5;
         }
-        lastY = currentY;
+        // In vertical Japanese columns: same column has small dx (<8px) and distinct dy
+        if (dx <= 8 && dy > 4 && dy < 45) {
+          verticalScore += 2;
+        } else if (dy <= 8 && dx > 4 && dx < 45) {
+          horizontalScore += 2;
+        }
       }
 
-      if (currentLine.trim()) {
-        lines.push(currentLine.trim());
+      const isVertical = verticalScore >= horizontalScore;
+      let pageText = '';
+
+      if (isVertical) {
+        // VERTICAL JAPANESE (Right to Left columns, Top to Bottom text)
+        const columns: TextItemData[][] = [];
+        const colTolerance = 12; // Column X grouping tolerance
+
+        // Sort items by X descending (Right to Left)
+        const sortedByX = [...items].sort((a, b) => b.x - a.x);
+
+        for (const item of sortedByX) {
+          let placed = false;
+          for (const col of columns) {
+            const avgX = col.reduce((sum, c) => sum + c.x, 0) / col.length;
+            if (Math.abs(item.x - avgX) <= colTolerance) {
+              col.push(item);
+              placed = true;
+              break;
+            }
+          }
+          if (!placed) {
+            columns.push([item]);
+          }
+        }
+
+        // Sort columns strictly Right to Left (average X descending)
+        columns.sort((a, b) => {
+          const avgA = a.reduce((sum, c) => sum + c.x, 0) / a.length;
+          const avgB = b.reduce((sum, c) => sum + c.x, 0) / b.length;
+          return avgB - avgA;
+        });
+
+        const lines: string[] = [];
+        for (const col of columns) {
+          // Within each column, sort Top to Bottom (Y descending)
+          col.sort((a, b) => b.y - a.y);
+
+          let colText = '';
+          let lastY = col[0].y;
+          for (const item of col) {
+            // If there is a large vertical gap in the column (e.g. title followed by author after empty space)
+            if (Math.abs(lastY - item.y) > 60 && colText.trim()) {
+              lines.push(colText.trim());
+              colText = '';
+            }
+            colText += item.str;
+            lastY = item.y;
+          }
+          if (colText.trim()) {
+            lines.push(colText.trim());
+          }
+        }
+        pageText = lines.join('\n');
+      } else {
+        // HORIZONTAL (Top to Bottom lines, Left to Right text)
+        const lines: TextItemData[][] = [];
+        const lineTolerance = 6;
+
+        // Sort items by Y descending (Top to Bottom)
+        const sortedByY = [...items].sort((a, b) => b.y - a.y);
+
+        for (const item of sortedByY) {
+          let placed = false;
+          for (const line of lines) {
+            const avgY = line.reduce((sum, c) => sum + c.y, 0) / line.length;
+            if (Math.abs(item.y - avgY) <= lineTolerance) {
+              line.push(item);
+              placed = true;
+              break;
+            }
+          }
+          if (!placed) {
+            lines.push([item]);
+          }
+        }
+
+        // Sort lines from Top to Bottom
+        lines.sort((a, b) => {
+          const avgA = a.reduce((sum, c) => sum + c.y, 0) / a.length;
+          const avgB = b.reduce((sum, c) => sum + c.y, 0) / b.length;
+          return avgB - avgA;
+        });
+
+        const resultLines: string[] = [];
+        for (const line of lines) {
+          // Within each line, sort Left to Right (X ascending)
+          line.sort((a, b) => a.x - b.x);
+
+          let lineText = '';
+          for (let i = 0; i < line.length; i++) {
+            const cur = line[i];
+            if (i > 0) {
+              const prev = line[i - 1];
+              const isJapanese = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/.test(cur.str) || /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/.test(prev.str);
+              if (!isJapanese && (cur.x - (prev.x + prev.w)) > 3) {
+                lineText += ' ';
+              }
+            }
+            lineText += cur.str;
+          }
+          if (lineText.trim()) {
+            resultLines.push(lineText.trim());
+          }
+        }
+        pageText = resultLines.join('\n');
       }
 
-      const pageText = lines.join('\n');
       if (pageText.trim()) {
         pageTexts.push({ pageNum, text: pageText });
       }
