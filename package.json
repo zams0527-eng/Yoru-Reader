@@ -97,11 +97,7 @@
       ],
       "icon": "build/icon.png",
       "category": "Education",
-      "synopsis": "Japanese light novel reader with dictionary and Anki integration",
-      "desktop": {
-        "Name": "Yoru Reader",
-        "Comment": "Japanese light novel reader"
-      }
+      "synopsis": "Japanese light novel reader with dictionary and Anki integration"
     },
     "flatpak": {
       "baseVersion": "24.08",
