@@ -19,6 +19,7 @@ interface SettingsModalProps {
   libraryViewProps?: any;
   onExportLibrary?: () => void;
   onTriggerImportBackup?: () => void;
+  onOpenTutorial?: () => void;
 }
 
 export default function SettingsModal({ 
@@ -31,7 +32,8 @@ export default function SettingsModal({
   onUpdateBookDetails,
   libraryViewProps, // Opcional, para controlar las tarjetas de la biblioteca
   onExportLibrary,
-  onTriggerImportBackup
+  onTriggerImportBackup,
+  onOpenTutorial
 }: SettingsModalProps) {
   if (!isOpen) return null;
   const [isVocabModalOpen, setIsVocabModalOpen] = useState(false);
@@ -229,6 +231,36 @@ export default function SettingsModal({
           <option value="sepia">{lang === 'es' ? 'Sepia Relajante' : 'Warm Sepia'}</option>
           <option value="light">{lang === 'es' ? 'Claro clásico' : 'Classic Light'}</option>
         </select>
+      </div>
+
+      <div style={{ marginTop: '16px' }}>
+        <button 
+          type="button"
+          onClick={() => {
+            onClose();
+            onOpenTutorial?.();
+          }}
+          style={{
+            width: '100%',
+            padding: '11px 16px',
+            background: 'rgba(255, 224, 0, 0.08)',
+            border: '1px solid rgba(255, 224, 0, 0.25)',
+            borderRadius: '8px',
+            color: '#FFE000',
+            fontWeight: 600,
+            fontSize: '0.86rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            transition: 'all 0.15s'
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255, 224, 0, 0.16)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 224, 0, 0.08)'; }}
+        >
+          💡 {lang === 'es' ? 'Ver Guía Rápida y Atajos de Teclado' : 'View Quick Guide & Shortcuts'}
+        </button>
       </div>
     </div>
   );

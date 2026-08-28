@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Plus, Info, Trash2, ListChecks, Check, BarChart3, HelpCircle, Pencil, X, ArrowUpDown, Settings, SlidersHorizontal, Calendar, BookOpen, Clock, Flame, Download, Upload, MoreVertical, Search, EyeOff, User, Tag, RotateCcw, CircleSlash, Play, Pause, ChevronDown, Database, Palette, Cloud, FolderOpen, Globe, Type, Plug, Layers, AlertTriangle, Keyboard, Bug, Megaphone, Maximize, Menu, Zap, RefreshCw, MessageSquare } from 'lucide-react';
 import SettingsModal from './SettingsModal';
+import { OnboardingTutorialModal } from './OnboardingTutorialModal';
 import JSZip from 'jszip';
 import { importBookFile } from '../utils/fileImport';
 import { db } from '../utils/db';
@@ -97,6 +98,7 @@ const Library = React.memo(function Library({
   const [bindingKeyAction, setBindingKeyAction] = useState(null);
   const [updateProgress, setUpdateProgress] = useState(0);
   const [updatePhase, setUpdatePhase] = useState<'downloading' | 'installing' | null>(null);
+  const [showTutorialModal, setShowTutorialModal] = useState<boolean>(() => !localStorage.getItem('yoru_tutorial_seen_v1'));
 
   useEffect(() => {
     if (window.electronAPI && window.electronAPI.onUpdateDownloadProgress) {
@@ -6920,131 +6922,6 @@ const Library = React.memo(function Library({
             <SlidersHorizontal size={18} />
           </button>
 
-          <div className="header-action-dropdown-container" style={{ position: 'relative', display: 'inline-block' }}>
-            <button 
-              className={`header-display-settings-btn ${activeHeaderDropdown === 'more' ? 'active' : ''}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setActiveHeaderDropdown(activeHeaderDropdown === 'more' ? null : 'more');
-              }}
-              title={lang === 'es' ? 'Más opciones' : 'More Options'}
-              type="button"
-            >
-              <MoreVertical size={18} />
-            </button>
-            {activeHeaderDropdown === 'more' && (
-              <div 
-                className="header-action-dropdown-menu" 
-                style={isMobile ? {
-                  minWidth: '200px', 
-                  position: 'fixed', 
-                  right: '12px', 
-                  left: 'auto', 
-                  top: '56px', 
-                  zIndex: 2500 
-                } : {
-                  minWidth: '220px',
-                  position: 'absolute',
-                  right: 0,
-                  left: 'auto',
-                  top: '42px'
-                }}
-              >
-                <button 
-                  className="header-action-dropdown-item"
-                  onClick={() => {
-                    setActiveHeaderDropdown(null);
-                    toggleSelectMode();
-                  }}
-                  type="button"
-                >
-                  <div className="header-action-dropdown-item-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <ListChecks size={14} style={{ color: selectMode ? 'var(--primary)' : 'rgba(255,255,255,0.5)' }} />
-                    <span>{lang === 'es' ? 'Seleccionar libros' : 'Select books'}</span>
-                  </div>
-                </button>
-                <button 
-                  className="header-action-dropdown-item"
-                  onClick={() => {
-                    setActiveHeaderDropdown(null);
-                    handleExportLibrary();
-                  }}
-                  type="button"
-                >
-                  <div className="header-action-dropdown-item-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Download size={14} style={{ color: 'rgba(255,255,255,0.5)' }} />
-                    <span>{lang === 'es' ? 'Obtener copia de seguridad' : 'Get complete local backup'}</span>
-                  </div>
-                </button>
-                {!isMobile && (
-                  <button 
-                    className="header-action-dropdown-item"
-                    onClick={() => {
-                      setActiveHeaderDropdown(null);
-                      if (!document.fullscreenElement) {
-                        document.documentElement.requestFullscreen().catch(err => {
-                          console.error(`Error enabling full-screen mode: ${err.message}`);
-                        });
-                      } else {
-                        if (document.exitFullscreen) {
-                          document.exitFullscreen();
-                        }
-                      }
-                    }}
-                    type="button"
-                  >
-                    <div className="header-action-dropdown-item-header" style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%' }}>
-                      <Maximize size={14} style={{ color: 'rgba(255,255,255,0.5)' }} />
-                      <span>{lang === 'es' ? 'Alternar pantalla completa' : 'Toggle fullscreen'}</span>
-                      <span style={{ marginLeft: 'auto', fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '4px' }}>F</span>
-                    </div>
-                  </button>
-                )}
-                {!isMobile && (
-                  <button 
-                    className="header-action-dropdown-item"
-                    onClick={() => {
-                      setActiveHeaderDropdown(null);
-                      alert(lang === 'es' ? "Atajos:\n- Q: Abrir ajustes de visualización\n- Esc: Cerrar modales/popups\n- Flechas: Navegar páginas" : "Shortcuts:\n- Q: Open display settings\n- Esc: Close modals/popups\n- Arrows: Navigate pages");
-                    }}
-                    type="button"
-                  >
-                    <div className="header-action-dropdown-item-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Keyboard size={14} style={{ color: 'rgba(255,255,255,0.5)' }} />
-                      <span>{lang === 'es' ? 'Atajos de teclado' : 'Keyboard shortcuts'}</span>
-                    </div>
-                  </button>
-                )}
-                <button 
-                  className="header-action-dropdown-item"
-                  onClick={() => {
-                    setActiveHeaderDropdown(null);
-                    window.open('https://discord.com/invite/NwKYJAUeA', '_blank');
-                  }}
-                  type="button"
-                >
-                  <div className="header-action-dropdown-item-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Bug size={14} style={{ color: 'rgba(255,255,255,0.5)' }} />
-                    <span>{lang === 'es' ? 'Reportar un error' : 'Report a bug'}</span>
-                  </div>
-                </button>
-                <button 
-                  className="header-action-dropdown-item"
-                  onClick={() => {
-                    setActiveHeaderDropdown(null);
-                    alert(lang === 'es' ? "Yoru Reader v1.2.0\nCreado para aprender japonés leyendo novelas." : "Yoru Reader v1.2.0\nCreated for learning Japanese by reading novels.");
-                  }}
-                  type="button"
-                >
-                  <div className="header-action-dropdown-item-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Info size={14} style={{ color: 'rgba(255,255,255,0.5)' }} />
-                    <span>{lang === 'es' ? 'Acerca de' : 'About'}</span>
-                  </div>
-                </button>
-              </div>
-            )}
-          </div>
-
           {/* Profile Selector Widget */}
           <div className="header-profile-widget" ref={profileWidgetRef}>
             <div 
@@ -8616,8 +8493,16 @@ const Library = React.memo(function Library({
             handleUploadBackupToGDrive: handleUploadGDrive,
             handleDownloadBackupFromGDrive: handleDownloadGDrive
           }}
+          onOpenTutorial={() => setShowTutorialModal(true)}
         />
       )}
+
+      {/* Onboarding Mini-Tutorial Modal */}
+      <OnboardingTutorialModal
+        isOpen={showTutorialModal}
+        onClose={() => setShowTutorialModal(false)}
+        lang={lang}
+      />
 
       {/* Custom Toast Notification Styled with App Theme */}
       {toast.show && (
