@@ -716,7 +716,13 @@ export async function parseEPUB(arrayBuffer: ArrayBuffer): Promise<any> {
 
 // 5. PDF Parser
 export async function parsePDF(arrayBuffer: ArrayBuffer, fallbackTitle?: string): Promise<ParsedBook> {
-  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  const loadingTask = pdfjsLib.getDocument({
+    data: new Uint8Array(arrayBuffer),
+    cMapUrl: './cmaps/',
+    cMapPacked: true,
+    standardFontDataUrl: './standard_fonts/',
+    enableXfa: false
+  });
   const pdfDoc = await loadingTask.promise;
   const numPages = pdfDoc.numPages;
 
@@ -876,7 +882,14 @@ export async function parsePDF(arrayBuffer: ArrayBuffer, fallbackTitle?: string)
             lines.push(colText.trim());
           }
         }
-        pageText = lines.join('\n');
+
+        // If page has substantial text, filter out isolated line numbers (1..99)
+        const hasJapanese = lines.some(l => /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(l));
+        const filteredLines = hasJapanese
+          ? lines.filter(l => !/^\d{1,4}$/.test(l.trim()))
+          : lines;
+
+        pageText = (filteredLines.length > 0 ? filteredLines : lines).join('\n');
       } else {
         // HORIZONTAL (Top to Bottom lines, Left to Right text)
         const lines: TextItemData[][] = [];
