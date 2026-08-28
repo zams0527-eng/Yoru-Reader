@@ -16,11 +16,54 @@ Lector de novelas ligeras en japonés con integración de diccionarios (Yomitan 
 
 ---
 
-### 🐧 Cómo instalar en Linux (Flatpak)
+## 🐧 Guía de instalación en Linux (Flatpak)
+
+Si no tienes **Flatpak** instalado en tu distribución Linux, instálalo primero siguiendo estos pasos:
+
+### 1️⃣ Instalar Flatpak en tu distribución
+
+* **Ubuntu / Debian / Linux Mint:**
+  ```bash
+  sudo apt update
+  sudo apt install -y flatpak
+  ```
+
+* **Fedora / RHEL:**
+  ```bash
+  sudo dnf install flatpak
+  ```
+
+* **Arch Linux / Manjaro:**
+  ```bash
+  sudo pacman -S flatpak
+  ```
+
+* **openSUSE:**
+  ```bash
+  sudo zypper install flatpak
+  ```
+
+---
+
+### 2️⃣ Agregar el repositorio Flathub (Recomendado)
 ```bash
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+```
+
+---
+
+### 3️⃣ Instalar y ejecutar Yoru Reader
+
+Una vez descargado el archivo `Yoru-Reader-1.1.4-x86_64.flatpak`:
+
+```bash
+# Instalar el paquete descargado
 flatpak install --user Yoru-Reader-1.1.4-x86_64.flatpak
+
+# Ejecutar la aplicación
 flatpak run com.yorureader.app
 ```
+*(También aparecerá directamente en el menú de aplicaciones de tu escritorio).*
 
 ---
 
