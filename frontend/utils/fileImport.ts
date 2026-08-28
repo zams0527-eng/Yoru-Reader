@@ -836,17 +836,34 @@ export async function parsePDF(arrayBuffer: ArrayBuffer, fallbackTitle?: string)
         const maxY = Math.max(...items.map(i => i.y));
         const totalHeight = maxY - minY;
 
-        // Check if items are split into distinct upper and lower bands (2段組)
-        const midY = minY + totalHeight * 0.48;
-        const topItems = items.filter(i => i.y >= midY);
-        const bottomItems = items.filter(i => i.y < midY);
+        // Dynamically find the horizontal gutter / gap between vertical bands (2段組)
+        const yValues = items.map(i => i.y).sort((a, b) => a - b);
+        let maxGap = 0;
+        let bestSplitY = minY + totalHeight * 0.5;
 
-        const hasMultiBand = totalHeight > 250 &&
-                             topItems.length > 8 && 
-                             bottomItems.length > 8 && 
-                             (topItems.length / items.length > 0.2) && 
-                             (bottomItems.length / items.length > 0.2);
+        for (let idx = 0; idx < yValues.length - 1; idx++) {
+          const y1 = yValues[idx];
+          const y2 = yValues[idx + 1];
+          const gap = y2 - y1;
+          const normalizedMid = (y1 + y2) / 2;
+          if (normalizedMid > minY + totalHeight * 0.28 && normalizedMid < minY + totalHeight * 0.72) {
+            if (gap > maxGap) {
+              maxGap = gap;
+              bestSplitY = normalizedMid;
+            }
+          }
+        }
 
+        const topItems = items.filter(i => i.y >= bestSplitY);
+        const bottomItems = items.filter(i => i.y < bestSplitY);
+
+        const hasMultiBand = totalHeight > 200 &&
+                             topItems.length >= 5 && 
+                             bottomItems.length >= 5 && 
+                             (topItems.length / items.length > 0.15) && 
+                             (bottomItems.length / items.length > 0.15);
+
+        // Upper band (larger Y) is processed first, followed by lower band (smaller Y)
         const bands = hasMultiBand ? [topItems, bottomItems] : [items];
         const allBandLines: string[] = [];
 

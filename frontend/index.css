@@ -392,6 +392,27 @@ button {
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+.reader-container::-webkit-scrollbar,
+.reader-engine-container::-webkit-scrollbar,
+.reader-engine-content::-webkit-scrollbar,
+.book-content-container::-webkit-scrollbar,
+.book-content::-webkit-scrollbar {
+  display: none !important;
+  width: 0px !important;
+  height: 0px !important;
+  background: transparent !important;
+}
+
+.reader-engine-container,
+.reader-engine-content,
+.book-content-container,
+.book-content {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
 
 body.reader-active {
