@@ -34,6 +34,7 @@
     "jszip": "^3.10.1",
     "kuromoji": "^0.1.2",
     "lucide-react": "^1.23.0",
+    "pdfjs-dist": "^6.2.108",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "ts-fsrs": "^5.4.1",
@@ -83,7 +84,13 @@
     },
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
       "icon": "build/icon.icns",
       "category": "public.app-category.education"
@@ -93,7 +100,12 @@
     },
     "linux": {
       "target": [
-        { "target": "flatpak", "arch": ["x64"] }
+        {
+          "target": "flatpak",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build/icon.png",
       "category": "Education",

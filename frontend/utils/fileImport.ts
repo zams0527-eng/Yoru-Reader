@@ -1,4 +1,10 @@
 import JSZip from 'jszip';
+import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+
+if (typeof window !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+}
 
 export interface BookChapter {
   title: string;
@@ -708,7 +714,161 @@ export async function parseEPUB(arrayBuffer: ArrayBuffer): Promise<any> {
   };
 }
 
-// 5. General Router to Import Any Book File
+// 5. PDF Parser
+export async function parsePDF(arrayBuffer: ArrayBuffer, fallbackTitle?: string): Promise<ParsedBook> {
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  const pdfDoc = await loadingTask.promise;
+  const numPages = pdfDoc.numPages;
+
+  let title = fallbackTitle || 'Documento PDF';
+  let author = 'Archivo PDF';
+
+  try {
+    const meta = await pdfDoc.getMetadata();
+    if (meta && meta.info) {
+      const info = meta.info as any;
+      if (info.Title && typeof info.Title === 'string' && info.Title.trim()) {
+        title = info.Title.trim();
+      }
+      if (info.Author && typeof info.Author === 'string' && info.Author.trim()) {
+        author = info.Author.trim();
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to read PDF metadata:', e);
+  }
+
+  // Generate thumbnail from first page
+  let cover = '';
+  try {
+    if (numPages > 0) {
+      const firstPage = await pdfDoc.getPage(1);
+      const viewport = firstPage.getViewport({ scale: 1.0 });
+      const scale = Math.min(1.5, Math.max(0.5, 320 / viewport.width));
+      const scaledViewport = firstPage.getViewport({ scale });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.floor(scaledViewport.width);
+      canvas.height = Math.floor(scaledViewport.height);
+      const context = canvas.getContext('2d');
+
+      if (context) {
+        context.fillStyle = '#ffffff';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        
+        await firstPage.render({
+          canvasContext: context,
+          viewport: scaledViewport
+        }).promise;
+        cover = canvas.toDataURL('image/jpeg', 0.85);
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to extract PDF cover:', e);
+  }
+
+  if (!cover) {
+    cover = getRandomGradient();
+  }
+
+  // Extract text by page
+  const pageTexts: { pageNum: number; text: string }[] = [];
+  for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+    try {
+      const page = await pdfDoc.getPage(pageNum);
+      const textContent = await page.getTextContent();
+
+      let lastY: number | null = null;
+      const lines: string[] = [];
+      let currentLine = '';
+
+      for (const item of textContent.items as any[]) {
+        if (!('str' in item)) continue;
+        const str = item.str;
+        if (!str && str !== '') continue;
+
+        const currentY = item.transform ? Math.round(item.transform[5]) : null;
+        if (lastY !== null && currentY !== null && Math.abs(currentY - lastY) > 4) {
+          if (currentLine.trim()) {
+            lines.push(currentLine.trim());
+          }
+          currentLine = str;
+        } else {
+          currentLine += str;
+        }
+        lastY = currentY;
+      }
+
+      if (currentLine.trim()) {
+        lines.push(currentLine.trim());
+      }
+
+      const pageText = lines.join('\n');
+      if (pageText.trim()) {
+        pageTexts.push({ pageNum, text: pageText });
+      }
+    } catch (pageErr) {
+      console.warn(`Error reading PDF page ${pageNum}:`, pageErr);
+    }
+  }
+
+  if (pageTexts.length === 0) {
+    throw new Error('El PDF no contiene texto digital legible (es posible que esté compuesto únicamente por imágenes o escaneos sin OCR).');
+  }
+
+  // Group pages into chapters
+  const chapters: BookChapter[] = [];
+  const chapterPattern = /^(第[一二三四五六七八九十百0-9]+[章話回幕節部]|Chapter\s+\d+|#\s+|CAP[ÍI]TULO\s+\d+).*$/i;
+
+  let currentTitle = numPages <= 10 ? 'Página 1' : 'Sección 1';
+  let currentContent: string[] = [];
+
+  for (let i = 0; i < pageTexts.length; i++) {
+    const { pageNum, text } = pageTexts[i];
+    const lines = text.split('\n');
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (chapterPattern.test(trimmed)) {
+        if (currentContent.length > 0) {
+          chapters.push({
+            title: currentTitle,
+            content: currentContent.join('\n')
+          });
+          currentContent = [];
+        }
+        currentTitle = trimmed.replace(/^#\s+/, '');
+      }
+      currentContent.push(line);
+    }
+
+    // Group long documents without explicit chapter headers into 15-page sections
+    if (pageTexts.length > 20 && (i + 1) % 15 === 0 && currentContent.length > 0) {
+      chapters.push({
+        title: currentTitle,
+        content: currentContent.join('\n')
+      });
+      currentContent = [];
+      currentTitle = `Páginas ${pageNum + 1}-${Math.min(pageNum + 15, numPages)}`;
+    }
+  }
+
+  if (currentContent.length > 0 || chapters.length === 0) {
+    chapters.push({
+      title: currentTitle,
+      content: currentContent.join('\n')
+    });
+  }
+
+  return {
+    title,
+    author,
+    cover,
+    chapters
+  };
+}
+
+// 6. General Router to Import Any Book File
 export function importBookFile(file: File): Promise<ParsedBook> {
   return new Promise((resolve, reject) => {
     const filename = file.name;
@@ -728,6 +888,19 @@ export function importBookFile(file: File): Promise<ParsedBook> {
         }
       };
       reader.onerror = () => reject(new Error('Fallo al leer archivo EPUB'));
+      reader.readAsArrayBuffer(file);
+    } else if (extension === 'pdf') {
+      const reader = new FileReader();
+      reader.onload = async (e: any) => {
+        try {
+          const fallbackTitle = filename.replace(/\.[^/.]+$/, "");
+          const parsed = await parsePDF(e.target.result, fallbackTitle);
+          resolve(parsed);
+        } catch (err: any) {
+          reject(new Error(`Fallo al parsear PDF: ${err.message}`));
+        }
+      };
+      reader.onerror = () => reject(new Error('Fallo al leer archivo PDF'));
       reader.readAsArrayBuffer(file);
     } else {
       const reader = new FileReader();

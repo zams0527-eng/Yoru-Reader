@@ -6783,7 +6783,7 @@ const Library = React.memo(function Library({
           {/* Hidden file input */}
           <input 
             type="file" 
-            accept=".epub,.html,.htm,.txt,.rtf,.srt,.vtt,.ass,.ssa" 
+            accept=".epub,.pdf,.html,.htm,.txt,.rtf,.srt,.vtt,.ass,.ssa" 
             multiple
             className="hidden-file-input"
             ref={fileInputRef}
@@ -6842,7 +6842,7 @@ const Library = React.memo(function Library({
                     <span>{lang === 'es' ? 'Importar archivo(s)' : 'Import File(s)'}</span>
                   </div>
                   <div className="header-action-dropdown-item-desc">
-                    {lang === 'es' ? 'Archivos EPUB, HTMLZ y texto' : 'EPUB, HTMLZ, and text files'}
+                    {lang === 'es' ? 'Archivos EPUB, PDF, HTML y texto' : 'EPUB, PDF, HTML, and text files'}
                   </div>
                 </button>
                 <button 
@@ -7633,7 +7633,7 @@ const Library = React.memo(function Library({
                 {/* Right: info + actions */}
                 <div className="empty-hero-right">
                   <div className="empty-info-panel">
-                    <p><strong>{lang === 'es' ? 'Formatos compatibles:' : 'Supported formats:'}</strong><br />epub, html, txt, rtf, {lang === 'es' ? 'subtítulos' : 'subtitles'}</p>
+                    <p><strong>{lang === 'es' ? 'Formatos compatibles:' : 'Supported formats:'}</strong><br />epub, pdf, html, txt, rtf, {lang === 'es' ? 'subtítulos' : 'subtitles'}</p>
                     <p><strong>{lang === 'es' ? 'Formatos de subtítulos:' : 'Subtitle formats:'}</strong><br />srt, vtt, ass, ssa</p>
                   </div>
 
