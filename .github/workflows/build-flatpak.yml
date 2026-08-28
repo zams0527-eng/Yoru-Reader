@@ -1,0 +1,45 @@
+name: Build Linux Flatpak
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-flatpak:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Build frontend (skip svelte submodule)
+        run: npx vite build
+
+      - name: Install Flatpak tools
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y flatpak flatpak-builder elfutils
+          sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          sudo flatpak install -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+          sudo flatpak install -y flathub org.electronjs.Electron2.BaseApp//24.08
+
+      - name: Build Flatpak
+        run: |
+          npx electron-builder --linux flatpak --x64 \
+            --config.directories.output=releases/linux
+        env:
+          DEBUG: electron-builder
+
+      - name: Upload Flatpak artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: yoru-reader-linux-flatpak
+          path: releases/linux/*.flatpak
+          retention-days: 7

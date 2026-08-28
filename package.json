@@ -81,6 +81,36 @@
       "installerSidebar": "build/installerSidebar.bmp",
       "uninstallerSidebar": "build/installerSidebar.bmp"
     },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] }
+      ],
+      "category": "public.app-category.education"
+    },
+    "dmg": {
+      "artifactName": "Yoru-Reader-${version}-${arch}.dmg"
+    },
+    "linux": {
+      "target": [
+        { "target": "flatpak", "arch": ["x64"] }
+      ],
+      "category": "Education",
+      "synopsis": "Japanese light novel reader with dictionary and Anki integration"
+    },
+    "flatpak": {
+      "baseVersion": "24.08",
+      "branch": "stable",
+      "finishArgs": [
+        "--share=ipc",
+        "--share=network",
+        "--socket=x11",
+        "--socket=wayland",
+        "--socket=fallback-x11",
+        "--filesystem=home",
+        "--device=dri"
+      ],
+      "modules": []
+    },
     "files": [
       "dist/**/*",
       "backend/**/*",
