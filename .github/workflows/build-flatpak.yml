@@ -27,19 +27,41 @@ jobs:
           sudo apt-get update -y
           sudo apt-get install -y flatpak flatpak-builder elfutils
           sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-          sudo flatpak install -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
-          sudo flatpak install -y flathub org.electronjs.Electron2.BaseApp//24.08
+          sudo flatpak install -y --noninteractive flathub \
+            org.freedesktop.Platform//24.08 \
+            org.freedesktop.Sdk//24.08 \
+            org.electronjs.Electron2.BaseApp//24.08
 
       - name: Build Flatpak
         run: |
-          npx electron-builder --linux flatpak --x64 \
-            --config.directories.output=releases/linux
+          DEBUG=electron-builder npx electron-builder --linux flatpak --x64 \
+            --config.directories.output=releases/linux \
+            --config.linux.icon=build/icon.png \
+            2>&1
         env:
-          DEBUG: electron-builder
+          ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: true
+
+      - name: List output
+        if: always()
+        run: |
+          echo "=== releases/linux ==="
+          ls -lh releases/linux/ 2>/dev/null || echo "vacío"
+          find releases/linux -name "*.flatpak" 2>/dev/null || echo "no .flatpak encontrado"
 
       - name: Upload Flatpak artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: yoru-reader-linux-flatpak
           path: releases/linux/*.flatpak
           retention-days: 7
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-build-logs
+          path: |
+            releases/linux/
+            /tmp/flatpak-builder/
+          retention-days: 3

@@ -85,6 +85,7 @@
       "target": [
         { "target": "dmg", "arch": ["x64", "arm64"] }
       ],
+      "icon": "build/icon.icns",
       "category": "public.app-category.education"
     },
     "dmg": {
@@ -94,8 +95,13 @@
       "target": [
         { "target": "flatpak", "arch": ["x64"] }
       ],
+      "icon": "build/icon.png",
       "category": "Education",
-      "synopsis": "Japanese light novel reader with dictionary and Anki integration"
+      "synopsis": "Japanese light novel reader with dictionary and Anki integration",
+      "desktop": {
+        "Name": "Yoru Reader",
+        "Comment": "Japanese light novel reader"
+      }
     },
     "flatpak": {
       "baseVersion": "24.08",
