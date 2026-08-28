@@ -538,7 +538,7 @@ export default function SettingsModal({
           <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(255,224,0,0.1)', color: 'var(--primary)' }}>{lang === 'es' ? 'ACTIVO' : 'ACTIVE'}</span>
         </div>
         <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.4)', margin: 0 }}>
-          {lang === 'es' ? 'Base de datos Yomitan de diccionario integrada correctamente.' : 'Integrated Yomitan dictionary database loaded.'}
+          {lang === 'es' ? 'Base de datos de diccionario integrada correctamente.' : 'Integrated dictionary database loaded.'}
         </p>
       </div>
     </div>

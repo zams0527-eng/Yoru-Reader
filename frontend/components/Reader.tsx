@@ -1016,7 +1016,7 @@ export default function Reader({
     let host = 'http://127.0.0.1:8765';
     let deck = 'sentence mining';
     let noteType = 'Lapis';
-    let rawTags = 'yomitan';
+    let rawTags = 'yoru-reader';
     let fieldsConfig = {
       Expression: '{expression}',
       ExpressionFurigana: '{furigana}',

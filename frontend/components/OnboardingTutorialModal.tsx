@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { BookOpen, Search, Keyboard, Sparkles, CheckCircle2, ChevronRight, ChevronLeft, X, Layers, Volume2, Bookmark, Compass } from 'lucide-react';
 
 interface OnboardingTutorialModalProps {
@@ -159,7 +159,7 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
             </div>
           )}
 
-          {/* STEP 2: Yomitan & Dictionary */}
+          {/* STEP 2: Smart Dictionary */}
           {currentStep === 1 && (
             <div style={{ animation: 'fadeIn 0.25s ease-out' }}>
               <div style={{
@@ -177,28 +177,44 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
                 <Search size={28} />
               </div>
               <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '8px', color: '#fff' }}>
-                {lang === 'es' ? 'Diccionario Yomitan y Furigana' : 'Integrated Yomitan & Furigana'}
+                {lang === 'es' ? 'Diccionario Inteligente y Furigana' : 'Smart Dictionary & Furigana'}
               </h2>
               <p style={{ color: '#a0a0b0', fontSize: '0.95rem', lineHeight: '1.5', marginBottom: '16px' }}>
                 {lang === 'es'
-                  ? 'Haz clic o pasa el cursor sobre cualquier palabra japonesa para consultar su significado al instante.'
-                  : 'Click or hover over any Japanese word to instantly view definitions, furigana, and audio.'}
+                  ? 'Consulta cualquier término japonés mientras lees de forma rápida y sin interrupciones:'
+                  : 'Look up any Japanese word while reading quickly and seamlessly:'}
               </p>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <Volume2 size={20} style={{ color: '#FFE000', flexShrink: 0 }} />
+                <div style={{ background: 'rgba(255, 224, 0, 0.08)', border: '1px solid rgba(255, 224, 0, 0.3)', borderRadius: '10px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ background: '#FFE000', color: '#000', padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 800, flexShrink: 0 }}>
+                    SHIFT
+                  </span>
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#fff' }}>{lang === 'es' ? 'Audio y Pronunciación' : 'Audio & Pronunciation'}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#888899' }}>{lang === 'es' ? 'Escucha la pronunciación nativa de cada término y su pitch accent.' : 'Listen to native pronunciation and pitch accent.'}</div>
+                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#FFE000' }}>
+                      {lang === 'es' ? 'Coloca el cursor + Presiona Shift' : 'Hover word + Press Shift'}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: '#ccc' }}>
+                      {lang === 'es' 
+                        ? 'En el modo de lectura, pon el ratón sobre cualquier palabra y pulsa Shift para abrir el diccionario.' 
+                        : 'In reading mode, place your cursor over any word and press Shift to show definition.'}
+                    </div>
                   </div>
                 </div>
 
-                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <Bookmark size={20} style={{ color: '#38bdf8', flexShrink: 0 }} />
+                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <Volume2 size={18} style={{ color: '#38bdf8', flexShrink: 0 }} />
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#fff' }}>{lang === 'es' ? 'Seguimiento de Vocabulario' : 'Vocabulary Tracking'}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#888899' }}>{lang === 'es' ? 'Clasifica palabras en Nuevo, Aprendiendo, Conocido o Ignorado.' : 'Tag words as New, Learning, Known, or Ignored.'}</div>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#fff' }}>{lang === 'es' ? 'Audio y Pronunciación' : 'Audio & Pronunciation'}</div>
+                    <div style={{ fontSize: '0.78rem', color: '#888899' }}>{lang === 'es' ? 'Escucha la pronunciación nativa y consulta el pitch accent.' : 'Listen to native audio and view pitch accent.'}</div>
+                  </div>
+                </div>
+
+                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '10px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <Bookmark size={18} style={{ color: '#a3e635', flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#fff' }}>{lang === 'es' ? 'Seguimiento de Vocabulario' : 'Vocabulary Tracking'}</div>
+                    <div style={{ fontSize: '0.78rem', color: '#888899' }}>{lang === 'es' ? 'Clasifica palabras en Nuevo, Aprendiendo, Conocido o Ignorado.' : 'Tag words as New, Learning, Known, or Ignored.'}</div>
                   </div>
                 </div>
               </div>
@@ -230,6 +246,14 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
               </p>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ background: 'rgba(255, 224, 0, 0.06)', border: '1px solid rgba(255, 224, 0, 0.25)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.82rem', color: '#fff', fontWeight: 600 }}>{lang === 'es' ? 'Ver Diccionario' : 'Inspect Dictionary'}</span>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <span style={{ background: '#FFE000', color: '#000', padding: '2px 7px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 800 }}>Shift</span>
+                    <span style={{ fontSize: '0.75rem', color: '#FFE000', display: 'flex', alignItems: 'center' }}>+ Hover</span>
+                  </div>
+                </div>
+
                 <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.82rem', color: '#ccc' }}>{lang === 'es' ? 'Avanzar / Retroceder' : 'Next / Prev page'}</span>
                   <div style={{ display: 'flex', gap: '4px' }}>
@@ -256,11 +280,6 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
                 <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.82rem', color: '#ccc' }}>{lang === 'es' ? 'Ajustes de Lectura' : 'Reading Settings'}</span>
                   <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 7px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, color: '#FFE000' }}>Q</span>
-                </div>
-
-                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.82rem', color: '#ccc' }}>{lang === 'es' ? 'Cerrar / Salir' : 'Close / Exit'}</span>
-                  <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 7px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, color: '#FFE000' }}>Esc</span>
                 </div>
               </div>
             </div>

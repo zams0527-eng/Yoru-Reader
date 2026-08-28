@@ -1084,7 +1084,7 @@ const Library = React.memo(function Library({
 
         <button
           type="button"
-          onClick={() => alert(lang === 'es' ? 'Puedes descargar diccionarios Yomitan (.zip) de internet e instalarlos directamente.' : 'You can download Yomitan dictionaries (.zip) from the internet and install them directly.')}
+          onClick={() => alert(lang === 'es' ? 'Puedes descargar paquetes de diccionarios (.zip) e instalarlos directamente.' : 'You can download dictionary packages (.zip) and install them directly.')}
           style={{
             background: 'rgba(255,255,255,0.05)',
             border: 'none',
