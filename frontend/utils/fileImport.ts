@@ -744,18 +744,16 @@ export async function parsePDF(arrayBuffer: ArrayBuffer, fallbackTitle?: string)
     console.warn('Failed to read PDF metadata:', e);
   }
 
-  // Generate thumbnail from first page
+  // Generate high-resolution cover thumbnail from first page
   let cover = '';
   try {
     if (numPages > 0) {
       const firstPage = await pdfDoc.getPage(1);
-      const viewport = firstPage.getViewport({ scale: 1.0 });
-      const scale = Math.min(1.5, Math.max(0.5, 320 / viewport.width));
-      const scaledViewport = firstPage.getViewport({ scale });
+      const viewport = firstPage.getViewport({ scale: 1.5 });
 
       const canvas = document.createElement('canvas');
-      canvas.width = Math.floor(scaledViewport.width);
-      canvas.height = Math.floor(scaledViewport.height);
+      canvas.width = Math.floor(viewport.width);
+      canvas.height = Math.floor(viewport.height);
       const context = canvas.getContext('2d');
 
       if (context) {
@@ -764,9 +762,9 @@ export async function parsePDF(arrayBuffer: ArrayBuffer, fallbackTitle?: string)
         
         await firstPage.render({
           canvasContext: context,
-          viewport: scaledViewport
+          viewport: viewport
         }).promise;
-        cover = canvas.toDataURL('image/jpeg', 0.85);
+        cover = canvas.toDataURL('image/jpeg', 0.90);
       }
     }
   } catch (e) {
@@ -777,7 +775,7 @@ export async function parsePDF(arrayBuffer: ArrayBuffer, fallbackTitle?: string)
     cover = getRandomGradient();
   }
 
-  // Extract text by page using smart vertical and horizontal layout analysis
+  // Extract text by page using smart multi-band vertical (2段組) and horizontal layout analysis
   const pageTexts: { pageNum: number; text: string }[] = [];
   for (let pageNum = 1; pageNum <= numPages; pageNum++) {
     try {
@@ -833,63 +831,82 @@ export async function parsePDF(arrayBuffer: ArrayBuffer, fallbackTitle?: string)
       let pageText = '';
 
       if (isVertical) {
-        // VERTICAL JAPANESE (Right to Left columns, Top to Bottom text)
-        const columns: TextItemData[][] = [];
-        const colTolerance = 12; // Column X grouping tolerance
+        // VERTICAL JAPANESE with Multi-Band / Multi-Row (段組 - e.g. 2段組) Support
+        const minY = Math.min(...items.map(i => i.y));
+        const maxY = Math.max(...items.map(i => i.y));
+        const totalHeight = maxY - minY;
 
-        // Sort items by X descending (Right to Left)
-        const sortedByX = [...items].sort((a, b) => b.x - a.x);
+        // Check if items are split into distinct upper and lower bands (2段組)
+        const midY = minY + totalHeight * 0.48;
+        const topItems = items.filter(i => i.y >= midY);
+        const bottomItems = items.filter(i => i.y < midY);
 
-        for (const item of sortedByX) {
-          let placed = false;
+        const hasMultiBand = totalHeight > 250 &&
+                             topItems.length > 8 && 
+                             bottomItems.length > 8 && 
+                             (topItems.length / items.length > 0.2) && 
+                             (bottomItems.length / items.length > 0.2);
+
+        const bands = hasMultiBand ? [topItems, bottomItems] : [items];
+        const allBandLines: string[] = [];
+
+        for (const bandItems of bands) {
+          const columns: TextItemData[][] = [];
+          const colTolerance = 12;
+
+          // Sort items within band by X descending (Right to Left)
+          const sortedByX = [...bandItems].sort((a, b) => b.x - a.x);
+
+          for (const item of sortedByX) {
+            let placed = false;
+            for (const col of columns) {
+              const avgX = col.reduce((sum, c) => sum + c.x, 0) / col.length;
+              if (Math.abs(item.x - avgX) <= colTolerance) {
+                col.push(item);
+                placed = true;
+                break;
+              }
+            }
+            if (!placed) {
+              columns.push([item]);
+            }
+          }
+
+          // Sort columns strictly Right to Left (average X descending)
+          columns.sort((a, b) => {
+            const avgA = a.reduce((sum, c) => sum + c.x, 0) / a.length;
+            const avgB = b.reduce((sum, c) => sum + c.x, 0) / b.length;
+            return avgB - avgA;
+          });
+
           for (const col of columns) {
-            const avgX = col.reduce((sum, c) => sum + c.x, 0) / col.length;
-            if (Math.abs(item.x - avgX) <= colTolerance) {
-              col.push(item);
-              placed = true;
-              break;
+            // Sort within column from Top to Bottom (Y descending)
+            col.sort((a, b) => b.y - a.y);
+
+            let colText = '';
+            let lastY = col[0].y;
+            for (const item of col) {
+              // Large vertical break inside column
+              if (Math.abs(lastY - item.y) > 55 && colText.trim()) {
+                allBandLines.push(colText.trim());
+                colText = '';
+              }
+              colText += item.str;
+              lastY = item.y;
             }
-          }
-          if (!placed) {
-            columns.push([item]);
+            if (colText.trim()) {
+              allBandLines.push(colText.trim());
+            }
           }
         }
 
-        // Sort columns strictly Right to Left (average X descending)
-        columns.sort((a, b) => {
-          const avgA = a.reduce((sum, c) => sum + c.x, 0) / a.length;
-          const avgB = b.reduce((sum, c) => sum + c.x, 0) / b.length;
-          return avgB - avgA;
-        });
-
-        const lines: string[] = [];
-        for (const col of columns) {
-          // Within each column, sort Top to Bottom (Y descending)
-          col.sort((a, b) => b.y - a.y);
-
-          let colText = '';
-          let lastY = col[0].y;
-          for (const item of col) {
-            // If there is a large vertical gap in the column (e.g. title followed by author after empty space)
-            if (Math.abs(lastY - item.y) > 60 && colText.trim()) {
-              lines.push(colText.trim());
-              colText = '';
-            }
-            colText += item.str;
-            lastY = item.y;
-          }
-          if (colText.trim()) {
-            lines.push(colText.trim());
-          }
-        }
-
-        // If page has substantial text, filter out isolated line numbers (1..99)
-        const hasJapanese = lines.some(l => /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(l));
+        // If page has substantial Japanese text, filter out isolated line numbers (1..99)
+        const hasJapanese = allBandLines.some(l => /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(l));
         const filteredLines = hasJapanese
-          ? lines.filter(l => !/^\d{1,4}$/.test(l.trim()))
-          : lines;
+          ? allBandLines.filter(l => !/^\d{1,4}$/.test(l.trim()))
+          : allBandLines;
 
-        pageText = (filteredLines.length > 0 ? filteredLines : lines).join('\n');
+        pageText = (filteredLines.length > 0 ? filteredLines : allBandLines).join('\n');
       } else {
         // HORIZONTAL (Top to Bottom lines, Left to Right text)
         const lines: TextItemData[][] = [];
