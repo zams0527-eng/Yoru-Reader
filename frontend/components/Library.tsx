@@ -294,13 +294,31 @@ const Library = React.memo(function Library({
       }
     } else {
       setUpdating(true);
-      const targetUrl = remoteManifest?.url 
-        ? remoteManifest.url 
-        : (isAndroid 
-            ? 'https://github.com/zams0527-eng/Yoru-Reader/raw/main/downloads/Yoru-Reader-1.1.0.apk'
-            : 'https://github.com/zams0527-eng/Yoru-Reader/raw/main/downloads/Yoru-Reader%20Setup%201.1.0.exe'
-          );
-          
+
+      // Detect platform for correct download link
+      const version = remoteManifest?.appVersion || '1.1.4';
+      const ua = navigator.userAgent.toLowerCase();
+      const platform = ((navigator as any).userAgentData?.platform || navigator.platform || '').toLowerCase();
+      const isMacArm = (platform.includes('mac') || ua.includes('mac')) && (ua.includes('arm') || ua.includes('apple'));
+      const isMac = platform.includes('mac') || ua.includes('macintosh');
+      const isLinux = (platform.includes('linux') || ua.includes('linux')) && !isAndroid;
+
+      let targetUrl: string;
+      if (remoteManifest?.url) {
+        targetUrl = remoteManifest.url;
+      } else if (isAndroid) {
+        targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/yorureader/Yoru-Reader-${version}-android.apk`;
+      } else if (isMacArm) {
+        targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/yorureader/Yoru-Reader-${version}-mac-arm64.zip`;
+      } else if (isMac) {
+        targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/yorureader/Yoru-Reader-${version}-mac-x64.zip`;
+      } else if (isLinux) {
+        targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/yorureader/Yoru-Reader-${version}-x86_64.flatpak`;
+      } else {
+        // Default: Windows
+        targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/yorureader/Yoru-Reader.Setup.${version}.exe`;
+      }
+        
       window.open(targetUrl, '_blank');
       
       setTimeout(() => {

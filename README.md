@@ -1,16 +1,32 @@
-# React + Vite
+# Yoru Reader 🌙 📖
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Lector de novelas ligeras en japonés con integración de diccionarios (Yomitan / Kuromoji), análisis de frecuencia, audio TTS y sincronización de tarjetas SRS / AnkiConnect.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 📥 Descargas oficiales (v1.1.4)
 
-## React Compiler
+| Plataforma | Paquete | Enlace de descarga |
+| :--- | :--- | :--- |
+| **🪟 Windows** | Portable (`.zip`) / Instalador | [⬇️ Descargar Windows (x64)](https://github.com/zams0527-eng/Yoru-Reader/releases/download/yorureader/Yoru-Reader-1.1.4-win-x64.zip) |
+| **🍎 macOS (Apple Silicon)** | App Bundle (`.zip`) | [⬇️ Descargar macOS (M1/M2/M3/M4 - arm64)](https://github.com/zams0527-eng/Yoru-Reader/releases/download/yorureader/Yoru-Reader-1.1.4-mac-arm64.zip) |
+| **🍎 macOS (Intel)** | App Bundle (`.zip`) | [⬇️ Descargar macOS (Intel - x64)](https://github.com/zams0527-eng/Yoru-Reader/releases/download/yorureader/Yoru-Reader-1.1.4-mac-x64.zip) |
+| **🐧 Linux** | Flatpak (`.flatpak`) | [⬇️ Descargar Flatpak (x86_64)](https://github.com/zams0527-eng/Yoru-Reader/releases/download/yorureader/Yoru-Reader-1.1.4-x86_64.flatpak) |
+| **📱 Android** | APK | [⬇️ Descargar Android APK](https://github.com/zams0527-eng/Yoru-Reader/releases/download/yorureader/Yoru-Reader-1.1.0.apk) |
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the Oxlint configuration
+### 🐧 Cómo instalar en Linux (Flatpak)
+```bash
+flatpak install --user Yoru-Reader-1.1.4-x86_64.flatpak
+flatpak run com.yorureader.app
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+---
+
+## ✨ Características principales
+- 📚 **Lector EPUB/TXT**: Soporte completo para texto en vertical y horizontal.
+- 🔍 **Diccionario integrado**: Búsqueda instantánea con pitch accent, definiciones y conjugaciones.
+- 🎴 **Integración SRS & Anki**: Creación y sincronización de tarjetas con audio y contexto en un clic.
+- 📊 **Estadísticas de lectura**: Registro de caracteres leídos, velocidad y vocabulario aprendido.
+- ☁️ **Sincronización en la nube**: Respaldo automático con Google Drive.
