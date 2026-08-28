@@ -399,52 +399,44 @@ ipcMain.handle('download-and-install-update', async (event, { urlString }) => {
           try { fs.unlinkSync(installerPath); } catch (_) {}
           reject(err);
         });
-        
+
         res.on('data', (chunk) => {
-          fileStream.write(chunk);
           downloadedLength += chunk.length;
           if (totalLength > 0) {
-            const percent = Math.min(100, Math.round((downloadedLength / totalLength) * 100));
+            const percent = Math.min(99, Math.round((downloadedLength / totalLength) * 100));
             event.sender.send('update-download-progress', { percent, downloadedBytes: downloadedLength, totalBytes: totalLength, status: 'downloading' });
           } else {
             event.sender.send('update-download-progress', { percent: -1, downloadedBytes: downloadedLength, totalBytes: -1, status: 'downloading' });
           }
         });
-        
-        res.on('end', () => {
-          fileStream.end();
-        });
+
+        res.pipe(fileStream);
         
         fileStream.on('finish', () => {
           console.log('[update-downloader] Download completed. Installer saved to:', installerPath);
           event.sender.send('update-download-progress', { percent: 100, status: 'installing' });
           
-          // Now execute the installer and exit
           try {
-            console.log('[update-downloader] Launching installer with silent flag...');
-            // In Windows NSIS installers: /S for silent install
-            const child = spawn(installerPath, ['/S'], {
-              detached: true,
-              stdio: 'ignore'
+            console.log('[update-downloader] Executing installer...');
+            const { exec } = require('child_process');
+            exec(`"${installerPath}" /S`, (execErr) => {
+              if (execErr) {
+                console.warn('[update-downloader] Silent install failed, opening installer directly:', execErr);
+                shell.openPath(installerPath);
+              }
             });
-            child.unref();
             
-            // Quit app after a short delay so installer can replace files cleanly
+            // Quit app cleanly so the installer can replace the app files
             setTimeout(() => {
               app.quit();
-            }, 1200);
+            }, 1000);
             
             resolve({ success: true });
           } catch (spawnErr) {
-            console.error('[update-downloader] Error spawning installer, trying fallback without flags:', spawnErr);
-            try {
-              const fallbackChild = spawn(installerPath, [], { detached: true, stdio: 'ignore' });
-              fallbackChild.unref();
-              setTimeout(() => { app.quit(); }, 1200);
-              resolve({ success: true });
-            } catch (fallbackErr) {
-              reject(fallbackErr);
-            }
+            console.error('[update-downloader] Error launching installer:', spawnErr);
+            shell.openPath(installerPath);
+            setTimeout(() => { app.quit(); }, 1000);
+            resolve({ success: true });
           }
         });
         

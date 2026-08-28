@@ -91,7 +91,7 @@ const Library = React.memo(function Library({
   const [backendStatus, setBackendStatus] = useState('up-to-date'); // 'up-to-date' | 'out-of-date'
   const [appStatus, setAppStatus] = useState('up-to-date'); // 'up-to-date' | 'out-of-date'
   const [currentBackendVersion, setCurrentBackendVersion] = useState(stableManifest.backendVersion);
-  const [currentAppVersion, setCurrentAppVersion] = useState(stableManifest.appVersion);
+  const [currentAppVersion, setCurrentAppVersion] = useState('1.1.3');
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
   const [remoteManifest, setRemoteManifest] = useState<any>(null);
   const [bindingKeyAction, setBindingKeyAction] = useState(null);
@@ -127,24 +127,27 @@ const Library = React.memo(function Library({
         return;
       }
       
-      const currentBindings = settings.keybindings || {
-        toggleFullscreen: 'f',
-        nextPage: 'ArrowRight',
-        prevPage: 'ArrowLeft',
-        toggleMenu: 'Escape',
-        readAloud: 't'
-      };
+      // Build string
+      const parts = [];
+      if (e.ctrlKey) parts.push('Control');
+      if (e.shiftKey) parts.push('Shift');
+      if (e.altKey) parts.push('Alt');
+      if (e.metaKey) parts.push('Meta');
       
-      const updatedBindings = {
-        ...currentBindings,
-        [bindingKeyAction]: keyName
-      };
+      // Standardize printable key representation
+      let formattedKey = keyName;
+      if (keyName === ' ') formattedKey = 'Space';
+      else if (keyName.length === 1) formattedKey = keyName.toUpperCase();
       
-      onSaveSettings({
-        ...settings,
-        keybindings: updatedBindings
-      });
+      if (!parts.includes(formattedKey)) {
+        parts.push(formattedKey);
+      }
+
+      const shortcut = parts.join('+');
       
+      const customShortcuts = { ...(settings.customShortcuts || {}) };
+      customShortcuts[bindingKeyAction] = shortcut;
+      onSaveSettings({ ...settings, customShortcuts });
       setBindingKeyAction(null);
     };
 
@@ -155,12 +158,14 @@ const Library = React.memo(function Library({
   }, [bindingKeyAction, settings, onSaveSettings]);
 
   // --- Semver comparison helper ---
-  const isNewerVersion = (remote: string, local: string): boolean => {
-    const r = remote.split('.').map(Number);
-    const l = local.split('.').map(Number);
-    for (let i = 0; i < Math.max(r.length, l.length); i++) {
-      const rv = r[i] || 0;
-      const lv = l[i] || 0;
+  const isNewerVersion = (remote: string, local: string) => {
+    if (!remote || !local) return false;
+    const rParts = remote.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+    const lParts = local.replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+    const maxLen = Math.max(rParts.length, lParts.length);
+    for (let i = 0; i < maxLen; i++) {
+      const rv = rParts[i] || 0;
+      const lv = lParts[i] || 0;
       if (rv > lv) return true;
       if (rv < lv) return false;
     }
@@ -194,7 +199,7 @@ const Library = React.memo(function Library({
           return;
         }
 
-        const appNewer = isNewerVersion(remote.appVersion, stableManifest.appVersion);
+        const appNewer = isNewerVersion(remote.appVersion, '1.1.3');
         const backendNewer = isNewerVersion(remote.backendVersion, stableManifest.backendVersion);
 
         setLatestAppVersion(remote.appVersion);
@@ -233,7 +238,7 @@ const Library = React.memo(function Library({
         return;
       }
 
-      const appNewer = isNewerVersion(remote.appVersion, stableManifest.appVersion);
+      const appNewer = isNewerVersion(remote.appVersion, '1.1.3');
       const backendNewer = isNewerVersion(remote.backendVersion, stableManifest.backendVersion);
 
       setLatestAppVersion(remote.appVersion);
@@ -290,13 +295,10 @@ const Library = React.memo(function Library({
         setUpdatePhase(null);
         showToast(
           lang === 'es'
-            ? 'Error al descargar el instalador. Abriendo opciones de descarga...'
-            : 'Error downloading installer. Opening download options...',
+            ? `Error al descargar actualización: ${err?.message || 'Revisa tu conexión e intenta de nuevo'}`
+            : `Update download error: ${err?.message || 'Check your connection and try again'}`,
           'error'
         );
-        // Fallback to opening browser
-        const browserUrl = remoteManifest?.url || 'https://github.com/zams0527-eng/Yoru-Reader/releases/latest';
-        window.open(browserUrl, '_blank');
       }
     } else {
       setUpdating(true);
