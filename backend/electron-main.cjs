@@ -332,8 +332,8 @@ ipcMain.handle('download-google-drive', async (event, { urlString, id }) => {
 });
 
 ipcMain.handle('download-and-install-update', async (event, { urlString }) => {
-  console.log('[update-downloader] Starting update download from:', urlString);
-  const installerPath = path.join(app.getPath('temp'), 'Yoru-Reader-Setup.exe');
+  console.log('[update-downloader] Starting in-app update download from:', urlString);
+  const installerPath = path.join(app.getPath('temp'), 'Yoru-Reader-Update-Setup.exe');
   
   // Clean up existing installer if it exists
   try {
@@ -346,20 +346,35 @@ ipcMain.handle('download-and-install-update', async (event, { urlString }) => {
 
   return new Promise((resolve, reject) => {
     let fileStream = null;
+    let redirectCount = 0;
+    const maxRedirects = 10;
     
     function download(urlToDownload) {
+      if (redirectCount > maxRedirects) {
+        reject(new Error('Demasiadas redirecciones al descargar la actualización.'));
+        return;
+      }
+
+      const client = urlToDownload.startsWith('http:') ? http : https;
       const options = {
         headers: {
-          'User-Agent': 'Yoru-Reader-Updater'
+          'User-Agent': 'Yoru-Reader-Updater/1.1.4'
         }
       };
       
-      https.get(urlToDownload, options, (res) => {
+      client.get(urlToDownload, options, (res) => {
         console.log('[update-downloader] Response status:', res.statusCode);
         
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-          console.log('[update-downloader] Redirecting to:', res.headers.location);
-          download(res.headers.location);
+          redirectCount++;
+          let redirectUrl = res.headers.location;
+          if (!redirectUrl.startsWith('http://') && !redirectUrl.startsWith('https://')) {
+            // Relative redirect
+            const parsedBase = new URL(urlToDownload);
+            redirectUrl = new URL(redirectUrl, parsedBase.origin).toString();
+          }
+          console.log('[update-downloader] Redirecting to:', redirectUrl);
+          download(redirectUrl);
           return;
         }
         
@@ -370,7 +385,7 @@ ipcMain.handle('download-and-install-update', async (event, { urlString }) => {
             download(fallbackUrl);
             return;
           }
-          reject(new Error(`HTTP status code ${res.statusCode}`));
+          reject(new Error(`HTTP ${res.statusCode} al descargar la actualización.`));
           return;
         }
         
@@ -381,7 +396,7 @@ ipcMain.handle('download-and-install-update', async (event, { urlString }) => {
         
         fileStream.on('error', (err) => {
           console.error('[update-downloader] Write stream error:', err);
-          fs.unlink(installerPath, () => {});
+          try { fs.unlinkSync(installerPath); } catch (_) {}
           reject(err);
         });
         
@@ -389,10 +404,10 @@ ipcMain.handle('download-and-install-update', async (event, { urlString }) => {
           fileStream.write(chunk);
           downloadedLength += chunk.length;
           if (totalLength > 0) {
-            const percent = Math.round((downloadedLength / totalLength) * 100);
-            event.sender.send('update-download-progress', { percent, downloadedBytes: downloadedLength, totalBytes: totalLength });
+            const percent = Math.min(100, Math.round((downloadedLength / totalLength) * 100));
+            event.sender.send('update-download-progress', { percent, downloadedBytes: downloadedLength, totalBytes: totalLength, status: 'downloading' });
           } else {
-            event.sender.send('update-download-progress', { percent: -1, downloadedBytes: downloadedLength, totalBytes: -1 });
+            event.sender.send('update-download-progress', { percent: -1, downloadedBytes: downloadedLength, totalBytes: -1, status: 'downloading' });
           }
         });
         
@@ -402,25 +417,34 @@ ipcMain.handle('download-and-install-update', async (event, { urlString }) => {
         
         fileStream.on('finish', () => {
           console.log('[update-downloader] Download completed. Installer saved to:', installerPath);
+          event.sender.send('update-download-progress', { percent: 100, status: 'installing' });
           
           // Now execute the installer and exit
           try {
-            console.log('[update-downloader] Launching installer...');
-            const child = spawn(installerPath, [], {
+            console.log('[update-downloader] Launching installer with silent flag...');
+            // In Windows NSIS installers: /S for silent install
+            const child = spawn(installerPath, ['/S'], {
               detached: true,
               stdio: 'ignore'
             });
             child.unref();
             
-            // Quit app after a short delay to allow spawn to complete
+            // Quit app after a short delay so installer can replace files cleanly
             setTimeout(() => {
               app.quit();
-            }, 1000);
+            }, 1200);
             
             resolve({ success: true });
           } catch (spawnErr) {
-            console.error('[update-downloader] Error spawning installer:', spawnErr);
-            reject(spawnErr);
+            console.error('[update-downloader] Error spawning installer, trying fallback without flags:', spawnErr);
+            try {
+              const fallbackChild = spawn(installerPath, [], { detached: true, stdio: 'ignore' });
+              fallbackChild.unref();
+              setTimeout(() => { app.quit(); }, 1200);
+              resolve({ success: true });
+            } catch (fallbackErr) {
+              reject(fallbackErr);
+            }
           }
         });
         

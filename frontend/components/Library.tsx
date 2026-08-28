@@ -96,12 +96,16 @@ const Library = React.memo(function Library({
   const [remoteManifest, setRemoteManifest] = useState<any>(null);
   const [bindingKeyAction, setBindingKeyAction] = useState(null);
   const [updateProgress, setUpdateProgress] = useState(0);
+  const [updatePhase, setUpdatePhase] = useState<'downloading' | 'installing' | null>(null);
 
   useEffect(() => {
     if (window.electronAPI && window.electronAPI.onUpdateDownloadProgress) {
       const unsubscribe = window.electronAPI.onUpdateDownloadProgress((data: any) => {
         if (data && typeof data.percent === 'number') {
           setUpdateProgress(data.percent);
+        }
+        if (data && data.status) {
+          setUpdatePhase(data.status);
         }
       });
       return () => {
@@ -273,8 +277,9 @@ const Library = React.memo(function Library({
     if (isElectron) {
       setUpdating(true);
       setUpdateProgress(0);
+      setUpdatePhase('downloading');
       
-      const version = remoteManifest?.appVersion || '1.1.0';
+      const version = remoteManifest?.appVersion || '1.1.4';
       const targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/yorureader/Yoru-Reader.Setup.${version}.exe`;
       
       try {
@@ -282,10 +287,11 @@ const Library = React.memo(function Library({
       } catch (err: any) {
         console.error('Error during auto-update:', err);
         setUpdating(false);
+        setUpdatePhase(null);
         showToast(
           lang === 'es'
-            ? 'Error al descargar el instalador. Intenta descargarlo manualmente.'
-            : 'Error downloading installer. Try downloading manually.',
+            ? 'Error al descargar el instalador. Abriendo opciones de descarga...'
+            : 'Error downloading installer. Opening download options...',
           'error'
         );
         // Fallback to opening browser
@@ -4859,7 +4865,11 @@ const Library = React.memo(function Library({
                 {updating && window.electronAPI && (
                   <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      <span>{lang === 'es' ? 'Descargando actualización...' : 'Downloading update...'}</span>
+                      <span>
+                        {updatePhase === 'installing' || updateProgress >= 100
+                          ? (lang === 'es' ? '⚙️ Instalando actualización y reiniciando...' : '⚙️ Installing update and restarting...')
+                          : (lang === 'es' ? `📥 Descargando actualización... (${updateProgress}%)` : `📥 Downloading update... (${updateProgress}%)`)}
+                      </span>
                       <span>{updateProgress >= 0 ? `${updateProgress}%` : ''}</span>
                     </div>
                     <div style={{
@@ -4872,7 +4882,7 @@ const Library = React.memo(function Library({
                       <div style={{
                         width: `${updateProgress >= 0 ? updateProgress : 0}%`,
                         height: '100%',
-                        background: 'var(--primary)',
+                        background: updatePhase === 'installing' || updateProgress >= 100 ? '#10b981' : 'var(--primary)',
                         transition: 'width 0.2s ease-out'
                       }} />
                     </div>
@@ -4926,9 +4936,13 @@ const Library = React.memo(function Library({
                   >
                     {updating ? (
                       window.electronAPI ? (
-                        lang === 'es'
-                          ? `Descargando (${updateProgress}%)...`
-                          : `Downloading (${updateProgress}%)...`
+                        updatePhase === 'installing' || updateProgress >= 100 ? (
+                          lang === 'es' ? 'Instalando...' : 'Installing...'
+                        ) : (
+                          lang === 'es'
+                            ? `Descargando (${updateProgress}%)...`
+                            : `Downloading (${updateProgress}%)...`
+                        )
                       ) : (
                         lang === 'es' ? 'Actualizando...' : 'Updating...'
                       )
@@ -7580,14 +7594,48 @@ const Library = React.memo(function Library({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
                   <button
                     type="button"
+                    onClick={handleUpdateNow}
+                    disabled={updating}
+                    style={{
+                      background: '#10b981',
+                      border: 'none',
+                      color: '#fff',
+                      padding: '6px 14px',
+                      borderRadius: '6px',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      cursor: updating ? 'not-allowed' : 'pointer',
+                      transition: 'background 0.2s',
+                      whiteSpace: 'nowrap',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                  >
+                    {updating ? (
+                      window.electronAPI ? (
+                        updatePhase === 'installing' || updateProgress >= 100 ? (
+                          <span>{lang === 'es' ? '⚙️ Instalando...' : '⚙️ Installing...'}</span>
+                        ) : (
+                          <span>{lang === 'es' ? `📥 Descargando (${updateProgress}%)...` : `📥 Downloading (${updateProgress}%)...`}</span>
+                        )
+                      ) : (
+                        <span>{lang === 'es' ? 'Actualizando...' : 'Updating...'}</span>
+                      )
+                    ) : (
+                      <span>{lang === 'es' ? '⚡ Actualizar ahora' : '⚡ Update now'}</span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => {
                       setActiveTab('settings');
                       setActiveSettingsSection('sec-updates');
                     }}
                     style={{
-                      background: '#2563eb',
-                      border: 'none',
-                      color: '#fff',
+                      background: 'rgba(37, 99, 235, 0.2)',
+                      border: '1px solid #2563eb',
+                      color: '#3b82f6',
                       padding: '6px 14px',
                       borderRadius: '6px',
                       fontSize: '0.8rem',
