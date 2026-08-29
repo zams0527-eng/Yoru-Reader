@@ -92,8 +92,8 @@ const Library = React.memo(function Library({
   const [backendStatus, setBackendStatus] = useState('up-to-date'); // 'up-to-date' | 'out-of-date'
   const [appStatus, setAppStatus] = useState('up-to-date'); // 'up-to-date' | 'out-of-date'
   const [currentBackendVersion, setCurrentBackendVersion] = useState(stableManifest.backendVersion);
-  const [currentAppVersion, setCurrentAppVersion] = useState(stableManifest.hotUpdateVersion || stableManifest.appVersion || '1.1.4');
-  const [currentHotVersion, setCurrentHotVersion] = useState(stableManifest.hotUpdateVersion || '1.1.4.20');
+  const [currentAppVersion, setCurrentAppVersion] = useState('1.1.4');
+  const [currentHotVersion, setCurrentHotVersion] = useState('1.1.4');
   const [latestHotVersion, setLatestHotVersion] = useState('Unknown');
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
   const [remoteManifest, setRemoteManifest] = useState<any>(null);
@@ -7036,6 +7036,44 @@ const Library = React.memo(function Library({
           >
             <SlidersHorizontal size={18} />
           </button>
+
+          {/* Cool Glowing Version Badge (Top Right) */}
+          <div 
+            onClick={() => {
+              setActiveTab('settings');
+              setActiveSettingsSection('sec-general');
+            }}
+            title={lang === 'es' ? 'Versión Actual: v1.1.4 (Clic para ver ajustes y actualizaciones)' : 'Current Version: v1.1.4 (Click for settings & updates)'}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '5px 12px',
+              borderRadius: '20px',
+              background: 'rgba(255, 224, 0, 0.08)',
+              border: '1px solid rgba(255, 224, 0, 0.28)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 2px 10px rgba(0, 0, 0, 0.3), 0 0 12px rgba(255, 224, 0, 0.15)',
+              userSelect: 'none',
+              marginLeft: '4px'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 224, 0, 0.16)';
+              e.currentTarget.style.borderColor = 'rgba(255, 224, 0, 0.5)';
+              e.currentTarget.style.transform = 'scale(1.05)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 224, 0, 0.08)';
+              e.currentTarget.style.borderColor = 'rgba(255, 224, 0, 0.28)';
+              e.currentTarget.style.transform = 'scale(1)';
+            }}
+          >
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#FFE000', boxShadow: '0 0 6px #FFE000' }} />
+            <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#FFE000', letterSpacing: '0.04em' }}>
+              v1.1.4
+            </span>
+          </div>
 
           {/* Profile Selector Widget */}
           <div className="header-profile-widget" ref={profileWidgetRef}>
