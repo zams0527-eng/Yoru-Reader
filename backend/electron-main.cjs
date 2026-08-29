@@ -76,9 +76,7 @@ function createWindow() {
   });
   mainWindow = win;
 
-  if (!app.isPackaged) {
-    win.webContents.openDevTools();
-  }
+
 
   // Open external links in default browser
   win.webContents.setWindowOpenHandler(({ url }) => {
