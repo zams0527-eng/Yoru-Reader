@@ -1,0 +1,185 @@
+name: Build & Publish All Releases
+
+on:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # -------------------------------------------------------------
+  # 1. WINDOWS (.exe NSIS Installer)
+  # -------------------------------------------------------------
+  build-windows:
+    name: Build Windows (.exe)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Get app version
+        id: version
+        shell: bash
+        run: |
+          VER=$(node -p "require('./package.json').version")
+          echo "VERSION=$VER" >> $GITHUB_ENV
+          echo "TAG=v$VER" >> $GITHUB_ENV
+
+      - name: Prepare build assets & certificate
+        run: |
+          node build/generate-certificate.js
+          node build/prepare-nsis.js
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Package Windows NSIS Installer
+        run: npx electron-builder --win nsis --x64 --config.directories.output=dist-electron-installer
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Yoru-Reader-Windows-EXE
+          path: dist-electron-installer/*.exe
+          retention-days: 14
+
+      - name: Ensure Release Exists & Upload EXE
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${TAG}" || gh release create "${TAG}" --title "Yoru Reader ${TAG}" --notes "Release ${TAG}" || true
+          gh release upload "${TAG}" dist-electron-installer/*.exe --clobber || gh release upload yorureader dist-electron-installer/*.exe --clobber || true
+
+  # -------------------------------------------------------------
+  # 2. MACOS (.dmg Apple Silicon arm64 & Intel x64)
+  # -------------------------------------------------------------
+  build-mac:
+    name: Build macOS (.dmg)
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Get app version
+        id: version
+        run: |
+          VER=$(node -p "require('./package.json').version")
+          echo "VERSION=$VER" >> $GITHUB_ENV
+          echo "TAG=v$VER" >> $GITHUB_ENV
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Package DMG (Apple Silicon & Intel)
+        run: |
+          npx electron-builder --mac dmg --x64 --arm64 \
+            --config.directories.output=releases/mac \
+            -c.mac.identity=null \
+            --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Yoru-Reader-macOS-DMG
+          path: releases/mac/*.dmg
+          retention-days: 14
+
+      - name: Ensure Release Exists & Upload DMG
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${TAG}" || gh release create "${TAG}" --title "Yoru Reader ${TAG}" --notes "Release ${TAG}" || true
+          gh release upload "${TAG}" releases/mac/*.dmg --clobber || gh release upload yorureader releases/mac/*.dmg --clobber || true
+
+  # -------------------------------------------------------------
+  # 3. ANDROID (.apk)
+  # -------------------------------------------------------------
+  build-android:
+    name: Build Android (.apk)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Get app version
+        id: version
+        run: |
+          VER=$(node -p "require('./package.json').version")
+          echo "VERSION=$VER" >> $GITHUB_ENV
+          echo "TAG=v$VER" >> $GITHUB_ENV
+
+      - name: Build web frontend & sync Capacitor
+        run: |
+          npm run build
+          npx cap sync android
+
+      - name: Make gradlew executable
+        run: chmod +x ./android/gradlew
+
+      - name: Build Android APK (Release)
+        run: |
+          cd android
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Rename and copy APK
+        run: |
+          mkdir -p releases/android
+          cp android/app/build/outputs/apk/release/app-release.apk releases/android/Yoru-Reader-${VERSION}.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Yoru-Reader-Android-APK
+          path: releases/android/Yoru-Reader-${VERSION}.apk
+          retention-days: 14
+
+      - name: Ensure Release Exists & Upload APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${TAG}" || gh release create "${TAG}" --title "Yoru Reader ${TAG}" --notes "Release ${TAG}" || true
+          gh release upload "${TAG}" releases/android/Yoru-Reader-${VERSION}.apk --clobber || gh release upload yorureader releases/android/Yoru-Reader-${VERSION}.apk --clobber || true

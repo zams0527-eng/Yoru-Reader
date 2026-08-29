@@ -8,8 +8,7 @@
   "main": "backend/electron-main.cjs",
   "scripts": {
     "dev": "vite",
-    "build:svelte": "cd yoru-reader-svelte && npm run build && node ../build/copy-svelte-build.js",
-    "build": "npm run build:svelte && vite build",
+    "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
     "predeploy": "npm run build",
