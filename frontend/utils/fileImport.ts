@@ -1119,6 +1119,14 @@ export function importBookFile(file: File): Promise<ParsedBook> {
               break;
           }
           
+          // Clean legacy punctuation (backticks -> 、 and degree signs -> 。) and Aozora markup
+          content = content
+            .replace(/[｀`]/g, '、')
+            .replace(/[゜°]/g, '。')
+            .replace(/［＃[^］]+］/g, '')
+            .replace(/｜([^\n《]+)《([^\n》]+)》/g, '{$1|$2}')
+            .replace(/([\u4e00-\u9faf\u3400-\u4dbf々ー]+)《([^\n》]+)》/g, '{$1|$2}');
+          
           if (!content.trim()) {
             reject(new Error('El archivo importado no contiene ningún texto legible.'));
             return;
@@ -1129,7 +1137,7 @@ export function importBookFile(file: File): Promise<ParsedBook> {
           let currentTitle = "Capítulo 1";
           const currentContent: string[] = [];
           const chapters: BookChapter[] = [];
-          const chapterPattern = /^(第[一二三四五六七八九十百0-9]+[章話回幕節部]).*$/;
+          const chapterPattern = /^(第[一二三四五六七八九十百0-9]+[章話回幕節部]|目次|序|[一二三四五六七八九十]+之巻).*$/;
           
           for (const line of lines) {
             const trimmed = line.trim();

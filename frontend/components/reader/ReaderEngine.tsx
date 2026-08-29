@@ -107,14 +107,16 @@ const ReaderEngine = React.memo(function ReaderEngine({
           return;
         }
         // standard paragraph
-        const processed = line
-          .replace(/\{img:([^{}]+)\}/gi, '<img src="$1" style="max-width:100%; max-height:var(--reader-image-height,85vh); object-fit:contain; display:block; margin:1em auto;" />')
-          .replace(/\{([^|{}]+)\|([^|{}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
+        const sanitized = sanitizeJapaneseText(line);
+        const processed = sanitized
+          .replace(/\{img:([^{}]+)\}/gi, '<img src="$1" style="max-width:100%; max-height:var(--reader-image-height,85vh); object-fit:contain; display:block; margin:1em auto;" />');
 
         // count Japanese characters (excluding furigana)
         const plainText = line
           .replace(/\{img:[^{}]*\}/gi, '')
-          .replace(/\{[^|{}]+\|[^{}]*\}/g, (m) => m.split('|')[0].substring(1));
+          .replace(/\{[^|{}]+\|[^{}]*\}/g, (m) => m.split('|')[0].substring(1))
+          .replace(/[｀`]/g, '、')
+          .replace(/[゜°]/g, '。');
         const jpCount = countJapaneseChars(plainText);
 
         sectionHtml += `<p class="chapter-content" index="${paragraphId}" characumm="${charAccum}">${processed}</p>`;
@@ -541,10 +543,19 @@ const ReaderEngine = React.memo(function ReaderEngine({
 
 export default ReaderEngine;
 
-// -- Helpers --
+function sanitizeJapaneseText(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/[｀`]/g, '、')
+    .replace(/[゜°]/g, '。')
+    .replace(/［＃[^］]+］/g, '')
+    .replace(/｜([^\n《]+)《([^\n》]+)》/g, '<ruby>$1<rt>$2</rt></ruby>')
+    .replace(/([\u4e00-\u9faf\u3400-\u4dbf々ー]+)《([^\n》]+)》/g, '<ruby>$1<rt>$2</rt></ruby>')
+    .replace(/\{([^|{}]+)\|([^|{}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
+}
 
 function processRuby(text: string): string {
-  return text.replace(/\{([^|{}]+)\|([^|{}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
+  return sanitizeJapaneseText(text);
 }
 
 function countJapaneseChars(text: string): number {
