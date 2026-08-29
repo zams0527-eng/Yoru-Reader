@@ -5,14 +5,20 @@
 /**
  * Sintetiza texto a audio utilizando Azure TTS.
  * 
- * @param {string} text Texto a sintetizar.
- * @param {string} voiceName Nombre completo de la voz de Azure (ej. "ja-JP-NanamiNeural").
- * @param {string} apiKey API Key de suscripción a Azure.
- * @param {string} region Región del recurso de Azure (ej. "eastus", "japaneast").
- * @param {number} rate Tasa de velocidad de reproducción (ej. 1.0).
- * @returns {Promise<string>} Promesa que resuelve a un Object URL del audio generado.
+ * @param text Texto a sintetizar.
+ * @param voiceName Nombre completo de la voz de Azure (ej. "ja-JP-NanamiNeural").
+ * @param apiKey API Key de suscripción a Azure.
+ * @param region Región del recurso de Azure (ej. "eastus", "japaneast").
+ * @param rate Tasa de velocidad de reproducción (ej. 1.0).
+ * @returns Promesa que resuelve a un Object URL del audio generado.
  */
-export async function synthesizeSpeechAzure(text, voiceName, apiKey, region = 'eastus', rate = 1.0) {
+export async function synthesizeSpeechAzure(
+  text: string,
+  voiceName: string,
+  apiKey: string,
+  region: string = 'eastus',
+  rate: number = 1.0
+): Promise<string> {
   const endpoint = `https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`;
   
   // Convertir la velocidad a formato de porcentaje relativo para SSML de Azure (ej: "+20%", "-10%")

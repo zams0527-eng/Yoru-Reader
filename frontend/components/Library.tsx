@@ -5147,30 +5147,19 @@ const Library = React.memo(function Library({
   };
 
   const handleDeckPromptDelete = () => {
-    if (deckPromptMode === 'create') {
-      db.saveSrsCard(`_deck_${trimmed}`, {
-        word: `_deck_${trimmed}`,
-        source: trimmed,
-        state: 0,
-        dueDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-        due: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-        isPlaceholder: true
-      });
-      setSrsUpdateTrigger(t => t + 1);
-      showToast(lang === 'es' ? 'Mazo creado con éxito' : 'Deck created successfully', 'success');
-    } else if (deckPromptMode === 'rename' && deckPromptTargetId) {
+    if (deckPromptTargetId) {
       const deckName = deckPromptTargetId;
       if (confirm(lang === 'es' ? `¿Estás seguro de que deseas eliminar el mazo "${deckName}"?` : `Are you sure you want to delete the deck "${deckName}"?`)) {
         // Delete the placeholder card
         db.saveSrsCard(`_deck_${deckName}`, null);
-        // Update all cards belonging to this deck to 'Yoru Reader'
         const srsData = db.getSrsData();
+        delete srsData[`_deck_${deckName}`];
         Object.entries(srsData).forEach(([word, card]: [string, any]) => {
           if (card && card.source === deckName) {
-            card.source = 'Yoru Reader';
-            db.saveSrsCard(word, card);
+            delete srsData[word];
           }
         });
+        db.saveSrsData(srsData);
         setSrsUpdateTrigger(t => t + 1);
         showToast(lang === 'es' ? 'Mazo eliminado' : 'Deck deleted', 'info');
         setIsDeckPromptOpen(false);
