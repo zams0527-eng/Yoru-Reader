@@ -1260,6 +1260,24 @@ class ForegroundCommand extends _command__WEBPACK_IMPORTED_MODULE_2__.Command {
     }
     call(tabId, afterCall) {
         const promise = new Promise((resolve, reject) => {
+            if (tabId === undefined || tabId === null) {
+                try {
+                    chrome.tabs.query({}, (tabsList) => {
+                        if (tabsList && tabsList.length > 0) {
+                            tabsList.forEach(t => {
+                                if (t.id !== undefined) {
+                                    chrome.tabs.sendMessage(t.id, {
+                                        event: this.key,
+                                        command: this.constructor.name,
+                                        isBroadcast: false,
+                                        args: this.arguments,
+                                    }, () => {});
+                                }
+                            });
+                        }
+                    });
+                } catch (e) {}
+            }
             _extension_tabs__WEBPACK_IMPORTED_MODULE_1__.tabs.sendMessage(tabId, {
                 event: this.key,
                 command: this.constructor.name,
@@ -2322,7 +2340,7 @@ class AbortRequestCommandHandler extends _lib_background_command_handler__WEBPAC
     }
     async handle(sender, sequence) {
         this._parseController.abortSequence(sequence);
-        await new _shared_messages_foreground_sequence_aborted_command__WEBPACK_IMPORTED_MODULE_1__.SequenceAbortedCommand(sequence).call(sender.tab.id);
+        await new _shared_messages_foreground_sequence_aborted_command__WEBPACK_IMPORTED_MODULE_1__.SequenceAbortedCommand(sequence).call(sender?.tab?.id);
     }
 }
 
@@ -2394,12 +2412,12 @@ class ParseCommandHandler extends _lib_background_command_handler__WEBPACK_IMPOR
     async handle(sender, data) {
         const jitenApiKey = await (0,_shared_configuration_get_configuration__WEBPACK_IMPORTED_MODULE_0__.getConfiguration)('jitenApiKey');
         if (!jitenApiKey?.length) {
-            await this._failToast.call(sender.tab.id);
+            await this._failToast.call(sender?.tab?.id);
             await (0,_shared_extension_open_options_page__WEBPACK_IMPORTED_MODULE_1__.openOptionsPage)();
             return;
         }
         if (await (0,_shared_jiten_request_by_url__WEBPACK_IMPORTED_MODULE_2__.isApiTokenRejected)()) {
-            await this._rejectedToast.call(sender.tab.id);
+            await this._rejectedToast.call(sender?.tab?.id);
             return;
         }
         this._parseController.parseSequences(sender, data);
@@ -2488,10 +2506,10 @@ class ParseController {
             .finally(() => this._pendingParagraphs.delete(sequenceId));
     }
     succeedSequence(sequenceId, tokens, sender) {
-        new _shared_messages_foreground_sequence_success_command__WEBPACK_IMPORTED_MODULE_1__.SequenceSuccessCommand(sequenceId, tokens).send(sender.tab.id);
+        new _shared_messages_foreground_sequence_success_command__WEBPACK_IMPORTED_MODULE_1__.SequenceSuccessCommand(sequenceId, tokens).send(sender?.tab?.id);
     }
     failSequence(sequenceId, error, sender) {
-        new _shared_messages_foreground_sequence_error_command__WEBPACK_IMPORTED_MODULE_0__.SequenceErrorCommand(sequenceId, error.message).send(sender.tab.id);
+        new _shared_messages_foreground_sequence_error_command__WEBPACK_IMPORTED_MODULE_0__.SequenceErrorCommand(sequenceId, error.message).send(sender?.tab?.id);
     }
     getParagraphBatches() {
         const batches = [];
