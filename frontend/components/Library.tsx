@@ -5147,7 +5147,18 @@ const Library = React.memo(function Library({
   };
 
   const handleDeckPromptDelete = () => {
-    if (deckPromptMode === 'rename' && deckPromptTargetId) {
+    if (deckPromptMode === 'create') {
+      db.saveSrsCard(`_deck_${trimmed}`, {
+        word: `_deck_${trimmed}`,
+        source: trimmed,
+        state: 0,
+        dueDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+        due: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+        isPlaceholder: true
+      });
+      setSrsUpdateTrigger(t => t + 1);
+      showToast(lang === 'es' ? 'Mazo creado con éxito' : 'Deck created successfully', 'success');
+    } else if (deckPromptMode === 'rename' && deckPromptTargetId) {
       const deckName = deckPromptTargetId;
       if (confirm(lang === 'es' ? `¿Estás seguro de que deseas eliminar el mazo "${deckName}"?` : `Are you sure you want to delete the deck "${deckName}"?`)) {
         // Delete the placeholder card
