@@ -10,7 +10,11 @@ const pfxPath = path.resolve(__dirname, 'yoru-reader.pfx');
 const cerPath = path.resolve(__dirname, 'yoru-reader.cer');
 
 if (fs.existsSync(pfxPath) && fs.existsSync(cerPath)) {
-  console.log('[CertGen] Certificate and public key already exist.');
+  console.log('[CertGen] Certificate and public key already exist. Importing to CertStore...');
+  try {
+    const importCmd = `$pass = ConvertTo-SecureString -String 'YoruReaderSecret123' -AsPlainText -Force; Import-PfxCertificate -FilePath '${pfxPath.replace(/'/g, "''")}' -CertStoreLocation 'Cert:\\CurrentUser\\My' -Password $pass`;
+    execSync(`powershell -ExecutionPolicy Bypass -Command "${importCmd}"`, { stdio: 'ignore' });
+  } catch (e) {}
   process.exit(0);
 }
 
@@ -26,7 +30,7 @@ $pass = ConvertTo-SecureString -String 'YoruReaderSecret123' -AsPlainText -Force
 $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=Yoru Cafe' -KeyUsage DigitalSignature -FriendlyName 'Yoru Reader' -CertStoreLocation 'Cert:\\CurrentUser\\My' -NotAfter (Get-Date).AddYears(10)
 Export-PfxCertificate -Cert $cert -FilePath $pfxPath -Password $pass
 Export-Certificate -Cert $cert -FilePath $cerPath
-Remove-Item $cert.PSPath
+Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation 'Cert:\\CurrentUser\\My' -Password $pass
 `.trim();
 
   fs.writeFileSync(tempScriptPath, psScriptContent, 'utf8');
