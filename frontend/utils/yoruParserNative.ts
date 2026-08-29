@@ -62,18 +62,6 @@ export function tokenizeJapaneseText(
             continue;
           }
 
-          // Particles and auxiliary verb endings should remain standard text
-          if (pos === '助詞' || pos === '助動詞') {
-            resultHtml += surface;
-            continue;
-          }
-
-          // Pure single-char hiragana connectors
-          if (surface.length === 1 && COMMON_PARTICLES.has(surface)) {
-            resultHtml += surface;
-            continue;
-          }
-
           const basicForm = token.basic_form && token.basic_form !== '*' ? token.basic_form : surface;
           const katakanaReading = token.reading || '';
           const reading = katakanaToHiragana(katakanaReading) || surface;
@@ -94,12 +82,6 @@ export function tokenizeJapaneseText(
       for (const s of segments) {
         const seg = s.segment;
         if (!s.isWordLike || !/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(seg)) {
-          resultHtml += seg;
-          continue;
-        }
-
-        // Filter single hiragana particles
-        if (seg.length === 1 && COMMON_PARTICLES.has(seg)) {
           resultHtml += seg;
           continue;
         }
