@@ -300,7 +300,7 @@ jobs:
 
       - name: Package Flatpak
         run: |
-          npx electron-builder --linux flatpak --x64 \
+          npx electron-builder --linux flatpak tar.gz AppImage --x64 \
             --config.directories.output=releases/linux \
             --publish never
 
@@ -316,5 +316,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "${TAG}" || gh release create "${TAG}" --title "Yoru Reader ${TAG}" --notes "Release ${TAG}" || true
-                    gh release upload "${TAG}" releases/linux/*.flatpak --clobber || true
+                    gh release upload "${TAG}" releases/linux/*.* --clobber || true
           
