@@ -321,30 +321,52 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
 
               {/* Status Box or Installer */}
               {hasDicts ? (
-                <div style={{
-                  background: 'rgba(0, 230, 118, 0.08)',
-                  border: '1px solid rgba(0, 230, 118, 0.25)',
-                  borderRadius: '12px',
-                  padding: '16px 18px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '14px',
-                  marginBottom: '14px'
-                }}>
-                  <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#00e676', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000', flexShrink: 0 }}>
-                    <Check size={20} strokeWidth={3} />
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#fff' }}>
-                      {lang === 'es' ? '¡Diccionario instalado y activo!' : 'Dictionary installed and active!'}
+                <>
+                  <div style={{
+                    background: 'rgba(0, 230, 118, 0.08)',
+                    border: '1px solid rgba(0, 230, 118, 0.25)',
+                    borderRadius: '12px',
+                    padding: '16px 18px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '14px',
+                    marginBottom: '12px'
+                  }}>
+                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#00e676', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000', flexShrink: 0 }}>
+                      <Check size={20} strokeWidth={3} />
                     </div>
-                    <div style={{ fontSize: '0.8rem', color: '#a0a0b0' }}>
-                      {lang === 'es' 
-                        ? 'Tu lector ya está listo para consultar palabras y furigana. Pulsa "Siguiente" para continuar el tutorial.' 
-                        : 'Your reader is ready for word lookups and furigana. Press "Next" to continue tutorial.'}
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#fff' }}>
+                        {lang === 'es' ? '¡Diccionario instalado y activo!' : 'Dictionary installed and active!'}
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: '#a0a0b0' }}>
+                        {lang === 'es' 
+                          ? 'Tu lector ya está listo para consultar palabras y furigana. Pulsa "Siguiente" para continuar el tutorial.' 
+                          : 'Your reader is ready for word lookups and furigana. Press "Next" to continue tutorial.'}
+                      </div>
                     </div>
                   </div>
-                </div>
+
+                  <div style={{
+                    padding: '10px 14px',
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: '10px',
+                    fontSize: '0.82rem',
+                    color: '#aaa',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    lineHeight: '1.4'
+                  }}>
+                    <span style={{ fontSize: '1rem' }}>💡</span>
+                    <span>
+                      {lang === 'es'
+                        ? 'Para instalar más diccionarios o listas de frecuencias (Netflix, JPDB, Anime, Novelas), ve a Ajustes (⚙️) ➔ Diccionarios.'
+                        : 'To install more dictionaries or frequency lists (Netflix, JPDB, Anime, Novels), go to Settings (⚙️) ➔ Dictionaries.'}
+                    </span>
+                  </div>
+                </>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '14px' }}>
                   {/* DIRECT 1-CLICK INSTALLATION BUTTON */}
