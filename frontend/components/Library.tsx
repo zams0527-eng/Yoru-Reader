@@ -7071,7 +7071,7 @@ const Library = React.memo(function Library({
           >
             <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#FFE000', boxShadow: '0 0 6px #FFE000' }} />
             <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#FFE000', letterSpacing: '0.04em' }}>
-              v1.1.4
+              v{currentAppVersion}
             </span>
           </div>
 
