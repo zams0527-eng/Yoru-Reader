@@ -61,6 +61,12 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
   const totalSteps = 6;
 
   const handleNext = () => {
+    if (currentStep === 1 && !hasDicts) {
+      alert(lang === 'es'
+        ? 'Por favor, instala el diccionario antes de continuar con el tutorial.'
+        : 'Please install the dictionary before continuing with the tutorial.');
+      return;
+    }
     if (currentStep < totalSteps - 1) {
       setCurrentStep(currentStep + 1);
     } else {
@@ -649,23 +655,28 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
         }}>
           {/* Step dots */}
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-            {Array.from({ length: totalSteps }).map((_, idx) => (
-              <button
-                key={idx}
-                onClick={() => setCurrentStep(idx)}
-                style={{
-                  width: currentStep === idx ? '22px' : '7px',
-                  height: '7px',
-                  borderRadius: '4px',
-                  background: currentStep === idx ? '#FFE000' : 'rgba(255, 255, 255, 0.2)',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 0,
-                  transition: 'all 0.2s ease'
-                }}
-                title={`Paso ${idx + 1}`}
-              />
-            ))}
+            {Array.from({ length: totalSteps }).map((_, idx) => {
+              const isDotDisabled = isInstalling || (idx > 1 && !hasDicts);
+              return (
+                <button
+                  key={idx}
+                  disabled={isDotDisabled}
+                  onClick={() => setCurrentStep(idx)}
+                  style={{
+                    width: currentStep === idx ? '22px' : '7px',
+                    height: '7px',
+                    borderRadius: '4px',
+                    background: currentStep === idx ? '#FFE000' : 'rgba(255, 255, 255, 0.2)',
+                    border: 'none',
+                    cursor: isDotDisabled ? 'not-allowed' : 'pointer',
+                    opacity: isDotDisabled ? 0.3 : 1,
+                    padding: 0,
+                    transition: 'all 0.2s ease'
+                  }}
+                  title={`Paso ${idx + 1}`}
+                />
+              );
+            })}
           </div>
 
           {/* Action buttons */}
@@ -673,6 +684,7 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
             {currentStep > 0 && (
               <button
                 onClick={handlePrev}
+                disabled={isInstalling}
                 style={{
                   padding: '8px 16px',
                   background: 'rgba(255, 255, 255, 0.06)',
@@ -681,7 +693,7 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
                   color: '#fff',
                   fontSize: '0.88rem',
                   fontWeight: 600,
-                  cursor: 'pointer',
+                  cursor: isInstalling ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
@@ -693,30 +705,39 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
               </button>
             )}
 
-            <button
-              onClick={handleNext}
-              style={{
-                padding: '8px 20px',
-                background: 'linear-gradient(135deg, #FFE000 0%, #c2aa00 100%)',
-                border: 'none',
-                borderRadius: '8px',
-                color: '#000',
-                fontSize: '0.88rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                boxShadow: '0 4px 14px rgba(255, 224, 0, 0.3)',
-                transition: 'all 0.15s'
-              }}
-            >
-              {currentStep === totalSteps - 1 
-                ? (lang === 'es' ? '¡Empezar a leer!' : 'Get Started!')
-                : (lang === 'es' ? 'Siguiente' : 'Next')
-              }
-              {currentStep < totalSteps - 1 && <ChevronRight size={16} />}
-            </button>
+            {(() => {
+              const isNextDisabled = isInstalling || (currentStep === 1 && !hasDicts);
+              return (
+                <button
+                  onClick={handleNext}
+                  disabled={isNextDisabled}
+                  style={{
+                    padding: '8px 20px',
+                    background: isNextDisabled 
+                      ? 'rgba(255, 255, 255, 0.12)' 
+                      : 'linear-gradient(135deg, #FFE000 0%, #c2aa00 100%)',
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: isNextDisabled ? 'rgba(255, 255, 255, 0.4)' : '#000',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    cursor: isNextDisabled ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: isNextDisabled ? 'none' : '0 4px 14px rgba(255, 224, 0, 0.3)',
+                    transition: 'all 0.15s'
+                  }}
+                  title={isNextDisabled && currentStep === 1 ? (lang === 'es' ? 'Instala el diccionario para continuar' : 'Install dictionary to proceed') : ''}
+                >
+                  {currentStep === totalSteps - 1 
+                    ? (lang === 'es' ? '¡Empezar a leer!' : 'Get Started!')
+                    : (lang === 'es' ? 'Siguiente' : 'Next')
+                  }
+                  {currentStep < totalSteps - 1 && <ChevronRight size={16} />}
+                </button>
+              );
+            })()}
           </div>
         </div>
       </div>

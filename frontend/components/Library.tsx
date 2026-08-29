@@ -492,7 +492,7 @@ const Library = React.memo(function Library({
   const [downloadingDictUrl, setDownloadingDictUrl] = useState(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [settingsSearchQuery, setSettingsSearchQuery] = useState('');
-  const [activeSettingsSection, setActiveSettingsSection] = useState('sec-theme');
+  const [activeSettingsSection, setActiveSettingsSection] = useState('sec-general');
   const [activeMenuBookId, setActiveMenuBookId] = useState(null);
   const [menuOpenLeft, setMenuOpenLeft] = useState(false); // true = dropdown opens to the left of trigger
   const [activeHeaderDropdown, setActiveHeaderDropdown] = useState(null); // null | 'import' | 'database' | 'theme' | 'more'
@@ -3667,8 +3667,7 @@ const Library = React.memo(function Library({
                   <Settings size={13} style={{ color: 'rgba(255,255,255,0.4)' }} /> <span>{lang === 'es' ? 'General' : 'General'}</span>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
-                  {renderSidebarBtn('sec-theme', lang === 'es' ? 'Tema' : 'Theme', Palette, 'tema theme active dark light sepia')}
-                  {renderSidebarBtn('sec-language-interface', lang === 'es' ? 'Idioma e Interfaz' : 'Language & Interface', Globe, 'idioma lang language interface interfaceLanguage')}
+                  {renderSidebarBtn('sec-general', lang === 'es' ? 'Apariencia e Idioma' : 'Appearance & Language', Palette, 'tema theme idioma lang interface language tutorial guia atajos general')}
                   {renderSidebarBtn('sec-dicts', lang === 'es' ? 'Diccionarios' : 'Dictionaries', BookOpen, 'diccionario dictionary offline jmdict frecuencia meta meta_bank zip')}
                   {renderSidebarBtn('sec-keybindings', lang === 'es' ? 'Atajos de teclado' : 'Keyboard Shortcuts', Keyboard, 'keybins keybindings atajos teclado shortcuts keys full screen pantalla completa')}
                 </div>
@@ -3768,53 +3767,124 @@ const Library = React.memo(function Library({
               </button>
             )}
           
-          {/* Card: Theme */}
-          {matchesSearch('tema theme active dark light sepia') && (settingsSearchQuery || activeSettingsSection === 'sec-theme') && (
-            <div id="sec-theme" className="settings-section-card">
-              <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Palette size={18} style={{ color: 'var(--primary)' }} />
-                <span>{lang === 'es' ? 'Tema' : 'Theme'}</span>
-              </h3>
-              <p className="settings-card-desc">{lang === 'es' ? 'Elige la apariencia visual del lector para reducir la fatiga ocular.' : 'Choose the reader appearance to reduce eye strain.'}</p>
-              
-              <div className="settings-row-control">
-                <span className="settings-label-text">{lang === 'es' ? 'Tema activo' : 'Active Theme'}</span>
-                <select 
-                  value={settings.theme || 'dark'}
-                  onChange={(e) => onSaveSettings({ ...settings, theme: e.target.value })}
-                  className="migaku-select"
-                >
-                  <option value="dark">{lang === 'es' ? 'Oscuro (Dark)' : 'Dark'}</option>
-                  <option value="light">{lang === 'es' ? 'Claro (Light)' : 'Light'}</option>
-                  <option value="sepia">Sepia</option>
-                </select>
-              </div>
-            </div>
-          )}
+          {/* Card: General (Apariencia, Idioma y Guía) */}
+          {matchesSearch('tema theme active dark light sepia idioma lang language interface interfaceLanguage tutorial guia atajos general') && (settingsSearchQuery || activeSettingsSection === 'sec-general' || activeSettingsSection === 'sec-theme' || activeSettingsSection === 'sec-language-interface') && (
+            <div id="sec-general" style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
+              {/* Banner: Guía y Tutorial */}
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(255, 224, 0, 0.08) 0%, rgba(255, 180, 0, 0.03) 100%)',
+                border: '1px solid rgba(255, 224, 0, 0.25)',
+                borderRadius: '12px',
+                padding: '16px 20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '16px',
+                flexWrap: 'wrap'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: '240px', flex: 1 }}>
+                  <div style={{
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '10px',
+                    background: 'rgba(255, 224, 0, 0.15)',
+                    border: '1px solid rgba(255, 224, 0, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#FFE000',
+                    flexShrink: 0
+                  }}>
+                    <Sparkles size={22} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.96rem', color: '#fff' }}>
+                      {lang === 'es' ? 'Guía Rápida y Tutorial de Yoru Reader' : 'Yoru Reader Quick Guide & Tutorial'}
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: '#a0a0b0', marginTop: '2px' }}>
+                      {lang === 'es' 
+                        ? 'Repasa los atajos esenciales, consulta con Shift + Cursor, pronunciación y Yoru SRS.' 
+                        : 'Revisit keyboard shortcuts, Shift + Hover lookups, audio pitch, and Yoru SRS.'}
+                    </div>
+                  </div>
+                </div>
 
-          {/* Card: Idioma e Interfaz */}
-          {matchesSearch('idioma lang language interface interfaceLanguage') && (settingsSearchQuery || activeSettingsSection === 'sec-language-interface') && (
-            <div id="sec-language-interface" className="settings-section-card">
-              <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Globe size={18} style={{ color: 'var(--primary)' }} />
-                <span>{lang === 'es' ? 'Idioma e Interfaz' : 'Language & Interface'}</span>
-              </h3>
-              <p className="settings-card-desc">{lang === 'es' ? 'Cambia el idioma de la interfaz del lector.' : 'Change the language of the reader interface.'}</p>
-              
-              <div className="settings-row-control">
-                <span className="settings-label-text">{t('interfaceLanguage', lang)}</span>
-                <select 
-                  value={settings.appLanguage || 'es'}
-                  onChange={(e) => {
-                    const selectedLang = e.target.value;
-                    localStorage.setItem('app_language', selectedLang);
-                    onSaveSettings({ ...settings, appLanguage: selectedLang });
+                <button
+                  type="button"
+                  onClick={() => setShowTutorialModal(true)}
+                  style={{
+                    padding: '10px 20px',
+                    background: '#FFE000',
+                    color: '#000',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontWeight: 700,
+                    fontSize: '0.88rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: '0 4px 14px rgba(255, 224, 0, 0.3)',
+                    transition: 'all 0.15s',
+                    flexShrink: 0
                   }}
-                  className="migaku-select"
+                  onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
                 >
-                  <option value="es">Español 🇪🇸</option>
-                  <option value="en">English 🇺🇸</option>
-                </select>
+                  <Sparkles size={16} />
+                  <span>{lang === 'es' ? 'Ver Tutorial' : 'View Tutorial'}</span>
+                </button>
+              </div>
+
+              {/* Apariencia e Idioma Card */}
+              <div className="settings-section-card" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                  <Palette size={18} style={{ color: 'var(--primary)' }} />
+                  <span>{lang === 'es' ? 'Apariencia e Idioma' : 'Appearance & Language'}</span>
+                </h3>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '16px' }}>
+                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px', padding: '14px' }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#fff', marginBottom: '4px' }}>
+                      {lang === 'es' ? 'Tema del Lector' : 'Reader Theme'}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#888899', marginBottom: '10px' }}>
+                      {lang === 'es' ? 'Apariencia visual para el catálogo y el lector.' : 'Visual style for catalog and reading mode.'}
+                    </div>
+                    <select 
+                      value={settings.theme || 'dark'}
+                      onChange={(e) => onSaveSettings({ ...settings, theme: e.target.value })}
+                      className="migaku-select"
+                      style={{ width: '100%' }}
+                    >
+                      <option value="dark">{lang === 'es' ? 'Oscuro Yoru (por defecto)' : 'Dark Yoru (default)'}</option>
+                      <option value="sepia">{lang === 'es' ? 'Sepia Relajante' : 'Warm Sepia'}</option>
+                      <option value="light">{lang === 'es' ? 'Claro Clásico' : 'Classic Light'}</option>
+                    </select>
+                  </div>
+
+                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '10px', padding: '14px' }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#fff', marginBottom: '4px' }}>
+                      {lang === 'es' ? 'Idioma de la Interfaz' : 'Interface Language'}
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: '#888899', marginBottom: '10px' }}>
+                      {lang === 'es' ? 'Idioma general de menús y opciones.' : 'Language for menus and app settings.'}
+                    </div>
+                    <select 
+                      value={settings.appLanguage || 'es'}
+                      onChange={(e) => {
+                        const selectedLang = e.target.value;
+                        localStorage.setItem('app_language', selectedLang);
+                        onSaveSettings({ ...settings, appLanguage: selectedLang });
+                      }}
+                      className="migaku-select"
+                      style={{ width: '100%' }}
+                    >
+                      <option value="es">Español 🇪🇸</option>
+                      <option value="en">English 🇺🇸</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             </div>
           )}
