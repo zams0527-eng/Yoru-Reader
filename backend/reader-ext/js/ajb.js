@@ -13059,7 +13059,6 @@ class YoruParser extends _automatic_parser__WEBPACK_IMPORTED_MODULE_2__.Automati
         this._yoruPageObserver = null;
         this._yoruBodyObserver = null;
         this._yoruPollTimer = null;
-        this._yoruCurrentId = null;
         this._yoruParsing = false;
         try {
             window.__yoruParserInstance = this;
@@ -13092,60 +13091,116 @@ class YoruParser extends _automatic_parser__WEBPACK_IMPORTED_MODULE_2__.Automati
         super.destroy();
     }
 
-    /**
-     * Override: skip ALL of AutomaticParser's observer setup.
-     * We manage everything ourselves.
-     */
     startParsing() {
         if (this._destroyed) return;
         this._yoruAttach();
     }
 
-    /**
-     * Main entry: find the container and parse it, or poll until it appears.
-     */
     _yoruAttach() {
         if (this._destroyed) return;
-
-        const container = document.querySelector('.book-content-container');
+        const container = document.querySelector('.book-content-container') || document.querySelector('.book-content');
         if (container) {
             this._yoruBind(container);
         } else {
-            // Container not in DOM yet (user hasn't opened a book).
-            // Poll briefly, then fall back to body observer.
             this._yoruPollForContainer();
         }
-
-        // Always install a body observer so we can re-attach when the user
-        // navigates between library ↔ reader.
         this._yoruWatchBody();
     }
 
-    /**
-     * Poll for `.book-content-container` every 200ms, up to 25 times (5s).
-     * If found, bind. If not, the body observer will catch it later.
-     */
     _yoruPollForContainer() {
         if (this._destroyed) return;
         let attempts = 0;
-        const MAX = 25;
+        const MAX = 50;
 
         const poll = () => {
             if (this._destroyed) return;
             attempts++;
-            const container = document.querySelector('.book-content-container');
+            const container = document.querySelector('.book-content-container') || document.querySelector('.book-content');
             if (container) {
                 this._yoruPollTimer = null;
                 this._yoruBind(container);
                 return;
             }
             if (attempts < MAX) {
-                this._yoruPollTimer = setTimeout(poll, 200);
+                this._yoruPollTimer = setTimeout(poll, 150);
             } else {
                 this._yoruPollTimer = null;
-                // Body observer is still active and will catch it
             }
         };
+        poll();
+    }
+
+    _yoruBind(container) {
+        if (this._destroyed || this._yoruParsing) return;
+
+        if (container.querySelector('.jiten-word')) {
+            return;
+        }
+
+        this._yoruPageObserver?.disconnect();
+
+        _integration_registry__WEBPACK_IMPORTED_MODULE_0__.Registry.sentenceManager.reset();
+        this._yoruParsing = true;
+        try {
+            this.parseNode(container);
+        } finally {
+            this._yoruParsing = false;
+        }
+
+        this._yoruPageObserver = new MutationObserver(() => {
+            if (this._destroyed || this._yoruParsing) return;
+            if (!container.querySelector('.jiten-word')) {
+                _integration_registry__WEBPACK_IMPORTED_MODULE_0__.Registry.sentenceManager.reset();
+                this._yoruParsing = true;
+                try {
+                    this.parseNode(container);
+                } finally {
+                    this._yoruParsing = false;
+                }
+            }
+        });
+        this._yoruPageObserver.observe(container, {
+            childList: true,
+            subtree: true
+        });
+    }
+
+    _yoruWatchBody() {
+        if (this._destroyed || this._yoruBodyObserver) return;
+        this._yoruBodyObserver = new MutationObserver(() => {
+            if (this._destroyed) return;
+            const container = document.querySelector('.book-content-container') || document.querySelector('.book-content');
+            if (container && !container.querySelector('.jiten-word')) {
+                this._yoruBind(container);
+            }
+        });
+        this._yoruBodyObserver.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+    }
+
+    parseNodes(nodes, filter) {
+        if (this._destroyed) return;
+        this.installAppStyles();
+        const { batchController } = _integration_registry__WEBPACK_IMPORTED_MODULE_0__.Registry;
+        batchController.registerNodes(nodes, {
+            filter,
+            collapseWhitespace: this._meta.collapseWhitespace,
+            getParagraphsFn: (node, f, c) => {
+                return new _paragraph_reader_ttsu_paragraph_reader__WEBPACK_IMPORTED_MODULE_1B__.TtsuParagraphReader(node, f, c).read();
+            },
+            applyFn: (fragments, tokens) => {
+                new _ttsu_text_highlighter__WEBPACK_IMPORTED_MODULE_1C__.TtsuTextHighlighter(fragments, tokens).apply();
+                _integration_registry__WEBPACK_IMPORTED_MODULE_0__.Registry.statusBar?.recalculateStats();
+            },
+            onComplete: () => {
+                try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+            },
+        });
+        batchController.parseBatches();
+    }
+};
         poll();
     }
 
