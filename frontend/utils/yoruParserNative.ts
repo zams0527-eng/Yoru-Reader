@@ -130,7 +130,7 @@ export function tokenizeJapaneseText(
   return resultHtml;
 }
 
-export function setupNativeYoruParser(onWordClick?: (word: string, element: HTMLElement) => void): () => void {
+export async function setupNativeYoruParser(onWordClick?: (word: string, element: HTMLElement) => void): Promise<() => void> {
   const handleNativeClick = (e: MouseEvent) => {
     const target = e.target as HTMLElement;
     if (!target) return;
@@ -144,7 +144,11 @@ export function setupNativeYoruParser(onWordClick?: (word: string, element: HTML
   };
 
   document.addEventListener('click', handleNativeClick);
-  initTokenizer().catch(err => console.warn('Native tokenizer init error:', err));
+  try {
+    await initTokenizer();
+  } catch (err) {
+    console.warn('Native tokenizer init error:', err);
+  }
 
   return () => {
     document.removeEventListener('click', handleNativeClick);

@@ -91,9 +91,17 @@ function ReaderEngineComponent({
   // Initialize native parser
   const [parserReady, setParserReady] = useState(false);
   useEffect(() => {
-    setupNativeYoruParser().then(() => {
+    let cleanup: (() => void) | undefined;
+    setupNativeYoruParser().then((fn) => {
+      cleanup = fn;
+      setParserReady(true);
+    }).catch(err => {
+      console.warn('Parser setup error:', err);
       setParserReady(true);
     });
+    return () => {
+      if (cleanup) cleanup();
+    };
   }, []);
 
   // Current chapter / section index
