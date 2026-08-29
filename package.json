@@ -14,7 +14,7 @@
     "preview": "vite preview",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
-    "electron:start": "electron .",
+    "electron:start": "electron . --no-sandbox",
     "electron:package": "npm run build && electron-packager . Yoru-Reader --platform=win32 --arch=x64 --out=dist-electron --overwrite --ignore=\"(releases|dist-electron|dist-electron-installer|downloads|yoru-reader-svelte)\"",
     "electron:dev": "npm run build && electron-packager . Yoru-Reader-Dev --platform=win32 --arch=x64 --out=releases/dev --overwrite --ignore=\"(releases|dist-electron|dist-electron-installer|downloads|yoru-reader-svelte)\"",
     "electron:stable": "npm run build && electron-packager . Yoru-Reader --platform=win32 --arch=x64 --out=releases/stable --overwrite --ignore=\"(releases|dist-electron|dist-electron-installer|downloads|yoru-reader-svelte)\"",
