@@ -127,14 +127,20 @@ function createWindow(): void {
     }
   });
 
-  // Load the compiled index.html (from OTA directory if updated, or default dist)
-  const otaDistDir = path.join(app.getPath('userData'), 'ota_dist');
-  const otaIndex = path.join(otaDistDir, 'index.html');
-  if (fs.existsSync(otaIndex)) {
-    console.log('[OTA] Loading updated frontend bundle from:', otaIndex);
-    win.loadFile(otaIndex);
+  // Load the compiled index.html (from built-in app bundle first, then OTA if applicable)
+  const defaultIndex = path.join(__dirname, '../dist/index.html');
+  if (fs.existsSync(defaultIndex)) {
+    console.log('[main] Loading built-in frontend bundle from:', defaultIndex);
+    win.loadFile(defaultIndex);
   } else {
-    win.loadFile(path.join(__dirname, '../dist/index.html'));
+    const otaDistDir = path.join(app.getPath('userData'), 'ota_dist');
+    const otaIndex = path.join(otaDistDir, 'index.html');
+    if (fs.existsSync(otaIndex)) {
+      console.log('[OTA] Loading updated frontend bundle from:', otaIndex);
+      win.loadFile(otaIndex);
+    } else {
+      win.loadFile(path.join(app.getAppPath(), 'dist/index.html'));
+    }
   }
 }
 
