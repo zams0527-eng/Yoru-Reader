@@ -115,6 +115,22 @@ function createWindow() {
     console.log(`[RENDERER CONSOLE] (${sourceFile}:${line}): ${message}`);
   });
 
+  win.webContents.on('did-finish-load', () => {
+    try {
+      let ajbPath = path.join(__dirname, 'reader-ext/js/ajb.js');
+      if (ajbPath.includes('app.asar')) {
+        ajbPath = ajbPath.replace('app.asar', 'app.asar.unpacked');
+      }
+      if (fs.existsSync(ajbPath)) {
+        const scriptCode = fs.readFileSync(ajbPath, 'utf8');
+        win.webContents.executeJavaScript(scriptCode).catch(() => {});
+        console.log('[main] Injected Yoru Reader Extension content script into window.');
+      }
+    } catch (e) {
+      console.warn('[main] Content script injection warning:', e);
+    }
+  });
+
   // Load the compiled index.html (from OTA directory if updated, or default dist)
   const otaDistDir = path.join(app.getPath('userData'), 'ota_dist');
   const otaIndex = path.join(otaDistDir, 'index.html');

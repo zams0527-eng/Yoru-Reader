@@ -46,8 +46,8 @@ interface ReaderEngineProps {
 export function sanitizeJapaneseText(text: string): string {
   if (!text) return '';
   return text
-    .replace(/[｀`]/g, '、')
-    .replace(/[゜°]/g, '。')
+    .replace(/[\uFF40\u0060\u2018\u2019\u00B4｀`]/g, '、')
+    .replace(/[\u309C\uFF9F\u00B0゜°]/g, '。')
     .replace(/［＃[^］]+］/g, '')
     .replace(/｜([^\n《]+)《([^\n》]+)》/g, '<ruby>$1<rt>$2</rt></ruby>')
     .replace(/([\u4e00-\u9faf\u3400-\u4dbf々ー]+)《([^\n》]+)》/g, '<ruby>$1<rt>$2</rt></ruby>')
