@@ -372,14 +372,12 @@ export interface ExtensionParseResult {
   vocabulary: ExtensionVocabulary[];
 }
 
-export async function parseExtensionText(paragraphs: string[]): Promise<ExtensionParseResult> {
+export async function parseExtensionText(paragraphs: string[], wordStatuses?: Record<string, string>): Promise<ExtensionParseResult> {
   const tokenizer = await initTokenizer();
   
   const tokens: ExtensionToken[][] = [];
   const vocabularyMap = new Map<string, ExtensionVocabulary>();
-  const dbModule = await import('./db');
-  const db = (dbModule as any).default || dbModule;
-  const wordStatuses = db && db.getWordStatuses ? db.getWordStatuses() : {};
+  const statuses = wordStatuses || {};
   
   for (const para of paragraphs) {
     if (!para) {
@@ -418,7 +416,7 @@ export async function parseExtensionText(paragraphs: string[]): Promise<Extensio
         wordId = key;
         
         if (!vocabularyMap.has(key)) {
-          const status = wordStatuses[basicForm] || 'new';
+          const status = statuses[basicForm] || 'new';
           let knownState = [0];
           if (status === 'known') knownState = [2];
           else if (status === 'learning') knownState = [1];

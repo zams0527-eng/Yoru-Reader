@@ -279,7 +279,8 @@ export default function App() {
         unsubscribeParse = window.electronAPI.onParseTextRequest(async ({ requestId, paragraphs }: { requestId: string; paragraphs: string[] }) => {
           try {
             console.log('[Yoru] Parsing text request from extension. Request ID:', requestId);
-            const result = await parseExtensionText(paragraphs);
+            const statuses = db.getWordStatuses();
+            const result = await parseExtensionText(paragraphs, statuses);
             window.electronAPI.replyParseText({ requestId, result });
           } catch (err: any) {
             console.error('[Yoru] Failed to parse extension text:', err);

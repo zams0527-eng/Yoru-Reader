@@ -13056,95 +13056,75 @@ __webpack_require__.r(__webpack_exports__);
 class YoruParser extends _automatic_parser__WEBPACK_IMPORTED_MODULE_2__.AutomaticParser {
     constructor(meta) {
         super(meta);
-        this._yoruPageObserver = null;
-        this._yoruPollTimer = null;
-        this._yoruLastParsedId = null;
-        this._yoruParsing = false;
+        this._pageObserver = null;
+        this._pollTimer = null;
+        this._currentId = null;
+        this._isParsing = false;
         try {
-            window.__yoruParserInstance = this;
-            window.addEventListener('yoru:parse-page', () => {
-                const container = document.querySelector('.book-content-container');
-                if (container) {
-                    this._parseContainer(container, true);
-                }
-            });
+            window.__yoruParser = this;
         } catch (e) {}
     }
 
     destroy() {
-        this._yoruPageObserver?.disconnect();
-        if (this._yoruPollTimer !== null) {
-            clearInterval(this._yoruPollTimer);
-            this._yoruPollTimer = null;
+        this._pageObserver?.disconnect();
+        if (this._pollTimer) {
+            clearInterval(this._pollTimer);
+            this._pollTimer = null;
         }
         super.destroy();
     }
 
     startParsing() {
         if (this._destroyed) return;
-        this._yoruAttach();
-    }
-
-    _yoruAttach() {
-        if (this._destroyed) return;
-        const container = document.querySelector('.book-content-container');
-        if (container) {
-            this._yoruBind(container);
-        }
-        // Poll every 300ms to detect when reader mounts or unmounts (navigating Library <-> Reader)
-        if (!this._yoruPollTimer) {
-            this._yoruPollTimer = setInterval(() => {
-                if (this._destroyed) return;
-                const c = document.querySelector('.book-content-container');
-                if (c) {
-                    const currentId = c.getAttribute('id') || 'default';
-                    if (this._yoruLastParsedId !== currentId) {
-                        this._yoruBind(c);
-                    }
+        
+        const attach = () => {
+            const container = document.querySelector('.book-content-container');
+            if (container) {
+                const id = container.getAttribute('id') || 'chapter-0';
+                if (this._currentId !== id) {
+                    this._currentId = id;
+                    this._bind(container);
                 }
-            }, 300);
+            }
+        };
+
+        attach();
+        if (!this._pollTimer) {
+            this._pollTimer = setInterval(attach, 250);
         }
     }
 
-    _yoruBind(container) {
-        if (this._destroyed || this._yoruParsing) return;
-        const currentId = container.getAttribute('id') || 'default';
-        if (this._yoruLastParsedId === currentId && container.querySelector('.jiten-word')) {
-            return;
-        }
+    _bind(container) {
+        if (this._destroyed || this._isParsing) return;
+        this._pageObserver?.disconnect();
 
-        this._yoruPageObserver?.disconnect();
-        this._parseContainer(container, false);
+        this._parse(container);
 
-        // Observe only ID attribute changes (chapter changes in React)
-        this._yoruPageObserver = new MutationObserver(() => {
-            if (this._destroyed || this._yoruParsing) return;
-            const newId = container.getAttribute('id') || 'default';
-            if (newId !== this._yoruLastParsedId) {
-                this._parseContainer(container, false);
+        this._pageObserver = new MutationObserver(() => {
+            if (this._destroyed || this._isParsing) return;
+            const newId = container.getAttribute('id') || 'chapter-0';
+            if (newId !== this._currentId) {
+                this._currentId = newId;
+                this._parse(container);
             }
         });
-        this._yoruPageObserver.observe(container, {
+
+        this._pageObserver.observe(container, {
             attributes: true,
             attributeFilter: ['id']
         });
     }
 
-    _parseContainer(container, force) {
-        if (this._destroyed || this._yoruParsing) return;
-        const currentId = container.getAttribute('id') || 'default';
-        if (!force && this._yoruLastParsedId === currentId && container.querySelector('.jiten-word')) {
-            return;
-        }
-        this._yoruLastParsedId = currentId;
-        this._yoruParsing = true;
+    _parse(container) {
+        if (this._destroyed || this._isParsing) return;
+        this._isParsing = true;
         try {
             _integration_registry__WEBPACK_IMPORTED_MODULE_0__.Registry.sentenceManager.reset();
             this.parseNode(container);
         } catch (e) {
-            console.error('[YoruParser] Error parsing container:', e);
+            console.error('[YoruParser] Parse error:', e);
         } finally {
-            this._yoruParsing = false;
+            this._isParsing = false;
         }
     }
 
