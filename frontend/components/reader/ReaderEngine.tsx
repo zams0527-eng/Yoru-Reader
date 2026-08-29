@@ -278,63 +278,68 @@ function ReaderEngineComponent({
     const content = contentRef.current;
     if (!content) return;
 
-    let isStart = false, isEnd = false;
-    if (vertical) {
-      isStart = content.scrollTop === 0;
-      isEnd = Math.ceil(content.scrollTop + content.clientHeight) >= content.scrollHeight;
+    if (paginated) {
+      if (vertical) {
+        // Vertical paginated (writingMode: vertical-rl)
+        const clientW = content.clientWidth;
+        const scrollW = content.scrollWidth;
+        const currentScroll = Math.abs(content.scrollLeft);
+        const maxScroll = Math.max(0, scrollW - clientW);
+
+        const isStart = currentScroll <= 4;
+        const isEnd = currentScroll >= maxScroll - 4;
+
+        if (isStart && multiplier === -1) {
+          if (currSection > 0) {
+            setCurrSection(prev => prev - 1);
+          }
+          return;
+        }
+        if (isEnd && multiplier === 1) {
+          if (currSection < sections.length - 1) {
+            setCurrSection(prev => prev + 1);
+          }
+          return;
+        }
+
+        const nextScroll = Math.max(0, Math.min(maxScroll, currentScroll + clientW * multiplier));
+        content.scrollLeft = -nextScroll;
+      } else {
+        // Horizontal paginated
+        const clientW = content.clientWidth;
+        const scrollW = content.scrollWidth;
+        const currentScroll = content.scrollLeft;
+        const maxScroll = Math.max(0, scrollW - clientW);
+
+        const isStart = currentScroll <= 4;
+        const isEnd = currentScroll >= maxScroll - 4;
+
+        if (isStart && multiplier === -1) {
+          if (currSection > 0) {
+            setCurrSection(prev => prev - 1);
+          }
+          return;
+        }
+        if (isEnd && multiplier === 1) {
+          if (currSection < sections.length - 1) {
+            setCurrSection(prev => prev + 1);
+          }
+          return;
+        }
+
+        const nextScroll = Math.max(0, Math.min(maxScroll, currentScroll + clientW * multiplier));
+        content.scrollTo({ left: nextScroll, behavior: 'instant' });
+      }
     } else {
-      isStart = content.scrollLeft === 0;
-      isEnd = Math.ceil(content.scrollLeft + content.clientWidth) >= content.scrollWidth;
+      // Continuous scroll mode
+      if (vertical) {
+        content.scrollLeft -= 100 * multiplier;
+      } else {
+        content.scrollTop += 100 * multiplier;
+      }
     }
-
-    // At section boundary → go prev/next chapter
-    if (isStart && multiplier === -1) {
-      if (currSection === 0) return;
-      setCurrSection(prev => {
-        const newSec = prev - 1;
-        // scroll to end of previous section after render
-        requestAnimationFrame(() => {
-          const c = contentRef.current;
-          if (!c) return;
-          if (vertical) {
-            c.scrollTo({ top: c.scrollHeight, behavior: 'instant' });
-          } else {
-            c.scrollTo({ left: c.scrollWidth, behavior: 'instant' });
-          }
-          updateChars();
-        });
-        return newSec;
-      });
-      return;
-    }
-    if (isEnd && multiplier === 1) {
-      if (currSection >= sections.length - 1) return;
-      setCurrSection(prev => {
-        const newSec = prev + 1;
-        requestAnimationFrame(() => {
-          const c = contentRef.current;
-          if (!c) return;
-          if (vertical) {
-            c.scrollTo({ top: 0, behavior: 'instant' });
-          } else {
-            c.scrollTo({ left: 0, behavior: 'instant' });
-          }
-          updateChars();
-        });
-        return newSec;
-      });
-      return;
-    }
-
-    const offset = vertical ? content.clientHeight : content.clientWidth;
-    const current = vertical ? content.scrollTop : content.scrollLeft;
-    const max = vertical ? content.scrollHeight : content.scrollWidth;
-    const next = Math.max(0, Math.min(Math.ceil(current + offset * multiplier), max));
-
-    const scrollOpts = vertical ? { top: next } : { left: next };
-    content.scrollTo({ ...scrollOpts, behavior: 'instant' });
     updateChars();
-  }, [vertical, currSection, sections.length]);
+  }, [vertical, paginated, currSection, sections.length, updateChars]);
 
   // Update current chars read based on visible paragraphs
   const updateChars = useCallback(() => {

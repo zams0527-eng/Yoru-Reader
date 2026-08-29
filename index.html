@@ -31,7 +31,34 @@
     <meta name="theme-color" content="#ff9345">
 
     <title>Yoru Reader</title>
-    <script src="/kuromoji.js"></script>
+    <style>
+      .jiten-word {
+        display: inline;
+        cursor: pointer;
+      }
+      .jiten-word.new {
+        color: #ad7ff0 !important;
+        -webkit-text-fill-color: #ad7ff0 !important;
+      }
+      .jiten-word.young {
+        color: #ff9800 !important;
+        -webkit-text-fill-color: #ff9800 !important;
+        text-decoration: underline #ff9800 !important;
+      }
+      .jiten-word.learning {
+        color: #60a5fa !important;
+        -webkit-text-fill-color: #60a5fa !important;
+      }
+      .jiten-word.due {
+        color: #f87171 !important;
+        -webkit-text-fill-color: #f87171 !important;
+      }
+      .jiten-word.mastered {
+        color: #4ade80 !important;
+        -webkit-text-fill-color: #4ade80 !important;
+      }
+    </style>
+    <script src="./kuromoji.js"></script>
   </head>
   <body>
     <div id="root"></div>
