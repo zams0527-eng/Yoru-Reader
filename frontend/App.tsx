@@ -161,10 +161,30 @@ export default function App() {
   const lang = settings.appLanguage || 'es';
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [infoBook, setInfoBook] = useState<any | null>(null);
+  const [showHotUpdateBanner, setShowHotUpdateBanner] = useState(false);
+  const [hotUpdateVersion, setHotUpdateVersion] = useState('');
 
   const { showConfirm, confirmModal } = useConfirm();
 
   const uniqueWordsCacheRef = useRef<Record<string, { uniqueWords: Set<string>; tokens: any[] }>>({});
+
+  // Background OTA Hot Update Check on startup (Electron)
+  useEffect(() => {
+    if (window.electronAPI && window.electronAPI.checkHotUpdate) {
+      const timer = setTimeout(async () => {
+        try {
+          const res = await window.electronAPI.checkHotUpdate();
+          if (res && res.updated) {
+            setHotUpdateVersion(res.version);
+            setShowHotUpdateBanner(true);
+          }
+        } catch (e) {
+          console.warn('[OTA] Startup check skipped:', e);
+        }
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   // Run background database maintenance tasks exactly once on app startup
   useEffect(() => {
@@ -947,6 +967,64 @@ export default function App() {
           />
         )}
       </React.Suspense>
+
+      {/* Floating OTA Hot Update Notification */}
+      {showHotUpdateBanner && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 100000,
+          background: 'linear-gradient(135deg, #18181b, #27272a)',
+          border: '1px solid #3b82f6',
+          borderRadius: '12px',
+          padding: '12px 20px',
+          boxShadow: '0 10px 35px rgba(0, 0, 0, 0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '14px',
+          color: '#fff',
+          animation: 'toastIn 0.3s ease-out'
+        }}>
+          <span style={{ fontSize: '1.2rem' }}>⚡</span>
+          <span style={{ fontSize: '0.86rem', fontWeight: 500 }}>
+            {lang === 'es' 
+              ? `Actualización rápida instalada (v${hotUpdateVersion}). Recarga para ver los cambios.` 
+              : `Hot update installed (v${hotUpdateVersion}). Reload to apply changes.`}
+          </span>
+          <button
+            onClick={() => {
+              if (window.electronAPI && window.electronAPI.reloadApp) {
+                window.electronAPI.reloadApp();
+              } else {
+                window.location.reload();
+              }
+            }}
+            style={{
+              background: '#3b82f6',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '6px 14px',
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+              transition: 'background 0.2s'
+            }}
+          >
+            {lang === 'es' ? 'Recargar ahora' : 'Reload now'}
+          </button>
+          <button
+            onClick={() => setShowHotUpdateBanner(false)}
+            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '0.9rem', padding: '4px' }}
+            title={lang === 'es' ? 'Cerrar' : 'Close'}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Styled confirm modal */}
       {confirmModal}

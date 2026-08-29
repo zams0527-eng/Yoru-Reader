@@ -13,6 +13,55 @@ permissions:
 
 jobs:
   # -------------------------------------------------------------
+  # 0. OTA HOT UPDATE (dist.zip for fast instant in-app update)
+  # -------------------------------------------------------------
+  publish-hot-update:
+    name: Publish OTA Hot Update (dist.zip)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Get app version
+        id: version
+        run: |
+          VER=$(node -p "require('./package.json').version")
+          echo "VERSION=$VER" >> $GITHUB_ENV
+          echo "TAG=v$VER" >> $GITHUB_ENV
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Create dist.zip
+        run: |
+          cd dist
+          zip -r ../dist.zip .
+          cd ..
+
+      - name: Upload dist.zip Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Yoru-Reader-OTA-dist-zip
+          path: dist.zip
+          retention-days: 14
+
+      - name: Ensure Release Exists & Upload dist.zip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${TAG}" || gh release create "${TAG}" --title "Yoru Reader ${TAG}" --notes "Release ${TAG}" || true
+          gh release upload "${TAG}" dist.zip --clobber || gh release upload yorureader dist.zip --clobber || true
+
+  # -------------------------------------------------------------
   # 1. WINDOWS (.exe NSIS Installer)
   # -------------------------------------------------------------
   build-windows:

@@ -43,5 +43,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const listener = (event, data) => callback(data);
     ipcRenderer.on('update-download-progress', listener);
     return () => ipcRenderer.off('update-download-progress', listener);
-  }
+  },
+  checkHotUpdate: () => ipcRenderer.invoke('check-hot-update'),
+  reloadApp: () => ipcRenderer.invoke('reload-app')
 });
