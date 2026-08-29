@@ -8501,7 +8501,7 @@ const Library = React.memo(function Library({
         onClose={() => setShowTutorialModal(false)}
         onOpenDictionaries={() => {
           setActiveTab('settings');
-          setActiveSettingsSection('sec-dictionaries');
+          setActiveSettingsSection('sec-dicts');
           setIsLibraryModalOpen('dict');
         }}
         lang={lang}
