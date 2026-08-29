@@ -1,4 +1,4 @@
-﻿### 📥 Descargas Oficiales Multiplataforma (v1.1.4)
+### 📥 Descargas Oficiales Multiplataforma (v1.1.4)
 
 | Plataforma | Paquete | Enlace de descarga |
 | :--- | :--- | :--- |
@@ -6,7 +6,7 @@
 | 🍏 **macOS (Apple Silicon)** | Instalador DMG (.dmg) | [⬇️ Descargar macOS (M1/M2/M3/M4 - arm64)](https://github.com/zams0527-eng/Yoru-Reader/releases/download/v1.1.4/Yoru-Reader-1.1.4-arm64.dmg) |
 | 🍏 **macOS (Intel)** | Instalador DMG (.dmg) | [⬇️ Descargar macOS (Intel - x64)](https://github.com/zams0527-eng/Yoru-Reader/releases/download/v1.1.4/Yoru-Reader-1.1.4-x64.dmg) |
 | 🐧 **Linux** | Flatpak (.flatpak) | [⬇️ Descargar Flatpak (x86_64)](https://github.com/zams0527-eng/Yoru-Reader/releases/download/v1.1.4/Yoru-Reader-1.1.4-x86_64.flatpak) |
-| 📱 **Android** | APK (.apk) | [⬇️ Descargar Android APK](https://github.com/zams0527-eng/Yoru-Reader/releases/download/v1.1.4/Yoru-Reader-1.1.0.apk) |
+| 📱 **Android** | APK (.apk) | [⬇️ Descargar Android APK](https://github.com/zams0527-eng/Yoru-Reader/releases/download/v1.1.4/Yoru-Reader-1.1.4.apk) |
 
 ---
 

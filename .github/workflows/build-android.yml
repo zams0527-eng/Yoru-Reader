@@ -1,0 +1,65 @@
+﻿name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Build web frontend & sync Capacitor
+        run: |
+          npx vite build
+          npx cap sync android
+
+      - name: Make gradlew executable
+        run: chmod +x ./android/gradlew
+
+      - name: Build Android APK (Release)
+        run: |
+          cd android
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Rename and copy APK
+        run: |
+          mkdir -p releases/android
+          cp android/app/build/outputs/apk/release/app-release.apk releases/android/Yoru-Reader-1.1.4.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Yoru-Reader-Android-APK
+          path: releases/android/Yoru-Reader-1.1.4.apk
+          retention-days: 14
+
+      - name: Upload APK to Release
+        run: |
+          gh release upload v1.1.4 releases/android/Yoru-Reader-1.1.4.apk --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
