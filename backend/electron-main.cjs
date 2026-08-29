@@ -11,6 +11,18 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'yoru-reader-ext', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }
 ]);
 
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
 // Override console.log and console.error to write to a log file
 let logPath;
 try {
@@ -901,6 +913,14 @@ function startLocalExtServer() {
       console.error(`[local-ext-server] Error handling ${pathName}:`, err);
       res.writeHead(500);
       res.end(JSON.stringify({ error: err.message }));
+    }
+  });
+
+  localExtServer.on('error', (err) => {
+    if (err && err.code === 'EADDRINUSE') {
+      console.warn('[local-ext-server] Port 23280 is already in use by another instance, skipping listener.');
+    } else {
+      console.error('[local-ext-server] Server error:', err);
     }
   });
 
