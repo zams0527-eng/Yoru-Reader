@@ -201,7 +201,7 @@ const Library = React.memo(function Library({
           return;
         }
 
-        const appNewer = isNewerVersion(remote.appVersion, '1.1.3');
+        const appNewer = isNewerVersion(remote.appVersion, stableManifest.appVersion);
         const backendNewer = isNewerVersion(remote.backendVersion, stableManifest.backendVersion);
 
         setLatestAppVersion(remote.appVersion);
@@ -240,7 +240,7 @@ const Library = React.memo(function Library({
         return;
       }
 
-      const appNewer = isNewerVersion(remote.appVersion, '1.1.3');
+      const appNewer = isNewerVersion(remote.appVersion, stableManifest.appVersion);
       const backendNewer = isNewerVersion(remote.backendVersion, stableManifest.backendVersion);
 
       setLatestAppVersion(remote.appVersion);
@@ -286,8 +286,8 @@ const Library = React.memo(function Library({
       setUpdateProgress(0);
       setUpdatePhase('downloading');
       
-      const version = remoteManifest?.appVersion || '1.1.4';
-      const targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/yorureader/Yoru-Reader.Setup.${version}.exe`;
+      const version = remoteManifest?.appVersion || stableManifest.appVersion || '1.1.4';
+      const targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/v${version}/Yoru-Reader.Setup.${version}.exe`;
       
       try {
         await window.electronAPI.downloadAndInstallUpdate(targetUrl);
@@ -306,7 +306,7 @@ const Library = React.memo(function Library({
       setUpdating(true);
 
       // Detect platform for correct download link
-      const version = remoteManifest?.appVersion || '1.1.4';
+      const version = remoteManifest?.appVersion || stableManifest.appVersion || '1.1.4';
       const ua = navigator.userAgent.toLowerCase();
       const platform = ((navigator as any).userAgentData?.platform || navigator.platform || '').toLowerCase();
       const isMacArm = (platform.includes('mac') || ua.includes('mac')) && (ua.includes('arm') || ua.includes('apple'));
@@ -317,16 +317,16 @@ const Library = React.memo(function Library({
       if (remoteManifest?.url) {
         targetUrl = remoteManifest.url;
       } else if (isAndroid) {
-        targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/yorureader/Yoru-Reader-${version}-android.apk`;
+        targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/v${version}/Yoru-Reader-${version}.apk`;
       } else if (isMacArm) {
-        targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/yorureader/Yoru-Reader-${version}-mac-arm64.zip`;
+        targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/v${version}/Yoru-Reader-${version}-arm64.dmg`;
       } else if (isMac) {
-        targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/yorureader/Yoru-Reader-${version}-mac-x64.zip`;
+        targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/v${version}/Yoru-Reader-${version}-x64.dmg`;
       } else if (isLinux) {
-        targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/yorureader/Yoru-Reader-${version}-x86_64.flatpak`;
+        targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/v${version}/Yoru-Reader-${version}-x86_64.flatpak`;
       } else {
         // Default: Windows
-        targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/yorureader/Yoru-Reader.Setup.${version}.exe`;
+        targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/v${version}/Yoru-Reader.Setup.${version}.exe`;
       }
         
       window.open(targetUrl, '_blank');

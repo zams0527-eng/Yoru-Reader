@@ -418,24 +418,23 @@ ipcMain.handle('download-and-install-update', async (event, { urlString }) => {
           
           try {
             console.log('[update-downloader] Executing installer...');
-            const { exec } = require('child_process');
-            exec(`"${installerPath}" /S`, (execErr) => {
-              if (execErr) {
-                console.warn('[update-downloader] Silent install failed, opening installer directly:', execErr);
-                shell.openPath(installerPath);
-              }
+            const { spawn } = require('child_process');
+            const child = spawn(installerPath, [], {
+              detached: true,
+              stdio: 'ignore'
             });
+            child.unref();
             
-            // Quit app cleanly so the installer can replace the app files
+            // Quit current app instance so installer can write new files
             setTimeout(() => {
               app.quit();
-            }, 1000);
+            }, 800);
             
             resolve({ success: true });
           } catch (spawnErr) {
             console.error('[update-downloader] Error launching installer:', spawnErr);
             shell.openPath(installerPath);
-            setTimeout(() => { app.quit(); }, 1000);
+            setTimeout(() => { app.quit(); }, 800);
             resolve({ success: true });
           }
         });
