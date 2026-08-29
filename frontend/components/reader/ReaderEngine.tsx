@@ -1,19 +1,20 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, ReactNode } from 'react';
 import { ReaderSettingsState } from '../../hooks/useReaderSettings';
 
-interface Chapter {
+export interface Chapter {
   title: string;
   content: string;
   isFromToc?: boolean;
 }
 
-interface Book {
+export interface Book {
+  id?: string;
   title: string;
   chapters: Chapter[];
   _savedSection?: number;
 }
 
-interface Section {
+export interface Section {
   id: string;
   title: string;
   content: string;
@@ -23,14 +24,14 @@ interface Section {
   isFromToc?: boolean;
 }
 
-interface CharsUpdatePayload {
+export interface CharsUpdatePayload {
   currChars: number;
   totalChars: number;
   lastIndex: number;
   currSection: number;
 }
 
-interface ReaderEngineProps {
+export interface ReaderEngineProps {
   book: Book;
   readerSettings: ReaderSettingsState;
   onCharsUpdate?: (payload: CharsUpdatePayload) => void;
@@ -66,9 +67,8 @@ export function countJapaneseChars(text: string): number {
 }
 
 /**
- * ReaderEngine — Direct EPUB rendering engine for Yoru Reader.
- * Replaces the Svelte iframe. Renders book chapter HTML directly in the DOM
- * using CSS columns for pagination and writing-mode for vertical reading.
+ * ReaderEngine 2.0 — High-Performance Reader Rendering Engine
+ * Implements discrete page tracking, seamless chapter transitions, and perfect 4-mode layout.
  */
 function ReaderEngineComponent({
   book,
@@ -85,15 +85,18 @@ function ReaderEngineComponent({
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // Current section index (chapter)
+  // Current chapter / section index
   const [currSection, setCurrSection] = useState<number>(() => {
     const saved = book._savedSection;
-    return typeof saved === 'number' ? saved : 0;
+    return typeof saved === 'number' && saved >= 0 ? saved : 0;
   });
 
-  // Build HTML sections from book.chapters
+  // Discrete page index within current section (for paginated modes)
+  const [pageIndex, setPageIndex] = useState<number>(0);
+
+  // Build clean HTML sections from book.chapters
   const sections = useMemo<Section[]>(() => {
-    if (!book || !book.chapters) return [];
+    if (!book || !book.chapters || book.chapters.length === 0) return [];
     let paragraphId = 0;
     let charAccum = 0;
 
@@ -103,7 +106,13 @@ function ReaderEngineComponent({
       const startChars = charAccum;
 
       lines.forEach(line => {
-        // heading tags
+        if (!line.trim()) {
+          sectionHtml += `<p class="chapter-content empty-line" index="${paragraphId}" characumm="${charAccum}"><br/></p>`;
+          paragraphId++;
+          return;
+        }
+
+        // Headings
         if (line.startsWith('{h1:') && line.endsWith('}')) {
           const text = processRuby(line.substring(4, line.length - 1));
           sectionHtml += `<h1 class="chapter-content-h1">${text}</h1>`;
@@ -119,19 +128,22 @@ function ReaderEngineComponent({
           sectionHtml += `<h3 class="chapter-content-h3">${text}</h3>`;
           return;
         }
-        // standalone images
+
+        // Images
         if (line.startsWith('{img:') && line.endsWith('}')) {
           const src = line.substring(5, line.length - 1);
           sectionHtml += `<img index="${paragraphId}" characumm="${charAccum}" src="${src}" style="max-width:100%; max-height:var(--reader-image-height,85vh); object-fit:contain; display:block; margin:1em auto;" />`;
           paragraphId++;
           return;
         }
-        // standard paragraph
-        const sanitized = sanitizeJapaneseText(line);
-        const processed = sanitized
-          .replace(/\{img:([^{}]+)\}/gi, '<img src="$1" style="max-width:100%; max-height:var(--reader-image-height,85vh); object-fit:contain; display:block; margin:1em auto;" />');
 
-        // count Japanese characters (excluding furigana)
+        // Paragraphs
+        const sanitized = sanitizeJapaneseText(line);
+        const processed = sanitized.replace(
+          /\{img:([^{}]+)\}/gi,
+          '<img src="$1" style="max-width:100%; max-height:var(--reader-image-height,85vh); object-fit:contain; display:block; margin:1em auto;" />'
+        );
+
         const plainText = line
           .replace(/\{img:[^{}]*\}/gi, '')
           .replace(/\{[^|{}]+\|[^{}]*\}/g, (m) => m.split('|')[0].substring(1))
@@ -146,7 +158,7 @@ function ReaderEngineComponent({
 
       return {
         id: `chapter-${idx}`,
-        title: chapter.title,
+        title: chapter.title || `Capítulo ${idx + 1}`,
         content: sectionHtml,
         lastIndex: paragraphId - 1,
         startChars,
@@ -162,9 +174,17 @@ function ReaderEngineComponent({
     return lastSection.startChars + (lastSection.charCount || 0);
   }, [sections]);
 
-  const { vertical, paginated, fontSize, lineHeight, verticalPadding, horizontalPadding, fontFamily } = readerSettings;
+  const {
+    vertical,
+    paginated,
+    fontSize,
+    lineHeight,
+    verticalPadding,
+    horizontalPadding,
+    fontFamily,
+  } = readerSettings;
 
-  // Container styles
+  // Outer container styles
   const containerStyle = useMemo<React.CSSProperties>(() => {
     return {
       fontFamily: fontFamily !== '__default__' ? `"${fontFamily}", serif` : 'inherit',
@@ -177,10 +197,10 @@ function ReaderEngineComponent({
     };
   }, [fontFamily, colors.bg, colors.textMain]);
 
-  // Content div styles — CSS columns for pagination
+  // Content styles optimized for all 4 reading modes
   const contentStyle = useMemo<React.CSSProperties>(() => {
-    const vp = `${window.innerHeight * (verticalPadding / 100)}px`;
-    const hp = `${window.innerWidth * (horizontalPadding / 100)}px`;
+    const vp = `${Math.max(10, window.innerHeight * (verticalPadding / 100))}px`;
+    const hp = `${Math.max(10, window.innerWidth * (horizontalPadding / 100))}px`;
 
     const base: React.CSSProperties = {
       margin: 'auto',
@@ -190,6 +210,7 @@ function ReaderEngineComponent({
       padding: `${vp} ${hp}`,
       backgroundColor: colors.bg,
       color: colors.textMain,
+      boxSizing: 'border-box',
     };
 
     if (paginated && vertical) {
@@ -198,7 +219,6 @@ function ReaderEngineComponent({
         writingMode: 'vertical-rl',
         overflowX: 'hidden',
         overflowY: 'hidden',
-        boxSizing: 'border-box',
         width: '100%',
         height: '100%',
         columnGap: `calc(${hp} * 2)`,
@@ -208,9 +228,9 @@ function ReaderEngineComponent({
     } else if (paginated && !vertical) {
       return {
         ...base,
+        writingMode: 'horizontal-tb',
         overflowY: 'hidden',
         overflowX: 'hidden',
-        boxSizing: 'border-box',
         width: '100%',
         height: '100%',
         columnGap: `calc(${hp} * 2)`,
@@ -223,15 +243,14 @@ function ReaderEngineComponent({
         writingMode: 'vertical-rl',
         overflowX: 'auto',
         overflowY: 'hidden',
-        boxSizing: 'border-box',
         height: '100%',
         width: '100%',
       };
     } else {
-      // continuous horizontal
+      // Continuous Horizontal
       return {
         ...base,
-        boxSizing: 'border-box',
+        writingMode: 'horizontal-tb',
         height: '100%',
         width: '100%',
         overflowY: 'auto',
@@ -240,49 +259,7 @@ function ReaderEngineComponent({
     }
   }, [fontSize, lineHeight, verticalPadding, horizontalPadding, vertical, paginated, fontFamily, colors.bg, colors.textMain]);
 
-  // Handle resize → update CSS variables
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const handleResize = () => {
-      container.style.setProperty('--reader-height', `${window.innerHeight}px`);
-      container.style.setProperty('--reader-width', `${window.innerWidth}px`);
-      container.style.setProperty(
-        '--reader-image-height',
-        `${window.innerHeight - 2 * window.innerHeight * (verticalPadding / 100) - 60}px`
-      );
-      container.style.setProperty(
-        '--reader-image-width',
-        `${window.innerWidth - 2 * window.innerWidth * (horizontalPadding / 100) - 60}px`
-      );
-
-      // Re-align columns after resize
-      const content = contentRef.current;
-      if (content && paginated) {
-        if (!vertical) {
-          const col = Math.round(content.scrollLeft / content.clientWidth);
-          content.scrollLeft = col * content.clientWidth;
-        } else {
-          const col = Math.round(Math.abs(content.scrollLeft) / content.clientWidth);
-          content.scrollLeft = -col * content.clientWidth;
-        }
-      }
-    };
-
-    window.addEventListener('resize', handleResize);
-    handleResize();
-
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      container.style.removeProperty('--reader-height');
-      container.style.removeProperty('--reader-width');
-      container.style.removeProperty('--reader-image-height');
-      container.style.removeProperty('--reader-image-width');
-    };
-  }, [verticalPadding, horizontalPadding, vertical, paginated]);
-
-  // Update current chars read based on visible paragraphs
+  // Update current chars read based on visible elements
   const updateChars = useCallback(() => {
     const content = contentRef.current;
     if (!content) return;
@@ -296,13 +273,15 @@ function ReaderEngineComponent({
       lastIndex = Number(pTags[i].getAttribute('index')) || lastIndex;
       currChars = Number(pTags[i].getAttribute('characumm')) || currChars;
 
-      // Stop at first visible element
+      // Stop at the first visible element
       if (
         (!paginated && !vertical && rect.bottom > 0) ||
-        (!paginated && vertical && rect.x < window.innerWidth) ||
-        (paginated && !vertical && rect.x > 0) ||
-        (paginated && vertical && rect.y > 0)
-      ) break;
+        (!paginated && vertical && rect.right > 0) ||
+        (paginated && !vertical && rect.right > 0) ||
+        (paginated && vertical && rect.right > 0)
+      ) {
+        break;
+      }
     }
 
     if (onCharsUpdate) {
@@ -310,106 +289,173 @@ function ReaderEngineComponent({
     }
   }, [paginated, vertical, totalChars, currSection, onCharsUpdate]);
 
-  // Page flip function
+  // Calculate total pages in current section
+  const getMaxPages = useCallback(() => {
+    const content = contentRef.current;
+    if (!content) return 1;
+    const clientW = content.clientWidth || window.innerWidth;
+    const scrollW = content.scrollWidth;
+    return Math.max(1, Math.ceil(scrollW / clientW));
+  }, []);
+
+  // Sync scroll position whenever pageIndex or currSection changes
+  const applyPagePosition = useCallback((targetPage: number) => {
+    const content = contentRef.current;
+    if (!content) return;
+
+    const clientW = content.clientWidth || window.innerWidth;
+    if (vertical) {
+      content.scrollLeft = -targetPage * clientW;
+    } else {
+      content.scrollTo({ left: targetPage * clientW, behavior: 'instant' });
+    }
+    updateChars();
+  }, [vertical, updateChars]);
+
+  // Page flip function (1 = forward, -1 = backward)
   const flipPage = useCallback((multiplier: number) => {
     const content = contentRef.current;
     if (!content) return;
 
     if (paginated) {
-      if (vertical) {
-        // Vertical paginated (writingMode: vertical-rl)
-        const clientW = content.clientWidth;
-        const scrollW = content.scrollWidth;
-        const currentScroll = Math.abs(content.scrollLeft);
-        const maxScroll = Math.max(0, scrollW - clientW);
+      const maxPages = getMaxPages();
 
-        // If section fits on a single screen
-        if (maxScroll <= 20) {
-          if (multiplier === 1 && currSection < sections.length - 1) {
-            setCurrSection(prev => prev + 1);
-          } else if (multiplier === -1 && currSection > 0) {
-            setCurrSection(prev => prev - 1);
-          }
-          return;
-        }
-
-        const isAtStart = currentScroll <= 20;
-        const isAtEnd = currentScroll >= maxScroll - 20;
-
-        if (isAtStart && multiplier === -1) {
-          if (currSection > 0) {
-            setCurrSection(prev => prev - 1);
-          }
-          return;
-        }
-
-        if (isAtEnd && multiplier === 1) {
+      if (multiplier === 1) {
+        // Forward
+        if (pageIndex < maxPages - 1) {
+          const next = pageIndex + 1;
+          setPageIndex(next);
+          applyPagePosition(next);
+        } else {
+          // Go to next chapter
           if (currSection < sections.length - 1) {
             setCurrSection(prev => prev + 1);
+            setPageIndex(0);
           }
-          return;
         }
-
-        const next = Math.max(0, Math.min(maxScroll, currentScroll + clientW * multiplier));
-        if (multiplier === 1 && (next >= maxScroll - 20 || next === currentScroll)) {
-          content.scrollLeft = -maxScroll;
-        } else if (multiplier === -1 && (next <= 20 || next === currentScroll)) {
-          content.scrollLeft = 0;
+      } else if (multiplier === -1) {
+        // Backward
+        if (pageIndex > 0) {
+          const prev = pageIndex - 1;
+          setPageIndex(prev);
+          applyPagePosition(prev);
         } else {
-          content.scrollLeft = -next;
-        }
-      } else {
-        // Horizontal paginated
-        const clientW = content.clientWidth;
-        const scrollW = content.scrollWidth;
-        const currentScroll = content.scrollLeft;
-        const maxScroll = Math.max(0, scrollW - clientW);
-
-        if (maxScroll <= 20) {
-          if (multiplier === 1 && currSection < sections.length - 1) {
-            setCurrSection(prev => prev + 1);
-          } else if (multiplier === -1 && currSection > 0) {
-            setCurrSection(prev => prev - 1);
-          }
-          return;
-        }
-
-        const isAtStart = currentScroll <= 20;
-        const isAtEnd = currentScroll >= maxScroll - 20;
-
-        if (isAtStart && multiplier === -1) {
+          // Go to previous chapter
           if (currSection > 0) {
             setCurrSection(prev => prev - 1);
+            // After loading previous chapter, jump to its last page
+            requestAnimationFrame(() => {
+              const prevMax = getMaxPages();
+              const lastPage = Math.max(0, prevMax - 1);
+              setPageIndex(lastPage);
+              applyPagePosition(lastPage);
+            });
           }
-          return;
-        }
-
-        if (isAtEnd && multiplier === 1) {
-          if (currSection < sections.length - 1) {
-            setCurrSection(prev => prev + 1);
-          }
-          return;
-        }
-
-        const next = Math.max(0, Math.min(maxScroll, currentScroll + clientW * multiplier));
-        if (multiplier === 1 && (next >= maxScroll - 20 || next === currentScroll)) {
-          content.scrollTo({ left: maxScroll, behavior: 'instant' });
-        } else if (multiplier === -1 && (next <= 20 || next === currentScroll)) {
-          content.scrollTo({ left: 0, behavior: 'instant' });
-        } else {
-          content.scrollTo({ left: next, behavior: 'instant' });
         }
       }
     } else {
       // Continuous scroll mode
       if (vertical) {
-        content.scrollLeft -= 150 * multiplier;
+        content.scrollLeft -= 200 * multiplier;
       } else {
-        content.scrollTop += 150 * multiplier;
+        content.scrollTop += 200 * multiplier;
+      }
+      updateChars();
+    }
+  }, [paginated, vertical, pageIndex, currSection, sections.length, getMaxPages, applyPagePosition, updateChars]);
+
+  // Jump directly to section
+  const goToSection = useCallback((sectionIdx: number) => {
+    if (sectionIdx < 0 || sectionIdx >= sections.length) return;
+    setCurrSection(sectionIdx);
+    setPageIndex(0);
+    const content = contentRef.current;
+    if (content) {
+      content.scrollLeft = 0;
+      content.scrollTop = 0;
+    }
+    requestAnimationFrame(() => updateChars());
+  }, [sections.length, updateChars]);
+
+  // Handle external section navigation
+  useEffect(() => {
+    if (typeof targetSection === 'number') {
+      goToSection(targetSection);
+    }
+  }, [targetSection, goToSection]);
+
+  // Handle external paragraph target
+  useEffect(() => {
+    if (typeof targetParagraphId === 'number') {
+      const content = contentRef.current;
+      if (content) {
+        const el = content.querySelector(`[index="${targetParagraphId}"]`);
+        if (el) {
+          el.scrollIntoView({ inline: 'center', block: 'center' });
+          updateChars();
+        }
       }
     }
-    updateChars();
-  }, [vertical, paginated, currSection, sections.length, updateChars]);
+  }, [targetParagraphId, updateChars]);
+
+  // Handle external character position target
+  useEffect(() => {
+    if (typeof targetCharPosition === 'number' && targetCharPosition >= 0 && sections.length > 0) {
+      const sectionIdx = sections.findIndex((s, idx) => {
+        const nextSection = sections[idx + 1];
+        if (!nextSection) return true;
+        return targetCharPosition >= s.startChars && targetCharPosition < nextSection.startChars;
+      });
+
+      if (sectionIdx !== -1) {
+        setCurrSection(sectionIdx);
+        setPageIndex(0);
+        requestAnimationFrame(() => {
+          const content = contentRef.current;
+          if (content) {
+            const pTags = content.querySelectorAll('[characumm]');
+            let targetP: HTMLElement | null = null;
+            for (let i = 0; i < pTags.length; i++) {
+              const accum = parseInt(pTags[i].getAttribute('characumm') || '0', 10);
+              if (accum <= targetCharPosition) {
+                targetP = pTags[i] as HTMLElement;
+              } else {
+                break;
+              }
+            }
+            if (targetP) {
+              targetP.scrollIntoView({ inline: 'center', block: 'center' });
+            }
+          }
+          updateChars();
+        });
+      }
+    }
+  }, [targetCharPosition, sections, updateChars]);
+
+  // Reset scroll & update chars on section change
+  useEffect(() => {
+    const c = contentRef.current;
+    if (c) {
+      c.scrollLeft = 0;
+      c.scrollTop = 0;
+    }
+    requestAnimationFrame(() => updateChars());
+    if (onSectionChange) onSectionChange(currSection);
+  }, [currSection, onSectionChange, updateChars]);
+
+  // Automatically trigger extension parser on chapter change
+  useEffect(() => {
+    const triggerParser = () => {
+      try {
+        if ((window as any).__yoruParser && typeof (window as any).__yoruParser.startParsing === 'function') {
+          (window as any).__yoruParser.startParsing();
+        }
+      } catch (_) {}
+    };
+    const t = setTimeout(triggerParser, 100);
+    return () => clearTimeout(t);
+  }, [currSection, pageIndex]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -418,12 +464,24 @@ function ReaderEngineComponent({
       if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return;
 
       if (vertical) {
-        if (e.key === 'ArrowLeft') flipPage(1);
-        else if (e.key === 'ArrowRight') flipPage(-1);
+        // In vertical-rl, left arrow moves forward, right arrow moves backward
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          flipPage(1);
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          flipPage(-1);
+        }
       } else {
-        if (e.key === 'ArrowRight') flipPage(1);
-        else if (e.key === 'ArrowLeft') flipPage(-1);
+        if (e.key === 'ArrowRight') {
+          e.preventDefault();
+          flipPage(1);
+        } else if (e.key === 'ArrowLeft') {
+          e.preventDefault();
+          flipPage(-1);
+        }
       }
+
       if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
         e.preventDefault();
         flipPage(1);
@@ -443,7 +501,9 @@ function ReaderEngineComponent({
     if (!container || !paginated) return;
 
     let startX = 0;
-    const handleTouchStart = (e: TouchEvent) => { startX = e.touches[0].clientX; };
+    const handleTouchStart = (e: TouchEvent) => {
+      startX = e.touches[0].clientX;
+    };
     const handleTouchEnd = (e: TouchEvent) => {
       const delta = e.changedTouches[0].clientX - startX;
       if (Math.abs(delta) > 50) {
@@ -481,112 +541,48 @@ function ReaderEngineComponent({
     return () => container.removeEventListener('wheel', handleWheel);
   }, [paginated, vertical, flipPage]);
 
-  // Reset scroll & update chars on section change
+  // Resize handling
   useEffect(() => {
-    const c = contentRef.current;
-    if (c) {
-      c.scrollLeft = 0;
-      c.scrollTop = 0;
-    }
-    requestAnimationFrame(() => updateChars());
-    if (onSectionChange) onSectionChange(currSection);
-  }, [currSection, onSectionChange, updateChars]);
+    const container = containerRef.current;
+    if (!container) return;
 
-  // Automatically trigger Yoru Parser on section change / page load
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      try {
-        window.dispatchEvent(new CustomEvent('yoru:parse-page'));
-        window.postMessage({ type: 'YORU_PARSE_PAGE' }, '*');
-        if ((window as any).__yoruParserInstance && contentRef.current) {
-          (window as any).__yoruParserInstance.parseNode(contentRef.current);
-        }
-      } catch (err) {
-        console.error('[ReaderEngine] Auto parse trigger failed:', err);
+    const handleResize = () => {
+      container.style.setProperty('--reader-height', `${window.innerHeight}px`);
+      container.style.setProperty('--reader-width', `${window.innerWidth}px`);
+      container.style.setProperty(
+        '--reader-image-height',
+        `${window.innerHeight - 2 * window.innerHeight * (verticalPadding / 100) - 60}px`
+      );
+      container.style.setProperty(
+        '--reader-image-width',
+        `${window.innerWidth - 2 * window.innerWidth * (horizontalPadding / 100) - 60}px`
+      );
+
+      if (paginated) {
+        applyPagePosition(pageIndex);
       }
-    }, 120);
-    return () => clearTimeout(timer);
-  }, [currSection, sections]);
+    };
 
-  // Navigate to section by index
-  const goToSection = useCallback((idx: number) => {
-    if (idx >= 0 && idx < sections.length) {
-      setCurrSection(idx);
-      requestAnimationFrame(() => {
-        const c = contentRef.current;
-        if (c) {
-          if (vertical) c.scrollTo({ top: 0, behavior: 'instant' });
-          else c.scrollTo({ left: 0, behavior: 'instant' });
-        }
-        updateChars();
-      });
-    }
-  }, [sections.length, vertical, updateChars]);
+    window.addEventListener('resize', handleResize);
+    handleResize();
 
-  // Prop-driven navigation
-  useEffect(() => {
-    if (typeof targetSection === 'number') {
-      goToSection(targetSection);
-    }
-  }, [targetSection, goToSection]);
-
-  useEffect(() => {
-    if (typeof targetParagraphId === 'number') {
-      const content = contentRef.current;
-      if (content) {
-        const el = content.querySelector(`[index="${targetParagraphId}"]`);
-        if (el) {
-          el.scrollIntoView({ inline: 'center', block: 'center' });
-        }
-      }
-    }
-  }, [targetParagraphId]);
-
-  // Navigate to specific character position
-  useEffect(() => {
-    if (typeof targetCharPosition === 'number' && targetCharPosition >= 0 && sections.length > 0) {
-      const sectionIdx = sections.findIndex((s, idx) => {
-        const nextSection = sections[idx + 1];
-        if (!nextSection) return true;
-        return targetCharPosition >= s.startChars && targetCharPosition < nextSection.startChars;
-      });
-
-      if (sectionIdx !== -1) {
-        setCurrSection(sectionIdx);
-        requestAnimationFrame(() => {
-          const content = contentRef.current;
-          if (content) {
-            const pTags = content.querySelectorAll('[characumm]');
-            let targetP: HTMLElement | null = null;
-            for (let i = 0; i < pTags.length; i++) {
-              const accum = parseInt(pTags[i].getAttribute('characumm') || '0', 10);
-              if (accum <= targetCharPosition) {
-                targetP = pTags[i] as HTMLElement;
-              } else {
-                break;
-              }
-            }
-            if (targetP) {
-              targetP.scrollIntoView({ inline: 'center', block: 'center' });
-            }
-          }
-          updateChars();
-        });
-      }
-    }
-  }, [targetCharPosition, sections, updateChars]);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      container.style.removeProperty('--reader-height');
+      container.style.removeProperty('--reader-width');
+      container.style.removeProperty('--reader-image-height');
+      container.style.removeProperty('--reader-image-width');
+    };
+  }, [verticalPadding, horizontalPadding, paginated, pageIndex, applyPagePosition]);
 
   // Build the current section HTML
   const currentHtml = useMemo(() => {
     if (paginated) {
-      // In paginated mode, render only the current section
       return sections[currSection]?.content || '';
     }
-    // In continuous mode, render ALL sections
     return sections.map(s => s.content).join('');
   }, [sections, currSection, paginated]);
 
-  // Handle content click (close sidebars, etc.)
   const handleContentClick = useCallback((e: React.MouseEvent) => {
     if (onClick) onClick(e);
   }, [onClick]);
@@ -605,33 +601,26 @@ function ReaderEngineComponent({
         className="reader-engine-content book-content-container"
         dangerouslySetInnerHTML={{ __html: currentHtml }}
       />
-      {/* Render children (overlays like selection toolbar, char counter) */}
       {children}
     </div>
   );
 }
 
-const ReaderEngine = React.memo(ReaderEngineComponent, (prevProps, nextProps) => {
+export const ReaderEngine = React.memo(ReaderEngineComponent, (prevProps, nextProps) => {
   return (
     prevProps.book.id === nextProps.book.id &&
-    prevProps.book._savedSection === nextProps.book._savedSection &&
     prevProps.readerSettings.fontSize === nextProps.readerSettings.fontSize &&
     prevProps.readerSettings.lineHeight === nextProps.readerSettings.lineHeight &&
+    prevProps.readerSettings.vertical === nextProps.readerSettings.vertical &&
+    prevProps.readerSettings.paginated === nextProps.readerSettings.paginated &&
+    prevProps.readerSettings.theme === nextProps.readerSettings.theme &&
     prevProps.readerSettings.fontFamily === nextProps.readerSettings.fontFamily &&
     prevProps.readerSettings.verticalPadding === nextProps.readerSettings.verticalPadding &&
     prevProps.readerSettings.horizontalPadding === nextProps.readerSettings.horizontalPadding &&
-    prevProps.readerSettings.vertical === nextProps.readerSettings.vertical &&
-    prevProps.readerSettings.paginated === nextProps.readerSettings.paginated &&
-    prevProps.readerSettings.showFurigana === nextProps.readerSettings.showFurigana &&
-    prevProps.readerSettings.disableCss === nextProps.readerSettings.disableCss &&
-    prevProps.readerSettings.theme === nextProps.readerSettings.theme &&
-    prevProps.readerSettings.showProgressLine === nextProps.readerSettings.showProgressLine &&
-    prevProps.readerSettings.direction === nextProps.readerSettings.direction &&
-    prevProps.colors.bg === nextProps.colors.bg &&
-    prevProps.colors.textMain === nextProps.colors.textMain &&
     prevProps.targetSection === nextProps.targetSection &&
     prevProps.targetParagraphId === nextProps.targetParagraphId &&
-    prevProps.targetCharPosition === nextProps.targetCharPosition
+    prevProps.targetCharPosition === nextProps.targetCharPosition &&
+    prevProps.colors === nextProps.colors
   );
 });
 

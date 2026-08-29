@@ -1,8 +1,8 @@
 {
   "appVersion": "1.1.4",
   "backendVersion": "1.2.0",
-  "hotUpdateVersion": "1.1.4.25",
+  "hotUpdateVersion": "1.1.4.26",
   "hotUpdateUrl": "https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/main/dist.zip",
   "url": "https://github.com/zams0527-eng/Yoru-Reader/releases/latest",
-  "description": "Yoru Reader v1.1.4 (Hot Update: Transición fluida de capítulos y reseteo garantizado de scroll en modo vertical)"
+  "description": "Yoru Reader v1.1.4 (Hot Update: ReaderEngine 2.0 con paginación discreta y navegación 100% fluida)"
 }
