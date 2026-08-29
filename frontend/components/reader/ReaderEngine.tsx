@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, ReactNode } from 'react';
 import { ReaderSettingsState } from '../../hooks/useReaderSettings';
+import { tokenizeJapaneseText, setupNativeYoruParser } from '../../utils/yoruParserNative';
 
 export interface Chapter {
   title: string;
@@ -41,6 +42,7 @@ export interface ReaderEngineProps {
   targetSection?: number | null;
   targetParagraphId?: number | null;
   targetCharPosition?: number | null;
+  wordStatuses?: Record<string, string>;
   colors: any;
 }
 
@@ -67,8 +69,8 @@ export function countJapaneseChars(text: string): number {
 }
 
 /**
- * Authentic TTU Reader Engine Implementation
- * Matches the official ttu-ttu/ebook-reader architecture and Jiten TtsuParser.
+ * Authentic Native Yoru Reader Engine & High-Speed Parser
+ * Directly parses and colors Japanese words natively with 0ms latency.
  */
 function ReaderEngineComponent({
   book,
@@ -80,10 +82,19 @@ function ReaderEngineComponent({
   targetSection,
   targetParagraphId,
   targetCharPosition,
+  wordStatuses = {},
   colors,
 }: ReaderEngineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // Initialize native parser
+  const [parserReady, setParserReady] = useState(false);
+  useEffect(() => {
+    setupNativeYoruParser().then(() => {
+      setParserReady(true);
+    });
+  }, []);
 
   // Current chapter / section index
   const [currSection, setCurrSection] = useState<number>(() => {
@@ -94,7 +105,7 @@ function ReaderEngineComponent({
   // Current discrete page index
   const [pageIndex, setPageIndex] = useState<number>(0);
 
-  // Build clean HTML sections from book.chapters
+  // Build clean HTML sections from book.chapters with native tokenization
   const sections = useMemo<Section[]>(() => {
     if (!book || !book.chapters || book.chapters.length === 0) return [];
     let paragraphId = 0;
@@ -140,7 +151,7 @@ function ReaderEngineComponent({
           return;
         }
 
-        // Standard Paragraph
+        // Standard Paragraph with Native Yoru Parser Tokenization
         const sanitized = sanitizeJapaneseText(line);
         const processed = sanitized.replace(
           /\{img:([^{}]+)\}/gi,
@@ -154,7 +165,10 @@ function ReaderEngineComponent({
           .replace(/[゜°]/g, '。');
         const jpCount = countJapaneseChars(plainText);
 
-        sectionHtml += `<p class="chapter-content" index="${paragraphId}" characumm="${charAccum}">${processed}</p>`;
+        // Native Tokenizer colors words immediately into .jiten-word spans
+        const tokenizedHtml = tokenizeJapaneseText(processed, wordStatuses);
+
+        sectionHtml += `<p class="chapter-content" index="${paragraphId}" characumm="${charAccum}">${tokenizedHtml}</p>`;
         charAccum += jpCount;
         sectionCharCount += jpCount;
         paragraphId++;
@@ -191,7 +205,7 @@ function ReaderEngineComponent({
     });
 
     return resultSections;
-  }, [book]);
+  }, [book, wordStatuses, parserReady]);
 
   const totalChars = useMemo(() => {
     if (sections.length === 0) return 0;
@@ -626,6 +640,7 @@ export const ReaderEngine = React.memo(ReaderEngineComponent, (prevProps, nextPr
     prevProps.targetSection === nextProps.targetSection &&
     prevProps.targetParagraphId === nextProps.targetParagraphId &&
     prevProps.targetCharPosition === nextProps.targetCharPosition &&
+    prevProps.wordStatuses === nextProps.wordStatuses &&
     prevProps.colors === nextProps.colors
   );
 });

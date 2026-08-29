@@ -529,11 +529,11 @@ export default function Reader({
   }, []);
 
   const triggerWordLookup = useCallback(async (wordSpan: HTMLElement) => {
-    const wordId = wordSpan.getAttribute('wordId');
+    const wordId = wordSpan.getAttribute('data-word') || wordSpan.getAttribute('wordId') || wordSpan.innerText;
     if (!wordId) return;
     
     let word = wordId;
-    let reading = '';
+    let reading = wordSpan.getAttribute('data-reading') || '';
     if (wordId.includes(':')) {
       const parts = wordId.split(':');
       word = parts[0];
@@ -590,7 +590,7 @@ export default function Reader({
       hoveredElementRef.current = target;
       
       if (e.shiftKey) {
-        const wordSpan = target.closest('[wordId]') as HTMLElement;
+        const wordSpan = target.closest('[data-word], [wordId], .jiten-word') as HTMLElement;
         if (wordSpan) {
           triggerWordLookup(wordSpan);
         }
@@ -602,7 +602,7 @@ export default function Reader({
       hoveredElementRef.current = target;
       
       if (e.shiftKey) {
-        const wordSpan = target.closest('[wordId]') as HTMLElement;
+        const wordSpan = target.closest('[data-word], [wordId], .jiten-word') as HTMLElement;
         if (wordSpan) {
           triggerWordLookup(wordSpan);
         }
@@ -613,7 +613,7 @@ export default function Reader({
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Shift') {
         if (hoveredElementRef.current) {
-          const wordSpan = hoveredElementRef.current.closest('[wordId]') as HTMLElement;
+          const wordSpan = hoveredElementRef.current.closest('[data-word], [wordId], .jiten-word') as HTMLElement;
           if (wordSpan) {
             triggerWordLookup(wordSpan);
           }
@@ -1730,6 +1730,7 @@ export default function Reader({
         targetCharPosition={targetCharPosition}
         onCharsUpdate={handleCharsUpdate}
         onClick={handleEngineClick}
+        wordStatuses={wordStatuses}
         colors={colors}
       />
 

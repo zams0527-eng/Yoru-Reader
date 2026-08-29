@@ -1,8 +1,8 @@
 {
   "appVersion": "1.1.4",
   "backendVersion": "1.2.0",
-  "hotUpdateVersion": "1.1.4.32",
+  "hotUpdateVersion": "1.1.4.33",
   "hotUpdateUrl": "https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/main/dist.zip",
   "url": "https://github.com/zams0527-eng/Yoru-Reader/releases/latest",
-  "description": "Yoru Reader v1.1.4 (Hot Update: Corrección de ruta de inyección de extensión ajb.js y parseo automático)"
+  "description": "Yoru Reader v1.1.4 (Hot Update: Nuevo Yoru Parser Nativo integrado al lector con 0ms de latencia)"
 }
