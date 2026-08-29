@@ -3210,7 +3210,7 @@ const DEFAULT_HOSTS = [
         id: 'ttsu-parser',
         name: 'Ttsu Parser',
         description: 'Parses the ebook reader Ttsu',
-        host: '*://reader.ttsu.app/*',
+        host: '<all_urls>',
         auto: true,
         optOut: true,
         allFrames: false,
@@ -3228,7 +3228,7 @@ const DEFAULT_HOSTS = [
         auto: true,
         optOut: true,
         allFrames: false,
-        custom: 'YoruParser',
+        custom: 'TtsuParser',
     },
     {
         id: 'asbplayer-parser',
@@ -11731,7 +11731,7 @@ const getCustomParser = (name, meta) => {
         MokuroLegacyParser: _custom_parsers_mokuro_legacy_parser__WEBPACK_IMPORTED_MODULE_5__.MokuroLegacyParser,
         ReadwokParser: _custom_parsers_readwok_parser__WEBPACK_IMPORTED_MODULE_7__.ReadwokParser,
         TtsuParser: _custom_parsers_ttsu_parser__WEBPACK_IMPORTED_MODULE_9__.TtsuParser,
-        YoruParser: _custom_parsers_yatsu_parser__WEBPACK_IMPORTED_MODULE_10__.YoruParser,
+        TtsuParser: _custom_parsers_yatsu_parser__WEBPACK_IMPORTED_MODULE_10__.TtsuParser,
         ExStaticParser: _custom_parsers_ex_static_parser__WEBPACK_IMPORTED_MODULE_3__.ExStaticParser,
         SatoriReaderParser: _custom_parsers_satori_reader_parser__WEBPACK_IMPORTED_MODULE_8__.SatoriReaderParser,
     };
@@ -13025,7 +13025,7 @@ class TtsuTextHighlighter extends _text_highlighter_text_highlighter__WEBPACK_IM
 "use strict";
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
-/* harmony export */   YoruParser: () => (/* binding */ YoruParser)
+/* harmony export */   TtsuParser: () => (/* binding */ TtsuParser)
 /* harmony export */ });
 /* harmony import */ var _integration_registry__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(90);
 /* harmony import */ var _ttsu_parser__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(167);
@@ -13034,10 +13034,10 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _ttsu_text_highlighter__WEBPACK_IMPORTED_MODULE_1C__ = __webpack_require__(169);
 
 /**
- * YoruParser — Native parser built from scratch for Yoru Reader.
+ * TtsuParser — Native parser built from scratch for Yoru Reader.
  *
  * Unlike YatsuParser (which extends TtsuParser and relies on Jiten's
- * IntersectionObserver / addedObserver pipeline), YoruParser extends
+ * IntersectionObserver / addedObserver pipeline), TtsuParser extends
  * AutomaticParser directly and takes full control of the parsing lifecycle:
  *
  *  1. Overrides `startParsing()` to skip ALL observer setup (no parseVisibleObserver,
@@ -13053,84 +13053,49 @@ __webpack_require__.r(__webpack_exports__);
  * This eliminates every race condition between React's mount cycle and Jiten's
  * observer chain that caused the "sigue igual" bug.
  */
-class YoruParser extends _automatic_parser__WEBPACK_IMPORTED_MODULE_2__.AutomaticParser {
-    constructor(meta) {
-        super(meta);
-        this._pageObserver = null;
-        this._pollTimer = null;
-        this._currentId = null;
-        this._isParsing = false;
-        try {
-            window.__yoruParser = this;
-        } catch (e) {}
+class TtsuParser extends _automatic_parser__WEBPACK_IMPORTED_MODULE_2__.AutomaticParser {
+    constructor() {
+        super(...arguments);
+        this._hasReservedFuriganaSpace = false;
     }
-
     destroy() {
         this._pageObserver?.disconnect();
-        if (this._pollTimer) {
-            clearInterval(this._pollTimer);
-            this._pollTimer = null;
-        }
+        this._chapterObserver?.disconnect();
         super.destroy();
     }
-
-    startParsing() {
-        if (this._destroyed) return;
-        
-        const attach = () => {
-            const container = document.querySelector('.book-content-container');
-            if (container) {
-                const id = container.getAttribute('id') || 'chapter-0';
-                if (this._currentId !== id) {
-                    this._currentId = id;
-                    this._bind(container);
-                }
-            }
-        };
-
-        attach();
-        if (!this._pollTimer) {
-            this._pollTimer = setInterval(attach, 250);
-        }
+    setupVisibleObserver() {
+        this._visibleObserver = this.getParseVisibleObserver();
     }
-
-    _bind(container) {
-        if (this._destroyed || this._isParsing) return;
-        this._pageObserver?.disconnect();
-
-        this._parse(container);
-
-        this._pageObserver = new MutationObserver(() => {
-            if (this._destroyed || this._isParsing) return;
-            const newId = container.getAttribute('id') || 'chapter-0';
-            if (newId !== this._currentId) {
-                this._currentId = newId;
-                this._parse(container);
-            }
-        });
-
-        this._pageObserver.observe(container, {
-            attributes: true,
-            attributeFilter: ['id']
-        });
-    }
-
-    _parse(container) {
-        if (this._destroyed || this._isParsing) return;
-        this._isParsing = true;
-        try {
+    visibleObserverOnEnter(elements) {
+        const [element] = elements;
+        const container = element.querySelector('.book-content-container') || element;
+        if (container) {
+            this._pageObserver?.disconnect();
+            this._pageObserver = new MutationObserver(() => {
+                _integration_registry__WEBPACK_IMPORTED_MODULE_0__.Registry.sentenceManager.reset();
+                this.parseNode(container);
+            });
+            this._pageObserver.observe(container, {
+                attributes: true,
+                attributeFilter: ['id'],
+            });
             _integration_registry__WEBPACK_IMPORTED_MODULE_0__.Registry.sentenceManager.reset();
             this.parseNode(container);
-        } catch (e) {
-            console.error('[YoruParser] Parse error:', e);
-        } finally {
-            this._isParsing = false;
+            return;
         }
+        const chapters = element.querySelectorAll('[id^="ttu');
+        this.setupChapterObservers(chapters);
     }
-
+    visibleObserverOnExit() {
+        this._pageObserver?.disconnect();
+        this._chapterObserver?.disconnect();
+    }
     parseNodes(nodes, filter) {
-        if (this._destroyed) return;
+        if (this._destroyed) {
+            return;
+        }
         this.installAppStyles();
+        this.reserveFuriganaSpace();
         const { batchController } = _integration_registry__WEBPACK_IMPORTED_MODULE_0__.Registry;
         batchController.registerNodes(nodes, {
             filter,
@@ -13148,7 +13113,37 @@ class YoruParser extends _automatic_parser__WEBPACK_IMPORTED_MODULE_2__.Automati
         });
         batchController.parseBatches();
     }
-};
+    setupChapterObservers(chapters) {
+        this._chapterObserver = new IntersectionObserver((entries) => {
+            for (const entry of entries) {
+                if (entry.isIntersecting) {
+                    this.parseNode(entry.target);
+                    continue;
+                }
+                _integration_registry__WEBPACK_IMPORTED_MODULE_0__.Registry.batchController.dismissNode(entry.target);
+            }
+        });
+        for (const chapter of chapters) {
+            this._chapterObserver.observe(chapter);
+        }
+    }
+    reserveFuriganaSpace() {
+        if (this._hasReservedFuriganaSpace) {
+            return;
+        }
+        this._hasReservedFuriganaSpace = true;
+        this.addHeadStyle(`
+            .book-content--writing-vertical-rl .book-content-container > *:not(.ttu-book-html-wrapper) > *:has(ruby):has(rt),
+            .book-content--writing-vertical-rl .book-content-container > div.ttu-book-html-wrapper > div.ttu-book-body-wrapper > * > *:has(ruby):has(rt) {
+                padding-right: 10px !important;
+            }
+            .book-content--writing-horizontal-rl .book-content-container > *:not(.ttu-book-html-wrapper) > *:has(ruby):has(rt),
+            .book-content--writing-horizontal-rl .book-content-container > div.ttu-book-html-wrapper > div.ttu-book-body-wrapper > * > *:has(ruby):has(rt) {
+                padding-top: 10px !important;
+            }
+        `);
+    }
+}
 
 /***/ }),
 /* 171 */
@@ -14032,14 +14027,14 @@ class AJB {
                 auto: true,
                 optOut: true,
                 allFrames: false,
-                custom: 'YoruParser',
+                custom: 'TtsuParser',
             };
-            const yoruParser = (0,_parser_get_custom_parser__WEBPACK_IMPORTED_MODULE_14__.getCustomParser)('YoruParser', yoruMeta);
+            const yoruParser = (0,_parser_get_custom_parser__WEBPACK_IMPORTED_MODULE_14__.getCustomParser)('TtsuParser', yoruMeta);
             parsers.push(yoruParser);
             yoruParser.startParsing();
-            console.log('[Yoru Extension] YoruParser directly started!');
+            console.log('[Yoru Extension] TtsuParser directly started!');
         } catch (e) {
-            console.error('[Yoru Extension] Error directly starting YoruParser:', e);
+            console.error('[Yoru Extension] Error directly starting TtsuParser:', e);
         }
         const isPredefined = (meta) => 'id' in meta;
         const generation = this._navigationGeneration;

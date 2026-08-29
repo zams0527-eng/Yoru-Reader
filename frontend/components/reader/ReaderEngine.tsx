@@ -67,8 +67,8 @@ export function countJapaneseChars(text: string): number {
 }
 
 /**
- * ReaderEngine 2.0 — High-Performance Reader Rendering Engine
- * Implements discrete page tracking, seamless chapter transitions, and perfect 4-mode layout.
+ * Authentic TTU Reader Engine Implementation
+ * Matches the official ttu-ttu/ebook-reader architecture and Jiten TtsuParser.
  */
 function ReaderEngineComponent({
   book,
@@ -91,7 +91,7 @@ function ReaderEngineComponent({
     return typeof saved === 'number' && saved >= 0 ? saved : 0;
   });
 
-  // Discrete page index within current section (for paginated modes)
+  // Current discrete page index
   const [pageIndex, setPageIndex] = useState<number>(0);
 
   // Build clean HTML sections from book.chapters
@@ -137,7 +137,7 @@ function ReaderEngineComponent({
           return;
         }
 
-        // Paragraphs
+        // Standard Paragraph
         const sanitized = sanitizeJapaneseText(line);
         const processed = sanitized.replace(
           /\{img:([^{}]+)\}/gi,
@@ -197,7 +197,7 @@ function ReaderEngineComponent({
     };
   }, [fontFamily, colors.bg, colors.textMain]);
 
-  // Content styles optimized for all 4 reading modes
+  // Content styles
   const contentStyle = useMemo<React.CSSProperties>(() => {
     const vp = `${Math.max(10, window.innerHeight * (verticalPadding / 100))}px`;
     const hp = `${Math.max(10, window.innerWidth * (horizontalPadding / 100))}px`;
@@ -247,7 +247,6 @@ function ReaderEngineComponent({
         width: '100%',
       };
     } else {
-      // Continuous Horizontal
       return {
         ...base,
         writingMode: 'horizontal-tb',
@@ -273,7 +272,7 @@ function ReaderEngineComponent({
       lastIndex = Number(pTags[i].getAttribute('index')) || lastIndex;
       currChars = Number(pTags[i].getAttribute('characumm')) || currChars;
 
-      // Stop at the first visible element
+      // Stop at first visible element
       if (
         (!paginated && !vertical && rect.bottom > 0) ||
         (!paginated && vertical && rect.right > 0) ||
@@ -298,7 +297,7 @@ function ReaderEngineComponent({
     return Math.max(1, Math.ceil(scrollW / clientW));
   }, []);
 
-  // Sync scroll position whenever pageIndex or currSection changes
+  // Sync scroll position
   const applyPagePosition = useCallback((targetPage: number) => {
     const content = contentRef.current;
     if (!content) return;
@@ -327,7 +326,7 @@ function ReaderEngineComponent({
           setPageIndex(next);
           applyPagePosition(next);
         } else {
-          // Go to next chapter
+          // Advance to next chapter
           if (currSection < sections.length - 1) {
             setCurrSection(prev => prev + 1);
             setPageIndex(0);
@@ -343,7 +342,6 @@ function ReaderEngineComponent({
           // Go to previous chapter
           if (currSection > 0) {
             setCurrSection(prev => prev - 1);
-            // After loading previous chapter, jump to its last page
             requestAnimationFrame(() => {
               const prevMax = getMaxPages();
               const lastPage = Math.max(0, prevMax - 1);
@@ -377,14 +375,12 @@ function ReaderEngineComponent({
     requestAnimationFrame(() => updateChars());
   }, [sections.length, updateChars]);
 
-  // Handle external section navigation
   useEffect(() => {
     if (typeof targetSection === 'number') {
       goToSection(targetSection);
     }
   }, [targetSection, goToSection]);
 
-  // Handle external paragraph target
   useEffect(() => {
     if (typeof targetParagraphId === 'number') {
       const content = contentRef.current;
@@ -398,7 +394,6 @@ function ReaderEngineComponent({
     }
   }, [targetParagraphId, updateChars]);
 
-  // Handle external character position target
   useEffect(() => {
     if (typeof targetCharPosition === 'number' && targetCharPosition >= 0 && sections.length > 0) {
       const sectionIdx = sections.findIndex((s, idx) => {
@@ -444,19 +439,6 @@ function ReaderEngineComponent({
     if (onSectionChange) onSectionChange(currSection);
   }, [currSection, onSectionChange, updateChars]);
 
-  // Automatically trigger extension parser on chapter change
-  useEffect(() => {
-    const triggerParser = () => {
-      try {
-        if ((window as any).__yoruParser && typeof (window as any).__yoruParser.startParsing === 'function') {
-          (window as any).__yoruParser.startParsing();
-        }
-      } catch (_) {}
-    };
-    const t = setTimeout(triggerParser, 100);
-    return () => clearTimeout(t);
-  }, [currSection, pageIndex]);
-
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -464,7 +446,6 @@ function ReaderEngineComponent({
       if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return;
 
       if (vertical) {
-        // In vertical-rl, left arrow moves forward, right arrow moves backward
         if (e.key === 'ArrowLeft') {
           e.preventDefault();
           flipPage(1);
@@ -575,7 +556,7 @@ function ReaderEngineComponent({
     };
   }, [verticalPadding, horizontalPadding, paginated, pageIndex, applyPagePosition]);
 
-  // Build the current section HTML
+  // Build current section HTML
   const currentHtml = useMemo(() => {
     if (paginated) {
       return sections[currSection]?.content || '';
@@ -592,11 +573,11 @@ function ReaderEngineComponent({
       ref={containerRef}
       style={containerStyle}
       onClick={handleContentClick}
-      className="reader-engine-container book-content"
+      className={`reader-engine-container book-content ${vertical ? 'book-content--writing-vertical-rl' : 'book-content--writing-horizontal-tb'}`}
     >
       <div
         ref={contentRef}
-        id={`reader-content-sec-${currSection}`}
+        id={`ttu-chapter-${currSection}`}
         style={contentStyle}
         className="reader-engine-content book-content-container"
         dangerouslySetInnerHTML={{ __html: currentHtml }}
