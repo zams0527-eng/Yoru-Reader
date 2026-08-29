@@ -99,11 +99,14 @@ function ReaderEngineComponent({
     if (!book || !book.chapters || book.chapters.length === 0) return [];
     let paragraphId = 0;
     let charAccum = 0;
+    const resultSections: Section[] = [];
 
-    return book.chapters.map((chapter, idx) => {
+    book.chapters.forEach((chapter, chapterIdx) => {
       const lines = (chapter.content || '').split(/\r?\n/);
       let sectionHtml = '';
-      const startChars = charAccum;
+      let sectionCharCount = 0;
+      let startChars = charAccum;
+      let subSectionIdx = 0;
 
       lines.forEach(line => {
         if (!line.trim()) {
@@ -153,19 +156,41 @@ function ReaderEngineComponent({
 
         sectionHtml += `<p class="chapter-content" index="${paragraphId}" characumm="${charAccum}">${processed}</p>`;
         charAccum += jpCount;
+        sectionCharCount += jpCount;
         paragraphId++;
+
+        // Chunk large sections at ~3000 chars to avoid Chromium multi-column limits
+        if (sectionCharCount >= 3000) {
+          resultSections.push({
+            id: `chapter-${chapterIdx}-${subSectionIdx}`,
+            title: chapter.title ? (subSectionIdx === 0 ? chapter.title : `${chapter.title} (${subSectionIdx + 1})`) : `Capítulo ${chapterIdx + 1}`,
+            content: sectionHtml,
+            lastIndex: paragraphId - 1,
+            startChars,
+            charCount: charAccum - startChars,
+            isFromToc: chapter.isFromToc,
+          });
+          sectionHtml = '';
+          sectionCharCount = 0;
+          startChars = charAccum;
+          subSectionIdx++;
+        }
       });
 
-      return {
-        id: `chapter-${idx}`,
-        title: chapter.title || `Capítulo ${idx + 1}`,
-        content: sectionHtml,
-        lastIndex: paragraphId - 1,
-        startChars,
-        charCount: charAccum - startChars,
-        isFromToc: chapter.isFromToc,
-      };
+      if (sectionHtml.length > 0 || resultSections.length === 0) {
+        resultSections.push({
+          id: `chapter-${chapterIdx}-${subSectionIdx}`,
+          title: chapter.title ? (subSectionIdx === 0 ? chapter.title : `${chapter.title} (${subSectionIdx + 1})`) : `Capítulo ${chapterIdx + 1}`,
+          content: sectionHtml,
+          lastIndex: paragraphId - 1,
+          startChars,
+          charCount: charAccum - startChars,
+          isFromToc: chapter.isFromToc,
+        });
+      }
     });
+
+    return resultSections;
   }, [book]);
 
   const totalChars = useMemo(() => {
