@@ -273,6 +273,34 @@ function ReaderEngineComponent({
     };
   }, [verticalPadding, horizontalPadding, vertical, paginated]);
 
+  // Update current chars read based on visible paragraphs
+  const updateChars = useCallback(() => {
+    const content = contentRef.current;
+    if (!content) return;
+
+    let lastIndex = 0;
+    let currChars = 0;
+    const pTags = content.querySelectorAll('[index]');
+
+    for (let i = 0; i < pTags.length; i++) {
+      const rect = pTags[i].getBoundingClientRect();
+      lastIndex = Number(pTags[i].getAttribute('index')) || lastIndex;
+      currChars = Number(pTags[i].getAttribute('characumm')) || currChars;
+
+      // Stop at first visible element
+      if (
+        (!paginated && !vertical && rect.bottom > 0) ||
+        (!paginated && vertical && rect.x < window.innerWidth) ||
+        (paginated && !vertical && rect.x > 0) ||
+        (paginated && vertical && rect.y > 0)
+      ) break;
+    }
+
+    if (onCharsUpdate) {
+      onCharsUpdate({ currChars, totalChars, lastIndex, currSection });
+    }
+  }, [paginated, vertical, totalChars, currSection, onCharsUpdate]);
+
   // Page flip function
   const flipPage = useCallback((multiplier: number) => {
     const content = contentRef.current;
@@ -340,34 +368,6 @@ function ReaderEngineComponent({
     }
     updateChars();
   }, [vertical, paginated, currSection, sections.length, updateChars]);
-
-  // Update current chars read based on visible paragraphs
-  const updateChars = useCallback(() => {
-    const content = contentRef.current;
-    if (!content) return;
-
-    let lastIndex = 0;
-    let currChars = 0;
-    const pTags = content.querySelectorAll('[index]');
-
-    for (let i = 0; i < pTags.length; i++) {
-      const rect = pTags[i].getBoundingClientRect();
-      lastIndex = Number(pTags[i].getAttribute('index')) || lastIndex;
-      currChars = Number(pTags[i].getAttribute('characumm')) || currChars;
-
-      // Stop at first visible element
-      if (
-        (!paginated && !vertical && rect.bottom > 0) ||
-        (!paginated && vertical && rect.x < window.innerWidth) ||
-        (paginated && !vertical && rect.x > 0) ||
-        (paginated && vertical && rect.y > 0)
-      ) break;
-    }
-
-    if (onCharsUpdate) {
-      onCharsUpdate({ currChars, totalChars, lastIndex, currSection });
-    }
-  }, [paginated, vertical, totalChars, currSection, onCharsUpdate]);
 
   // Keyboard navigation
   useEffect(() => {
