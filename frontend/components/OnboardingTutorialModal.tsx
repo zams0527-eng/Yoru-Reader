@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   BookOpen, 
   Search, 
@@ -16,9 +16,10 @@ import {
   Download, 
   Zap, 
   BarChart3, 
-  Flame, 
-  Clock 
+  Loader2,
+  Check
 } from 'lucide-react';
+import { getInstalledDictionaries, importYomitanZip, getDB } from '../utils/yomitanDB';
 
 interface OnboardingTutorialModalProps {
   isOpen: boolean;
@@ -34,6 +35,26 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
   lang = 'es'
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
+  const [installedDicts, setInstalledDicts] = useState<any[]>([]);
+  const [isInstalling, setIsInstalling] = useState(false);
+  const [installMsg, setInstallMsg] = useState('');
+  const [installProgress, setInstallProgress] = useState(0);
+  const [installSuccess, setInstallSuccess] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      checkDicts();
+    }
+  }, [isOpen]);
+
+  const checkDicts = async () => {
+    try {
+      const list = await getInstalledDictionaries();
+      setInstalledDicts(list || []);
+    } catch (e) {
+      console.warn('Error checking installed dicts:', e);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -58,12 +79,85 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
     onClose();
   };
 
-  const handleGoToDictionaries = () => {
-    handleFinish();
-    if (onOpenDictionaries) {
-      onOpenDictionaries();
+  const handleDirectInstall = async () => {
+    const isEs = lang === 'es';
+    const dictUrl = isEs 
+      ? 'https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMdict_spanish.zip'
+      : 'https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMdict_english.zip';
+    const dictTitle = isEs ? 'JMdict (Spanish)' : 'JMdict (English)';
+
+    setIsInstalling(true);
+    setInstallSuccess(false);
+    setInstallProgress(5);
+    setInstallMsg(isEs ? 'Iniciando descarga de JMdict...' : 'Starting JMdict download...');
+
+    try {
+      const response = await fetch(dictUrl);
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+      let arrayBuffer: ArrayBuffer;
+      if (response.body && typeof response.body.getReader === 'function') {
+        const reader = response.body.getReader();
+        const contentLength = +(response.headers.get('Content-Length') || 0);
+        let receivedLength = 0;
+        const chunks: Uint8Array[] = [];
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            chunks.push(value);
+            receivedLength += value.length;
+            if (contentLength > 0) {
+              const pct = Math.round((receivedLength / contentLength) * 45);
+              setInstallProgress(pct);
+              setInstallMsg(isEs ? `Descargando paquete: ${pct}%` : `Downloading package: ${pct}%`);
+            }
+          }
+        }
+        const blob = new Blob(chunks as any);
+        arrayBuffer = await blob.arrayBuffer();
+      } else {
+        const blob = await response.blob();
+        arrayBuffer = await blob.arrayBuffer();
+      }
+
+      setInstallProgress(50);
+      setInstallMsg(isEs ? 'Descomprimiendo y procesando base de datos...' : 'Processing database terms...');
+
+      const file = new File([arrayBuffer], `${dictTitle.replace(/\s+/g, '_')}.zip`, { type: 'application/zip' });
+      await importYomitanZip(file, (msg, prog) => {
+        setInstallMsg(msg);
+        setInstallProgress(50 + Math.round(prog * 0.5));
+      });
+
+      try {
+        const dbInst = await getDB();
+        const tx = dbInst.transaction('dictionaries', 'readwrite');
+        const store = tx.objectStore('dictionaries');
+        const req = store.get(dictTitle);
+        req.onsuccess = () => {
+          if (req.result) {
+            store.put({ ...req.result, hasTerms: true, hasFreqs: false });
+          }
+        };
+      } catch (e) {
+        console.warn('Metadata update error:', e);
+      }
+
+      setInstallProgress(100);
+      setInstallSuccess(true);
+      setInstallMsg(isEs ? '¡Diccionario instalado con éxito!' : 'Dictionary installed successfully!');
+      await checkDicts();
+    } catch (err: any) {
+      console.error('Error installing dictionary in tutorial:', err);
+      alert((lang === 'es' ? 'Error al instalar el diccionario: ' : 'Dictionary installation error: ') + (err?.message || 'Error'));
+    } finally {
+      setIsInstalling(false);
     }
   };
+
+  const hasDicts = installedDicts.length > 0 || installSuccess;
 
   return (
     <div 
@@ -187,79 +281,127 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
             </div>
           )}
 
-          {/* STEP 2: Instalar Diccionarios (El paso más importante) */}
+          {/* STEP 2: Instalar Diccionarios (DIRECT 1-CLICK INSTALLATION WITHOUT LOSING TUTORIAL PROGRESS) */}
           {currentStep === 1 && (
             <div style={{ animation: 'fadeIn 0.25s ease-out' }}>
               <div style={{
                 width: '54px',
                 height: '54px',
                 borderRadius: '14px',
-                background: 'rgba(255, 94, 98, 0.15)',
-                border: '1px solid rgba(255, 94, 98, 0.4)',
+                background: hasDicts ? 'rgba(0, 230, 118, 0.15)' : 'rgba(255, 94, 98, 0.15)',
+                border: hasDicts ? '1px solid rgba(0, 230, 118, 0.4)' : '1px solid rgba(255, 94, 98, 0.4)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginBottom: '16px',
-                color: '#ff5e62'
+                color: hasDicts ? '#00e676' : '#ff5e62'
               }}>
-                <Database size={28} />
+                {hasDicts ? <CheckCircle2 size={28} /> : <Database size={28} />}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                 <h2 style={{ fontSize: '1.35rem', fontWeight: 700, color: '#fff', margin: 0 }}>
                   {lang === 'es' ? 'Paso Fundamental: Instalar Diccionarios' : 'Key Step: Install Dictionaries'}
                 </h2>
-                <span style={{ background: '#ef4444', color: '#fff', fontSize: '0.65rem', fontWeight: 800, padding: '2px 6px', borderRadius: '4px' }}>
-                  {lang === 'es' ? 'IMPORTANTE' : 'IMPORTANT'}
+                <span style={{ 
+                  background: hasDicts ? '#059669' : '#ef4444', 
+                  color: '#fff', 
+                  fontSize: '0.65rem', 
+                  fontWeight: 800, 
+                  padding: '2px 6px', 
+                  borderRadius: '4px' 
+                }}>
+                  {hasDicts ? (lang === 'es' ? 'LISTO' : 'READY') : (lang === 'es' ? 'IMPORTANTE' : 'IMPORTANT')}
                 </span>
               </div>
               <p style={{ color: '#a0a0b0', fontSize: '0.88rem', lineHeight: '1.5', marginBottom: '16px' }}>
                 {lang === 'es'
-                  ? 'Para buscar significados, furigana y clasificar palabras mientras lees, necesitas tener instalados los diccionarios y listas de frecuencias.'
-                  : 'To look up definitions, furigana, and track vocabulary, you need to install dictionary and frequency packages.'}
+                  ? 'Para buscar significados, furigana y clasificar palabras mientras lees, necesitas tener instalados los diccionarios.'
+                  : 'To look up definitions, furigana, and track vocabulary, you need to install dictionary packages.'}
               </p>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '18px' }}>
-                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#FFE000' }} />
-                  <div style={{ fontSize: '0.82rem', color: '#ccc' }}>
-                    <strong>{lang === 'es' ? 'Instalar desde nuestra biblioteca:' : 'Install from preset library:'}</strong> {lang === 'es' ? 'Descarga JMdict (Español / Inglés) y frecuencias con 1 clic.' : 'Download JMdict and frequency lists with one click.'}
-                  </div>
-                </div>
-                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#a855f7' }} />
-                  <div style={{ fontSize: '0.82rem', color: '#ccc' }}>
-                    <strong>{lang === 'es' ? 'Instalar desde archivo (.zip):' : 'Install from file (.zip):'}</strong> {lang === 'es' ? 'Importa cualquier paquete de diccionario compatible que tengas en tu equipo.' : 'Import any compatible dictionary .zip package.'}
-                  </div>
-                </div>
-              </div>
-
-              {/* DIRECT ACTION BUTTON TO INSTALL DICTIONARIES */}
-              <button
-                type="button"
-                onClick={handleGoToDictionaries}
-                style={{
-                  width: '100%',
-                  padding: '12px 18px',
-                  background: 'linear-gradient(135deg, #ff5e62 0%, #ff9966 100%)',
-                  border: 'none',
-                  borderRadius: '10px',
-                  color: '#fff',
-                  fontSize: '0.92rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
+              {/* Status Box or Installer */}
+              {hasDicts ? (
+                <div style={{
+                  background: 'rgba(0, 230, 118, 0.08)',
+                  border: '1px solid rgba(0, 230, 118, 0.25)',
+                  borderRadius: '12px',
+                  padding: '16px 18px',
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  boxShadow: '0 4px 16px rgba(255, 94, 98, 0.4)',
-                  transition: 'transform 0.15s, box-shadow 0.15s'
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
-              >
-                <Download size={18} />
-                {lang === 'es' ? '📖 Ir a Instalar Diccionarios Ahora' : '📖 Install Dictionaries Now'}
-              </button>
+                  gap: '14px',
+                  marginBottom: '14px'
+                }}>
+                  <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: '#00e676', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#000', flexShrink: 0 }}>
+                    <Check size={20} strokeWidth={3} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#fff' }}>
+                      {lang === 'es' ? '¡Diccionario instalado y activo!' : 'Dictionary installed and active!'}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: '#a0a0b0' }}>
+                      {lang === 'es' 
+                        ? 'Tu lector ya está listo para consultar palabras y furigana. Pulsa "Siguiente" para continuar el tutorial.' 
+                        : 'Your reader is ready for word lookups and furigana. Press "Next" to continue tutorial.'}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '14px' }}>
+                  {/* DIRECT 1-CLICK INSTALLATION BUTTON */}
+                  <button
+                    type="button"
+                    onClick={handleDirectInstall}
+                    disabled={isInstalling}
+                    style={{
+                      width: '100%',
+                      padding: '14px 20px',
+                      background: isInstalling 
+                        ? 'rgba(255, 255, 255, 0.1)' 
+                        : 'linear-gradient(135deg, #ff5e62 0%, #ff9966 100%)',
+                      border: 'none',
+                      borderRadius: '10px',
+                      color: '#fff',
+                      fontSize: '0.94rem',
+                      fontWeight: 700,
+                      cursor: isInstalling ? 'wait' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '10px',
+                      boxShadow: isInstalling ? 'none' : '0 4px 18px rgba(255, 94, 98, 0.45)',
+                      transition: 'all 0.15s'
+                    }}
+                  >
+                    {isInstalling ? (
+                      <>
+                        <Loader2 size={20} className="animate-spin" />
+                        <span>{installMsg || (lang === 'es' ? 'Instalando diccionario...' : 'Installing dictionary...')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download size={20} />
+                        <span>{lang === 'es' ? '⚡ Instalar Diccionario JMdict (Español) - 1 Clic' : '⚡ Install JMdict Dictionary (English) - 1 Click'}</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Live progress bar */}
+                  {isInstalling && (
+                    <div style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '8px', overflow: 'hidden', height: '6px', width: '100%' }}>
+                      <div style={{
+                        background: '#FFE000',
+                        height: '100%',
+                        width: `${installProgress}%`,
+                        transition: 'width 0.2s ease'
+                      }} />
+                    </div>
+                  )}
+
+                  <div style={{ fontSize: '0.78rem', color: '#888899', textAlign: 'center' }}>
+                    💡 {lang === 'es' ? 'Se descargará e importará directamente en este paso sin cerrar el tutorial.' : 'Will download and install directly inside this step without closing the tutorial.'}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
