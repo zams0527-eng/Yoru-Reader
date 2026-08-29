@@ -65,10 +65,11 @@ export default function ReaderSidebar({
 }: ReaderSidebarProps) {
   if (!mode) return null;
 
+  const isEs = !lang || lang === 'es';
   const titles = {
-    toc: lang === 'es' ? 'Índice' : 'Table of Contents',
-    bookmarks: lang === 'es' ? 'Marcadores' : 'Bookmarks',
-    session: lang === 'es' ? 'Sesión de Lectura' : 'Reading Session',
+    toc: isEs ? 'Tabla de Contenidos' : 'Table of Contents',
+    bookmarks: isEs ? 'Marcadores' : 'Bookmarks',
+    session: isEs ? 'Sesión de Lectura' : 'Reading Session',
   };
 
   return (
@@ -134,6 +135,7 @@ export default function ReaderSidebar({
               onGoToSection={onGoToSection}
               onClose={onClose}
               colors={colors}
+              lang={lang}
             />
           )}
           {mode === 'bookmarks' && (
@@ -166,9 +168,11 @@ interface TocContentProps {
   onGoToSection: (idx: number) => void;
   onClose: () => void;
   colors: ReaderColors;
+  lang?: string;
 }
 
-function TocContent({ sections, currSection, onGoToSection, onClose, colors }: TocContentProps) {
+function TocContent({ sections, currSection, onGoToSection, onClose, colors, lang }: TocContentProps) {
+  const isEs = !lang || lang === 'es';
   return (
     <div>
       {sections.map((section, idx) => (
@@ -193,7 +197,7 @@ function TocContent({ sections, currSection, onGoToSection, onClose, colors }: T
           onMouseEnter={e => { if (idx !== currSection) e.currentTarget.style.background = `${colors.accent}0a`; }}
           onMouseLeave={e => { if (idx !== currSection) e.currentTarget.style.background = 'transparent'; }}
         >
-          {section.title || `Chapter ${idx + 1}`}
+          {section.title || (isEs ? `Sección ${idx + 1}` : `Chapter ${idx + 1}`)}
         </div>
       ))}
     </div>

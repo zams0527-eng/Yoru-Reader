@@ -495,6 +495,47 @@ export default function Reader({
       return false;
     };
 
+    // Toggle vertical / horizontal mode (V key)
+    if (e.key === 'v' || e.key === 'V') {
+      e.preventDefault();
+      const newVertical = !readerSettings.vertical;
+      setReaderSetting('vertical', newVertical);
+      onSaveSettings({ ...settings, readingOrientation: newVertical ? 'vertical' : 'horizontal' });
+      showToast(lang === 'es' ? (newVertical ? 'Modo Vertical (Tategaki)' : 'Modo Horizontal (Yokogaki)') : (newVertical ? 'Vertical Mode' : 'Horizontal Mode'), 'info');
+      return;
+    }
+
+    // Toggle settings popover (Q key)
+    if (e.key === 'q' || e.key === 'Q') {
+      e.preventDefault();
+      setShowSettingsPopover(prev => !prev);
+      setIsHeaderVisible(true);
+      return;
+    }
+
+    // Create Anki card / Save to SRS (A key)
+    if (e.key === 'a' || e.key === 'A') {
+      if (selectedWord) {
+        e.preventDefault();
+        handleMineToAnki();
+        return;
+      }
+    }
+
+    // Next page (Space or J)
+    if (e.code === 'Space' || e.key === 'j' || e.key === 'J') {
+      e.preventDefault();
+      triggerTtuKeyboardAction('ArrowRight', 'ArrowRight');
+      return;
+    }
+
+    // Prev page (K)
+    if (e.key === 'k' || e.key === 'K') {
+      e.preventDefault();
+      triggerTtuKeyboardAction('ArrowLeft', 'ArrowLeft');
+      return;
+    }
+
     if (matchKey(keybindings.toggleFullscreen, e)) {
       e.preventDefault();
       toggleFullscreen();
@@ -536,7 +577,7 @@ export default function Reader({
       }
       return;
     }
-  }, [settings.keybindings, toggleFullscreen, triggerTtuKeyboardAction, isTtsPlaying, selectedWord]);
+  }, [settings, readerSettings.vertical, setReaderSetting, onSaveSettings, lang, showToast, isExtSettingsOpen, isJumpModalOpen, isGalleryOpen, toggleFullscreen, triggerTtuKeyboardAction, isTtsPlaying, selectedWord, handleMineToAnki]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleReaderKeydown);
