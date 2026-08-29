@@ -57,7 +57,12 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
               </pre>
             </div>
             <button 
-              onClick={() => {
+              onClick={async () => {
+                try {
+                  if ((window as any).electronAPI && (window as any).electronAPI.clearOtaCache) {
+                    await (window as any).electronAPI.clearOtaCache();
+                  }
+                } catch(e) {}
                 localStorage.removeItem('migaku_reader_active_profile_id');
                 window.location.reload();
               }}

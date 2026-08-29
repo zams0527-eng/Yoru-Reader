@@ -492,6 +492,16 @@ ipcMain.handle('reload-app', () => {
   return true;
 });
 
+ipcMain.handle('clear-ota-cache', () => {
+  try {
+    const otaDistDir = path.join(app.getPath('userData'), 'ota_dist');
+    if (fs.existsSync(otaDistDir)) {
+      fs.rmSync(otaDistDir, { recursive: true, force: true });
+    }
+  } catch (e) {}
+  return true;
+});
+
 ipcMain.handle('check-hot-update', async (event) => {
   console.log('[OTA] Checking for frontend hot updates...');
   const otaDistDir = path.join(app.getPath('userData'), 'ota_dist');
