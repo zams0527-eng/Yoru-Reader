@@ -4980,8 +4980,6 @@ const Library = React.memo(function Library({
               </div>
             </div>
           )}
-
-          {isLibraryModalOpen && renderLibraryModal()}
         </div>
       )}
     </div>
@@ -8501,9 +8499,16 @@ const Library = React.memo(function Library({
       <OnboardingTutorialModal
         isOpen={showTutorialModal}
         onClose={() => setShowTutorialModal(false)}
-        onOpenDictionaries={() => setIsLibraryModalOpen('dict')}
+        onOpenDictionaries={() => {
+          setActiveTab('settings');
+          setActiveSettingsSection('sec-dictionaries');
+          setIsLibraryModalOpen('dict');
+        }}
         lang={lang}
       />
+
+      {/* Direct Dictionary Resource Library Modal */}
+      {isLibraryModalOpen && renderLibraryModal()}
 
       {/* Custom Toast Notification Styled with App Theme */}
       {toast.show && (
