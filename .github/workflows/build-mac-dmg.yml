@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-dmg:
     runs-on: macos-14
@@ -28,7 +31,8 @@ jobs:
         run: |
           npx electron-builder --mac dmg --x64 --arm64 \
             --config.directories.output=releases/mac \
-            -c.mac.identity=null
+            -c.mac.identity=null \
+            --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
@@ -45,10 +49,7 @@ jobs:
           retention-days: 14
 
       - name: Upload DMG to Release
-        uses: softprops/action-gh-release@v2
-        if: always()
-        with:
-          tag_name: yorureader
-          files: releases/mac/*.dmg
+        run: |
+          gh release upload yorureader releases/mac/*.dmg --clobber
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
