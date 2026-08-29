@@ -838,13 +838,13 @@ function startLocalExtServer() {
     res.setHeader('Content-Type', 'application/json');
 
     try {
-      if (pathName === 'reader/ping' || pathName === 'ping') {
+      if (pathName === 'reader/ping' || pathName === 'ping' || pathName === 'api/ping') {
         res.writeHead(200);
         res.end(JSON.stringify({ success: true }));
         return;
       }
       
-      if (pathName === 'reader/parse' || pathName === 'parse') {
+      if (pathName === 'reader/parse' || pathName === 'parse' || pathName === 'api/parse') {
         if (!mainWindow) throw new Error("Main window not available");
         
         const requestId = ++parseRequestCounter;
@@ -871,7 +871,7 @@ function startLocalExtServer() {
         return;
       }
 
-      if (pathName === 'reader/lookup-vocabulary' || pathName === 'lookup-vocabulary') {
+      if (pathName === 'reader/lookup-vocabulary' || pathName === 'lookup-vocabulary' || pathName === 'api/lookup-vocabulary') {
         const results = [];
         const deckIds = [];
         const wordsList = [];

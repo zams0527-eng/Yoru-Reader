@@ -1358,14 +1358,6 @@ const YoruParserSettings: React.FC<YoruParserSettingsProps> = ({
       <div style={sectionTitleStyle}>{t('Atajos de Teclado', 'Keyboard Shortcuts')}</div>
       <div style={cardStyle}>
         <KeybindRow
-          label={t('Parsear Página', 'Parse Page')}
-          desc={t('Activa el parseo manual de la página.', 'Triggers manual page parsing.')}
-          value={settings.parseKey}
-          colors={colors} labelStyle={labelStyle} descStyle={descStyle}
-        />
-      </div>
-      <div style={cardStyle}>
-        <KeybindRow
           label={t('Mostrar Popup', 'Show Popup')}
           desc={t('Muestra el popup de definición en la palabra bajo el cursor.', 'Shows definition popup on word under cursor.')}
           value={settings.showPopupKey}
