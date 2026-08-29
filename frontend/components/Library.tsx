@@ -5255,18 +5255,25 @@ const Library = React.memo(function Library({
       }
     };
 
-    // 1. First register all unique deck sources that exist in srsData
+    // 1. Register all user custom decks from _deck_ keys and card sources
     Object.entries(srsData).forEach(([word, card]: [string, any]) => {
-      const deckName = card?.source || 'Yoru Reader';
-      initDeck(deckName);
-      
-      // If it's a custom deck placeholder card, skip adding to due counts or statistics
       if (word.startsWith('_deck_')) {
-        return;
+        const deckName = word.substring(6).trim();
+        if (deckName) initDeck(deckName);
+      } else if (card && card.source && !word.startsWith('_')) {
+        const deckName = card.source.trim();
+        if (deckName) initDeck(deckName);
       }
-      
-      // We only count stats for words that are currently in 'learning' status
-      if (statuses[word] === 'learning') {
+    });
+
+    // 2. Process all cards that are in 'learning' status
+    Object.entries(srsData).forEach(([word, card]: [string, any]) => {
+      if (word.startsWith('_deck_')) return;
+      if (statuses[word] === 'learning' && card && card.source) {
+        const deckName = card.source.trim();
+        if (!deckName) return;
+        initDeck(deckName);
+        
         decks[deckName].totalCards++;
         
         const state = card.state;
@@ -5309,21 +5316,6 @@ const Library = React.memo(function Library({
               }
             }
           }
-        }
-      }
-    });
-
-    // 2. Also register any words currently marked as 'learning' that don't have cards yet
-    learningWords.forEach(word => {
-      if (!srsData[word]) {
-        const deckName = 'Yoru Reader';
-        initDeck(deckName);
-        
-        decks[deckName].totalCards++;
-        decks[deckName].totalNew++;
-        if (newCardsLeftToday > 0) {
-          decks[deckName].newCount++;
-          totalDueCount++;
         }
       }
     });
@@ -5869,11 +5861,6 @@ const Library = React.memo(function Library({
                               <span style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--text-main)', overflow: 'hidden', textHighlight: 'none', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={deck.name}>
                                 {deck.name}
                               </span>
-                              {deck.name === 'Yoru Reader' && (
-                                <span style={{ fontSize: '0.58rem', fontWeight: 900, background: 'rgba(168, 85, 247, 0.12)', color: '#c084fc', padding: '1px 6px', borderRadius: '12px', textTransform: 'uppercase', letterSpacing: '0.04em', flexShrink: 0 }}>
-                                  {lang === 'es' ? 'Fijo' : 'Fixed'}
-                                </span>
-                              )}
                             </div>
 
                             {/* Due Counters Badge pills */}
@@ -6001,10 +5988,6 @@ const Library = React.memo(function Library({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (deck.name === 'Yoru Reader') {
-                                showToast(lang === 'es' ? 'El mazo por defecto no se puede renombrar' : 'Default deck cannot be renamed', 'info');
-                                return;
-                              }
                               setDeckPromptMode('rename');
                               setDeckPromptTargetId(deck.name);
                               setDeckPromptValue(deck.name);
@@ -6020,7 +6003,7 @@ const Library = React.memo(function Library({
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'center',
-                              cursor: deck.name === 'Yoru Reader' ? 'not-allowed' : 'pointer',
+                              cursor: 'pointer',
                               transition: 'all 0.15s'
                             }}
                             title={lang === 'es' ? 'Opciones de mazo' : 'Deck options'}
@@ -8670,10 +8653,13 @@ const Library = React.memo(function Library({
                 </option>
                 {(() => {
                   const srsData = db.getSrsData();
-                  const deckNames = new Set<string>(['Yoru Reader']);
+                  const deckNames = new Set<string>();
                   Object.entries(srsData).forEach(([word, card]: [string, any]) => {
-                    if (card && card.source && !word.startsWith('_deck_')) {
-                      deckNames.add(card.source);
+                    if (word.startsWith('_deck_')) {
+                      const dName = word.substring(6).trim();
+                      if (dName) deckNames.add(dName);
+                    } else if (card && card.source && !word.startsWith('_')) {
+                      deckNames.add(card.source.trim());
                     }
                   });
                   return Array.from(deckNames)
