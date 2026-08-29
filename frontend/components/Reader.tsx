@@ -317,6 +317,7 @@ export default function Reader({
   const [isExtSettingsOpen, setIsExtSettingsOpen] = useState(false);
   const [extId, setExtId] = useState<string | null>(null);
   const [deckSelectorWord, setDeckSelectorWord] = useState<string | null>(null);
+  const [newDeckInput, setNewDeckInput] = useState('');
 
   // Extract all images from book chapters
   const bookImages = useMemo<string[]>(() => {
@@ -2272,18 +2273,15 @@ export default function Reader({
                     {deckSelectorWord === selectedWord.basicForm && (() => {
                       const srsData = db.getSrsData();
                       const deckNamesSet = new Set<string>();
-                      deckNamesSet.add('Yoru Reader');
                       
-                      if (book?.title) {
-                        deckNamesSet.add(book.title);
-                      }
-                      
+                      // ONLY user-created decks from _deck_ keys or card sources
                       Object.entries(srsData).forEach(([word, card]: [string, any]) => {
                         if (word.startsWith('_deck_')) {
-                          const deckName = word.substring(6);
+                          const deckName = word.substring(6).trim();
                           if (deckName) deckNamesSet.add(deckName);
-                        } else if (card && card.source) {
-                          deckNamesSet.add(card.source);
+                        } else if (card && card.source && !word.startsWith('_')) {
+                          const src = card.source.trim();
+                          if (src) deckNamesSet.add(src);
                         }
                       });
                       
@@ -2291,110 +2289,218 @@ export default function Reader({
                       const currentCard = db.getSrsCard(selectedWord.basicForm);
                       const currentDeck = currentCard?.source || '';
                       
+                      const handleCreateAndAssignDeck = (deckName: string) => {
+                        const trimmed = deckName.trim();
+                        if (!trimmed) return;
+                        
+                        // Register deck in srsData
+                        const updatedSrs = db.getSrsData();
+                        updatedSrs[`_deck_${trimmed}`] = { createdAt: new Date().toISOString() };
+                        
+                        const wordData = {
+                          reading: selectedWord.reading || selectedWord.surface,
+                          sentence: selectedWord.sentenceText || selectedWord.surface || '',
+                          source: trimmed
+                        };
+                        
+                        const card = updatedSrs[selectedWord.basicForm] || {
+                          word: selectedWord.basicForm,
+                          reading: wordData.reading,
+                          sentence: wordData.sentence,
+                          state: 0,
+                          dueDate: new Date().toISOString(),
+                          due: new Date().toISOString()
+                        };
+                        card.source = trimmed;
+                        updatedSrs[selectedWord.basicForm] = card;
+                        
+                        db.saveSrsData(updatedSrs);
+                        setSrsCard(card);
+                        onSetWordStatus(selectedWord.basicForm, 'learning', wordData);
+                        setDeckSelectorWord(null);
+                        setNewDeckInput('');
+                      };
+
+                      const handleDeleteDeck = (e: React.MouseEvent, deckName: string) => {
+                        e.stopPropagation();
+                        const updatedSrs = db.getSrsData();
+                        delete updatedSrs[`_deck_${deckName}`];
+                        Object.entries(updatedSrs).forEach(([key, card]: [string, any]) => {
+                          if (card && card.source === deckName) {
+                            card.source = '';
+                          }
+                        });
+                        db.saveSrsData(updatedSrs);
+                        if (currentDeck === deckName) {
+                          setSrsCard(db.getSrsCard(selectedWord.basicForm));
+                        }
+                      };
+
                       return (
                         <div style={{
                           position: 'absolute',
                           top: '100%',
                           right: 0,
                           marginTop: '6px',
-                          background: 'rgba(24, 24, 27, 0.96)',
-                          backdropFilter: 'blur(8px)',
-                          WebkitBackdropFilter: 'blur(8px)',
-                          border: '1px solid var(--border-light)',
-                          borderRadius: '8px',
-                          padding: '10px',
+                          background: 'rgba(20, 20, 24, 0.98)',
+                          backdropFilter: 'blur(12px)',
+                          WebkitBackdropFilter: 'blur(12px)',
+                          border: '1px solid rgba(255,255,255,0.12)',
+                          borderRadius: '10px',
+                          padding: '12px',
                           zIndex: 100,
-                          minWidth: '150px',
-                          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.5)'
+                          minWidth: '200px',
+                          maxWidth: '260px',
+                          boxShadow: '0 12px 28px rgba(0, 0, 0, 0.6), 0 4px 10px rgba(0, 0, 0, 0.4)'
                         }}>
-                          <div style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                          <div style={{ fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                             {lang === 'es' ? 'Añadir al mazo' : 'Add to deck'}
                           </div>
                           
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '180px', overflowY: 'auto' }}>
-                            {allDecks.map(deckName => {
-                              const isSelected = isLearning && currentDeck === deckName;
-                              return (
-                                <button
-                                  key={deckName}
-                                  type="button"
-                                  onClick={() => {
-                                    const wordData = {
-                                      reading: selectedWord.reading || selectedWord.surface,
-                                      sentence: selectedWord.sentenceText || selectedWord.surface || '',
-                                      source: deckName
-                                    };
-                                    
-                                    const card = db.getSrsCard(selectedWord.basicForm) || {
-                                      word: selectedWord.basicForm,
-                                      reading: wordData.reading,
-                                      sentence: wordData.sentence,
-                                      state: 0,
-                                      dueDate: new Date().toISOString(),
-                                      due: new Date().toISOString()
-                                    };
-                                    card.source = deckName;
-                                    db.saveSrsCard(selectedWord.basicForm, card);
-                                    
-                                    setSrsCard(card);
-                                    onSetWordStatus(selectedWord.basicForm, 'learning', wordData);
-                                    setDeckSelectorWord(null);
-                                  }}
-                                  style={{
-                                    background: isSelected ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
-                                    border: isSelected ? '1px solid rgba(139, 92, 246, 0.4)' : '1px solid transparent',
-                                    borderRadius: '5px',
-                                    padding: '6px 10px',
-                                    fontSize: '0.74rem',
-                                    fontWeight: 700,
-                                    color: isSelected ? '#a78bfa' : 'var(--text-main)',
-                                    cursor: 'pointer',
-                                    textAlign: 'left',
-                                    transition: 'all 0.15s'
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    if (!isSelected) e.currentTarget.style.background = 'transparent';
-                                  }}
-                                >
-                                  {deckName}
-                                </button>
-                              );
-                            })}
-                            
-                            {isLearning && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  onSetWordStatus(selectedWord.basicForm, 'new');
-                                  setDeckSelectorWord(null);
-                                }}
-                                style={{
-                                  background: 'rgba(239, 68, 68, 0.08)',
-                                  border: '1px solid rgba(239, 68, 68, 0.2)',
-                                  borderRadius: '5px',
-                                  padding: '6px 10px',
-                                  fontSize: '0.74rem',
-                                  fontWeight: 700,
-                                  color: '#f87171',
-                                  cursor: 'pointer',
-                                  textAlign: 'center',
-                                  marginTop: '6px',
-                                  transition: 'all 0.15s'
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)';
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)';
-                                }}
-                              >
-                                {lang === 'es' ? 'Quitar del mazo' : 'Remove from deck'}
-                              </button>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '160px', overflowY: 'auto', marginBottom: '8px' }}>
+                            {allDecks.length === 0 ? (
+                              <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', padding: '6px 4px', fontStyle: 'italic' }}>
+                                {lang === 'es' ? 'No hay mazos creados aún.' : 'No custom decks created yet.'}
+                              </div>
+                            ) : (
+                              allDecks.map(deckName => {
+                                const isSelected = isLearning && currentDeck === deckName;
+                                return (
+                                  <div
+                                    key={deckName}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      background: isSelected ? 'rgba(139, 92, 246, 0.18)' : 'rgba(255,255,255,0.03)',
+                                      border: isSelected ? '1px solid rgba(139, 92, 246, 0.45)' : '1px solid transparent',
+                                      borderRadius: '6px',
+                                      padding: '5px 8px',
+                                      transition: 'all 0.15s'
+                                    }}
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCreateAndAssignDeck(deckName)}
+                                      style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        color: isSelected ? '#a78bfa' : 'var(--text-main)',
+                                        fontSize: '0.75rem',
+                                        fontWeight: 700,
+                                        cursor: 'pointer',
+                                        textAlign: 'left',
+                                        flex: 1,
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap'
+                                      }}
+                                    >
+                                      {deckName}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleDeleteDeck(e, deckName)}
+                                      title={lang === 'es' ? 'Eliminar mazo' : 'Delete deck'}
+                                      style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        color: 'rgba(255,255,255,0.3)',
+                                        cursor: 'pointer',
+                                        fontSize: '0.7rem',
+                                        padding: '2px 4px',
+                                        borderRadius: '3px'
+                                      }}
+                                      onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; }}
+                                      onMouseLeave={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.3)'; }}
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                );
+                              })
                             )}
                           </div>
+
+                          {/* Create new deck input row */}
+                          <div style={{
+                            display: 'flex',
+                            gap: '4px',
+                            borderTop: '1px solid rgba(255,255,255,0.08)',
+                            paddingTop: '8px',
+                            marginTop: '4px'
+                          }}>
+                            <input
+                              type="text"
+                              value={newDeckInput}
+                              onChange={(e) => setNewDeckInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleCreateAndAssignDeck(newDeckInput);
+                                }
+                              }}
+                              placeholder={lang === 'es' ? 'Nuevo mazo...' : 'New deck...'}
+                              style={{
+                                flex: 1,
+                                background: 'rgba(255,255,255,0.06)',
+                                border: '1px solid rgba(255,255,255,0.12)',
+                                borderRadius: '5px',
+                                padding: '4px 8px',
+                                fontSize: '0.72rem',
+                                color: '#fff',
+                                outline: 'none'
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleCreateAndAssignDeck(newDeckInput)}
+                              style={{
+                                background: '#8b5cf6',
+                                border: 'none',
+                                borderRadius: '5px',
+                                padding: '4px 10px',
+                                color: '#fff',
+                                fontSize: '0.75rem',
+                                fontWeight: 700,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              +
+                            </button>
+                          </div>
+                          
+                          {isLearning && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onSetWordStatus(selectedWord.basicForm, 'new');
+                                setDeckSelectorWord(null);
+                              }}
+                              style={{
+                                background: 'rgba(239, 68, 68, 0.08)',
+                                border: '1px solid rgba(239, 68, 68, 0.2)',
+                                borderRadius: '5px',
+                                padding: '5px 8px',
+                                fontSize: '0.72rem',
+                                fontWeight: 700,
+                                color: '#f87171',
+                                cursor: 'pointer',
+                                textAlign: 'center',
+                                width: '100%',
+                                marginTop: '8px',
+                                transition: 'all 0.15s'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)';
+                              }}
+                            >
+                              {lang === 'es' ? 'Quitar del mazo' : 'Remove from deck'}
+                            </button>
+                          )}
                         </div>
                       );
                     })()}
