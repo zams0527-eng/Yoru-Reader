@@ -90,7 +90,7 @@ jobs:
   # -------------------------------------------------------------
   build-windows:
     name: Build Windows (.exe)
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -106,25 +106,13 @@ jobs:
 
       - name: Get app version
         id: version
-        shell: bash
         run: |
           VER=$(node -p "require('./package.json').version")
           echo "VERSION=$VER" >> $GITHUB_ENV
           echo "TAG=v$VER" >> $GITHUB_ENV
 
-      - name: Add Windows SDK Signtool to PATH
-        shell: pwsh
+      - name: Prepare build assets
         run: |
-          $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\bin" -Filter "signtool.exe" -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like "*x64*" } | Select-Object -First 1
-          if ($signtool) {
-            $binDir = $signtool.DirectoryName
-            Write-Host "Found signtool at $binDir"
-            "$binDir" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          }
-
-      - name: Prepare build assets & certificate
-        run: |
-          node build/generate-certificate.js
           node build/prepare-nsis.js
 
       - name: Build frontend
@@ -144,7 +132,6 @@ jobs:
           retention-days: 14
 
       - name: Ensure Release Exists & Upload EXE
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
