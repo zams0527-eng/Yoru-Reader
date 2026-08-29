@@ -3,6 +3,7 @@ import { initTokenizer, katakanaToHiragana } from './japanese';
 export function getStatusClass(status?: string): string {
   if (status === 'known' || status === 'mature' || status === 'mastered') return 'jiten-word mature';
   if (status === 'learning' || status === 'young') return 'jiten-word young';
+  if (status === 'due') return 'jiten-word due';
   if (status === 'ignored' || status === 'blacklisted') return 'jiten-word blacklisted';
   return 'jiten-word new';
 }
@@ -10,6 +11,11 @@ export function getStatusClass(status?: string): string {
 const segmenter = typeof Intl !== 'undefined' && (Intl as any).Segmenter
   ? new (Intl as any).Segmenter('ja', { granularity: 'word' })
   : null;
+
+// Common single-character Hiragana particles & auxiliary connectors
+const COMMON_PARTICLES = new Set([
+  'は', 'が', 'の', 'に', 'を', 'で', 'へ', 'と', 'て', 'た', 'だ', 'も', 'よ', 'ね', 'か', 'っ', 'ん', 'さ', 'ぞ', 'な', 'ば', 'し'
+]);
 
 /**
  * Fast tokenization and markup generation for Japanese text paragraphs
@@ -49,7 +55,21 @@ export function tokenizeJapaneseText(
         for (const token of rawTokens) {
           const surface = token.surface_form;
           const pos = token.pos;
+
+          // Ignore punctuation and non-Japanese characters
           if (pos === '記号' || !/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(surface)) {
+            resultHtml += surface;
+            continue;
+          }
+
+          // Particles and auxiliary verb endings should remain standard text
+          if (pos === '助詞' || pos === '助動詞') {
+            resultHtml += surface;
+            continue;
+          }
+
+          // Pure single-char hiragana connectors
+          if (surface.length === 1 && COMMON_PARTICLES.has(surface)) {
             resultHtml += surface;
             continue;
           }
@@ -74,6 +94,12 @@ export function tokenizeJapaneseText(
       for (const s of segments) {
         const seg = s.segment;
         if (!s.isWordLike || !/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(seg)) {
+          resultHtml += seg;
+          continue;
+        }
+
+        // Filter single hiragana particles
+        if (seg.length === 1 && COMMON_PARTICLES.has(seg)) {
           resultHtml += seg;
           continue;
         }
@@ -104,15 +130,23 @@ export function tokenizeJapaneseText(
   return resultHtml;
 }
 
-// Global initialization for native tokenizer
-export async function setupNativeYoruParser(): Promise<void> {
-  try {
-    const tokenizer = await initTokenizer();
-    if (typeof window !== 'undefined') {
-      (window as any).__yoru_tokenizer_instance = tokenizer;
-      window.dispatchEvent(new CustomEvent('yoru-tokenizer-ready'));
+export function setupNativeYoruParser(onWordClick?: (word: string, element: HTMLElement) => void): () => void {
+  const handleNativeClick = (e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (!target) return;
+    const wordEl = target.closest('.jiten-word') as HTMLElement;
+    if (wordEl) {
+      const word = wordEl.getAttribute('data-word') || wordEl.textContent?.trim() || '';
+      if (word && onWordClick) {
+        onWordClick(word, wordEl);
+      }
     }
-  } catch (err) {
-    console.warn('Kuromoji background load:', err);
-  }
+  };
+
+  document.addEventListener('click', handleNativeClick);
+  initTokenizer().catch(err => console.warn('Native tokenizer init error:', err));
+
+  return () => {
+    document.removeEventListener('click', handleNativeClick);
+  };
 }

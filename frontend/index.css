@@ -1,3 +1,99 @@
+
+/* ==========================================================================
+   Universal Sleek Dark Scrollbars (Yoru Modern Glass Theme)
+   ========================================================================== */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  transition: background 0.2s ease;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(168, 85, 247, 0.55);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ==========================================================================
+   Yoru Parser Word Styles (Dynamic State & Color System)
+   ========================================================================== */
+.jiten-word {
+  cursor: pointer;
+  transition: all 0.12s ease;
+  display: inline;
+  border-radius: 2px;
+}
+
+.jiten-word.new {
+  color: #a855f7 !important; /* Purple (New Word) */
+}
+
+.jiten-word.young,
+.jiten-word.learning {
+  color: #f59e0b !important; /* Orange (Learning / Young) */
+  text-decoration: underline !important;
+  text-decoration-color: #f59e0b !important;
+  text-underline-offset: 3px;
+}
+
+.jiten-word.mature,
+.jiten-word.known {
+  color: #ffffff !important; /* White / Standard (Known / Mature) */
+  text-decoration: none !important;
+}
+
+.jiten-word.mastered {
+  color: #ffffff !important;
+  text-decoration: none !important;
+}
+
+.jiten-word.due {
+  color: #ef4444 !important; /* Red / Due */
+  text-decoration: underline !important;
+  text-decoration-color: #ef4444 !important;
+  text-underline-offset: 3px;
+}
+
+.jiten-word.blacklisted,
+.jiten-word.ignored {
+  opacity: 0.45 !important;
+}
+
+.jiten-word:hover {
+  filter: brightness(1.25);
+  background: rgba(168, 85, 247, 0.2);
+  border-radius: 3px;
+}
+
+.jiten-word ruby {
+  color: inherit !important;
+}
+
+.jiten-word rt,
+.jiten-furi {
+  user-select: none;
+  pointer-events: none;
+  font-size: 0.58em;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.75) !important;
+}
+
 /* Migaku Font Face declarations loaded directly from preloaded CDN assets */
 @font-face {
   font-family: 'Inter Variable';
