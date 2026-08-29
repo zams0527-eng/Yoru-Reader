@@ -848,6 +848,26 @@ export const db = {
     }
   },
 
+  getSrsDailyReviews(): Record<string, number> {
+    try {
+      const data = localStorage.getItem(this._getKey('yoru_reader_srs_daily_reviews'));
+      return data ? JSON.parse(data) : {};
+    } catch (e) {
+      return {};
+    }
+  },
+
+  recordSrsDailyReview(dateStr?: string) {
+    try {
+      const ymd = dateStr || new Date().toISOString().slice(0, 10);
+      const daily = this.getSrsDailyReviews();
+      daily[ymd] = (daily[ymd] || 0) + 1;
+      localStorage.setItem(this._getKey('yoru_reader_srs_daily_reviews'), JSON.stringify(daily));
+    } catch (e) {
+      console.error('Error recording SRS daily review:', e);
+    }
+  },
+
   addSrsHistory(word: string, grade: number, interval: number, deckName: string) {
     try {
       const history = this.getSrsHistory();
@@ -859,10 +879,11 @@ export const db = {
         timestamp: new Date().toISOString()
       };
       history.unshift(entry); // Add to the top
-      if (history.length > 200) {
-        history.length = 200; // Limit to last 200 reviews
+      if (history.length > 500) {
+        history.length = 500;
       }
       localStorage.setItem(this._getKey('yoru_reader_srs_history'), JSON.stringify(history));
+      this.recordSrsDailyReview();
     } catch (e) {
       console.error('Error saving SRS history:', e);
     }
@@ -871,6 +892,7 @@ export const db = {
   clearSrsHistory() {
     try {
       localStorage.removeItem(this._getKey('yoru_reader_srs_history'));
+      localStorage.removeItem(this._getKey('yoru_reader_srs_daily_reviews'));
     } catch (e) {
       console.error('Error clearing SRS history:', e);
     }
