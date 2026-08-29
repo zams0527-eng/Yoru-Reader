@@ -14130,6 +14130,24 @@ class AJB {
     }
     installParsers() {
         const { hostEvaluator, parsers } = _integration_registry__WEBPACK_IMPORTED_MODULE_12__.Registry;
+        try {
+            const yoruMeta = {
+                id: 'yoru-parser',
+                name: 'Yoru Parser',
+                description: 'Native parser for Yoru Reader',
+                host: '<all_urls>',
+                auto: true,
+                optOut: true,
+                allFrames: false,
+                custom: 'YoruParser',
+            };
+            const yoruParser = (0,_parser_get_custom_parser__WEBPACK_IMPORTED_MODULE_14__.getCustomParser)('YoruParser', yoruMeta);
+            parsers.push(yoruParser);
+            yoruParser.startParsing();
+            console.log('[Yoru Extension] YoruParser directly started!');
+        } catch (e) {
+            console.error('[Yoru Extension] Error directly starting YoruParser:', e);
+        }
         const isPredefined = (meta) => 'id' in meta;
         const generation = this._navigationGeneration;
         void hostEvaluator.load().then(({ canBeTriggered, relevantMeta }) => {
