@@ -198,10 +198,11 @@ function ReaderEngineComponent({
         writingMode: 'vertical-rl',
         overflowX: 'hidden',
         overflowY: 'hidden',
-        width: 'var(--reader-width, 100vw)',
-        height: 'calc(var(--reader-height, 100vh) - 4em)',
-        columnGap: `calc(${vp} * 2)`,
-        columnWidth: `calc(var(--reader-width, 100vw) - ${vp} * 2)`,
+        boxSizing: 'border-box',
+        width: '100%',
+        height: '100%',
+        columnGap: `calc(${hp} * 2)`,
+        columnWidth: `calc(100vw - ${hp} * 2)`,
         columnFill: 'auto',
       };
     } else if (paginated && !vertical) {
@@ -209,26 +210,32 @@ function ReaderEngineComponent({
         ...base,
         overflowY: 'hidden',
         overflowX: 'hidden',
-        height: 'var(--reader-height, 100vh)',
-        width: 'calc(var(--reader-width, 100vw) - 4em)',
+        boxSizing: 'border-box',
+        width: '100%',
+        height: '100%',
         columnGap: `calc(${hp} * 2)`,
-        columnWidth: `calc(var(--reader-width, 100vw) - ${hp} * 2)`,
+        columnWidth: `calc(100vw - ${hp} * 2)`,
         columnFill: 'auto',
       };
     } else if (!paginated && vertical) {
       return {
         ...base,
         writingMode: 'vertical-rl',
+        overflowX: 'auto',
         overflowY: 'hidden',
-        height: 'calc(var(--reader-height, 100vh) - 4em)',
+        boxSizing: 'border-box',
+        height: '100%',
+        width: '100%',
       };
     } else {
       // continuous horizontal
       return {
         ...base,
+        boxSizing: 'border-box',
         height: '100%',
-        width: 'calc(var(--reader-width, 100vw) - 4em)',
+        width: '100%',
         overflowY: 'auto',
+        overflowX: 'hidden',
       };
     }
   }, [fontSize, lineHeight, verticalPadding, horizontalPadding, vertical, paginated, fontFamily, colors.bg, colors.textMain]);
