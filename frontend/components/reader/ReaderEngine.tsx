@@ -436,6 +436,22 @@ function ReaderEngineComponent({
     if (onSectionChange) onSectionChange(currSection);
   }, [currSection]);
 
+  // Automatically trigger Yoru Parser on section change / page load
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        window.dispatchEvent(new CustomEvent('yoru:parse-page'));
+        window.postMessage({ type: 'YORU_PARSE_PAGE' }, '*');
+        if ((window as any).__yoruParserInstance && contentRef.current) {
+          (window as any).__yoruParserInstance.parseNode(contentRef.current);
+        }
+      } catch (err) {
+        console.error('[ReaderEngine] Auto parse trigger failed:', err);
+      }
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [currSection, sections]);
+
   // Navigate to section by index
   const goToSection = useCallback((idx: number) => {
     if (idx >= 0 && idx < sections.length) {
