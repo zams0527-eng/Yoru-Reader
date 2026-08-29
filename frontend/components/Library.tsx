@@ -3770,6 +3770,68 @@ const Library = React.memo(function Library({
           {/* Card: General (Apariencia, Idioma y Guía) */}
           {matchesSearch('tema theme active dark light sepia idioma lang language interface interfaceLanguage tutorial guia atajos general') && (settingsSearchQuery || activeSettingsSection === 'sec-general' || activeSettingsSection === 'sec-theme' || activeSettingsSection === 'sec-language-interface') && (
             <div id="sec-general" style={{ display: 'flex', flexDirection: 'column', gap: '16px', width: '100%' }}>
+              {/* Banner: Actualizaciones del Sistema */}
+              <div style={{
+                background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.08) 0%, rgba(124, 58, 237, 0.03) 100%)',
+                border: '1px solid rgba(168, 85, 247, 0.25)',
+                borderRadius: '12px',
+                padding: '16px 20px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '16px',
+                flexWrap: 'wrap'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', minWidth: '240px', flex: 1 }}>
+                  <div style={{
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '10px',
+                    background: 'rgba(168, 85, 247, 0.15)',
+                    border: '1px solid rgba(168, 85, 247, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#c084fc',
+                    flexShrink: 0
+                  }}>
+                    <span style={{ fontSize: '1.3rem' }}>⚡</span>
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '0.96rem', color: '#fff' }}>
+                      {lang === 'es' ? 'Actualizaciones del Sistema' : 'System Updates'}
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: '#a0a0b0', marginTop: '2px' }}>
+                      {lang === 'es' 
+                        ? 'Comprueba e instala las últimas actualizaciones en vivo con un solo clic.' 
+                        : 'Check and install the latest live updates with one click.'}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('yoru-check-updates-manual'))}
+                  style={{
+                    padding: '10px 20px',
+                    background: 'linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontWeight: 700,
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: '0 4px 12px rgba(168, 85, 247, 0.3)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <RefreshCw size={15} />
+                  <span>{lang === 'es' ? 'Buscar Actualizaciones' : 'Check for Updates'}</span>
+                </button>
+              </div>
               {/* Banner: Guía y Tutorial */}
               <div style={{
                 background: 'linear-gradient(135deg, rgba(255, 224, 0, 0.08) 0%, rgba(255, 180, 0, 0.03) 100%)',

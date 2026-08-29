@@ -131,17 +131,21 @@ function createWindow(): void {
     }
   });
 
-  // Load the compiled index.html (from built-in app bundle first, then OTA if applicable)
-  const defaultIndex = path.join(__dirname, '../dist/index.html');
-  if (fs.existsSync(defaultIndex)) {
-    console.log('[main] Loading built-in frontend bundle from:', defaultIndex);
-    win.loadFile(defaultIndex);
+  // 1. Check if an OTA update bundle is installed in userData (Stable only)
+  const otaDistDir = path.join(app.getPath('userData'), 'ota_dist');
+  const otaIndex = path.join(otaDistDir, 'index.html');
+  const appName = app.getName();
+  const execPath = process.execPath;
+  const isDevBuild = appName.toLowerCase().includes('dev') || execPath.toLowerCase().includes('dev');
+
+  if (!isDevBuild && fs.existsSync(otaIndex)) {
+    console.log('[OTA] Loading updated frontend bundle from:', otaIndex);
+    win.loadFile(otaIndex);
   } else {
-    const otaDistDir = path.join(app.getPath('userData'), 'ota_dist');
-    const otaIndex = path.join(otaDistDir, 'index.html');
-    if (fs.existsSync(otaIndex)) {
-      console.log('[OTA] Loading updated frontend bundle from:', otaIndex);
-      win.loadFile(otaIndex);
+    const defaultIndex = path.join(__dirname, '../dist/index.html');
+    if (fs.existsSync(defaultIndex)) {
+      console.log('[main] Loading built-in frontend bundle from:', defaultIndex);
+      win.loadFile(defaultIndex);
     } else {
       win.loadFile(path.join(app.getAppPath(), 'dist/index.html'));
     }
