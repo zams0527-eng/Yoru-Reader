@@ -265,3 +265,64 @@ jobs:
           gh release view yorureader || gh release create yorureader --title "Yoru Reader Latest" --notes "Latest Stable Release" || true
           gh release upload "${TAG}" releases/android/Yoru-Reader-${VERSION}.apk --clobber || true
           gh release upload yorureader releases/android/Yoru-Reader-${VERSION}.apk --clobber || true
+
+  # -------------------------------------------------------------
+  # 4. LINUX (.flatpak)
+  # -------------------------------------------------------------
+  build-linux:
+    name: Build Linux (.flatpak)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Get app version
+        id: version
+        run: |
+          VER=$(node -p "require('./package.json').version")
+          echo "VERSION=$VER" >> $GITHUB_ENV
+          echo "TAG=v$VER" >> $GITHUB_ENV
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Install Flatpak tools
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y flatpak flatpak-builder elfutils
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub \
+            org.freedesktop.Platform//24.08 \
+            org.freedesktop.Sdk//24.08 \
+            org.electronjs.Electron2.BaseApp//24.08
+
+      - name: Package Flatpak
+        run: |
+          npx electron-builder --linux flatpak --x64 \
+            --config.directories.output=releases/linux \
+            --publish never
+
+      - name: Upload Flatpak Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Yoru-Reader-Linux-Flatpak
+          path: releases/linux/*.flatpak
+          retention-days: 14
+
+      - name: Ensure Release Exists & Upload Flatpak
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${TAG}" || gh release create "${TAG}" --title "Yoru Reader ${TAG}" --notes "Release ${TAG}" || true
+          gh release view yorureader || gh release create yorureader --title "Yoru Reader Latest" --notes "Latest Stable Release" || true
+          gh release upload "${TAG}" releases/linux/*.flatpak --clobber || true
+          gh release upload yorureader releases/linux/*.flatpak --clobber || true
