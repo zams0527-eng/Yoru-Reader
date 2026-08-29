@@ -990,47 +990,28 @@ export async function parsePDF(arrayBuffer: ArrayBuffer, fallbackTitle?: string)
     throw new Error('El PDF no contiene texto digital legible (es posible que esté compuesto únicamente por imágenes o escaneos sin OCR).');
   }
 
-  // Group pages into chapters
+  // Group pages into chapters: If document has chapter headings, split by headings;
+  // otherwise treat each page cleanly with its exact page number in TOC
   const chapters: BookChapter[] = [];
-  const chapterPattern = /^(第[一二三四五六七八九十百0-9]+[章話回幕節部]|Chapter\s+\d+|#\s+|CAP[ÍI]TULO\s+\d+).*$/i;
-
-  let currentTitle = numPages <= 10 ? 'Página 1' : 'Sección 1';
-  let currentContent: string[] = [];
+  const chapterPattern = /^(第[一二三四五六七八九十百0-9]+[章話回幕節部]|Chapter\s+\d+|#\s+|CAP[ÍI]TULO\s+\d+|[一二三四五六七八九十]+之巻).*$/i;
 
   for (let i = 0; i < pageTexts.length; i++) {
     const { pageNum, text } = pageTexts[i];
     const lines = text.split('\n');
+    let pageTitle = `Página ${pageNum}`;
 
     for (const line of lines) {
       const trimmed = line.trim();
       if (chapterPattern.test(trimmed)) {
-        if (currentContent.length > 0) {
-          chapters.push({
-            title: currentTitle,
-            content: currentContent.join('\n')
-          });
-          currentContent = [];
-        }
-        currentTitle = trimmed.replace(/^#\s+/, '');
+        pageTitle = trimmed.replace(/^#\s+/, '');
+        break;
       }
-      currentContent.push(line);
     }
 
-    // Group long documents without explicit chapter headers into 15-page sections
-    if (pageTexts.length > 20 && (i + 1) % 15 === 0 && currentContent.length > 0) {
-      chapters.push({
-        title: currentTitle,
-        content: currentContent.join('\n')
-      });
-      currentContent = [];
-      currentTitle = `Páginas ${pageNum + 1}-${Math.min(pageNum + 15, numPages)}`;
-    }
-  }
-
-  if (currentContent.length > 0 || chapters.length === 0) {
     chapters.push({
-      title: currentTitle,
-      content: currentContent.join('\n')
+      title: pageTitle,
+      content: text,
+      isFromToc: true
     });
   }
 
