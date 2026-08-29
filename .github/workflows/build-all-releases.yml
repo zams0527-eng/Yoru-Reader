@@ -59,7 +59,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "${TAG}" || gh release create "${TAG}" --title "Yoru Reader ${TAG}" --notes "Release ${TAG}" || true
-          gh release upload "${TAG}" dist.zip --clobber || gh release upload yorureader dist.zip --clobber || true
+          gh release view yorureader || gh release create yorureader --title "Yoru Reader Latest" --notes "Latest Stable Release" || true
+          gh release upload "${TAG}" dist.zip --clobber || true
+          gh release upload yorureader dist.zip --clobber || true
 
   # -------------------------------------------------------------
   # 1. WINDOWS (.exe NSIS Installer)
@@ -97,7 +99,10 @@ jobs:
         run: npm run build
 
       - name: Package Windows NSIS Installer
-        run: npx electron-builder --win nsis --x64 --config.directories.output=dist-electron-installer
+        run: |
+          npx electron-builder --win nsis --x64 --config.directories.output=dist-electron-installer -c.win.signtoolOptions=null --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
       - name: Upload Windows Artifact
         uses: actions/upload-artifact@v4
@@ -111,8 +116,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          cp "dist-electron-installer/Yoru-Reader Setup ${VERSION}.exe" "dist-electron-installer/Yoru-Reader.Setup.${VERSION}.exe" || true
           gh release view "${TAG}" || gh release create "${TAG}" --title "Yoru Reader ${TAG}" --notes "Release ${TAG}" || true
-          gh release upload "${TAG}" dist-electron-installer/*.exe --clobber || gh release upload yorureader dist-electron-installer/*.exe --clobber || true
+          gh release view yorureader || gh release create yorureader --title "Yoru Reader Latest" --notes "Latest Stable Release" || true
+          gh release upload "${TAG}" dist-electron-installer/*.exe --clobber || true
+          gh release upload yorureader dist-electron-installer/*.exe --clobber || true
 
   # -------------------------------------------------------------
   # 2. MACOS (.dmg Apple Silicon arm64 & Intel x64)
@@ -164,7 +172,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "${TAG}" || gh release create "${TAG}" --title "Yoru Reader ${TAG}" --notes "Release ${TAG}" || true
-          gh release upload "${TAG}" releases/mac/*.dmg --clobber || gh release upload yorureader releases/mac/*.dmg --clobber || true
+          gh release view yorureader || gh release create yorureader --title "Yoru Reader Latest" --notes "Latest Stable Release" || true
+          gh release upload "${TAG}" releases/mac/*.dmg --clobber || true
+          gh release upload yorureader releases/mac/*.dmg --clobber || true
 
   # -------------------------------------------------------------
   # 3. ANDROID (.apk)
@@ -231,4 +241,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "${TAG}" || gh release create "${TAG}" --title "Yoru Reader ${TAG}" --notes "Release ${TAG}" || true
-          gh release upload "${TAG}" releases/android/Yoru-Reader-${VERSION}.apk --clobber || gh release upload yorureader releases/android/Yoru-Reader-${VERSION}.apk --clobber || true
+          gh release view yorureader || gh release create yorureader --title "Yoru Reader Latest" --notes "Latest Stable Release" || true
+          gh release upload "${TAG}" releases/android/Yoru-Reader-${VERSION}.apk --clobber || true
+          gh release upload yorureader releases/android/Yoru-Reader-${VERSION}.apk --clobber || true
