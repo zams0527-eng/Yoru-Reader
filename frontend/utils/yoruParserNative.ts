@@ -81,7 +81,7 @@ export function tokenizeJapaneseText(
       const segments = segmenter.segment(part);
       for (const s of segments) {
         const seg = s.segment;
-        if (!s.isWordLike || !/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(seg)) {
+        if (!/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(seg)) {
           resultHtml += seg;
           continue;
         }
@@ -94,12 +94,12 @@ export function tokenizeJapaneseText(
     }
 
     // Last-resort regex tokenizer
-    const regex = /([\u4e00-\u9faf\u3400-\u4dbf々ー]+[\u3040-\u309f]*)|([\u30a0-\u30ff]{2,})|([\u3040-\u30ff]+)|([^\u3040-\u30ff\u4e00-\u9faf\u3400-\u4dbf々ー]+)/g;
+    const regex = /([\u4e00-\u9faf\u3400-\u4dbf々ー]+[\u3040-\u309f]*)|([\u30a0-\u30ff]+)|([\u3040-\u309f]+)|([^\u3040-\u30ff\u4e00-\u9faf\u3400-\u4dbf々ー]+)/g;
     let match: RegExpExecArray | null;
 
     while ((match = regex.exec(part)) !== null) {
       const full = match[0];
-      if (/[\u4e00-\u9faf\u3400-\u4dbf々ー]/.test(full) || /^[\u30a0-\u30ff]{2,}$/.test(full)) {
+      if (/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(full)) {
         const status = wordStatuses[full] || 'new';
         const cls = getStatusClass(status);
         resultHtml += `<span class="${cls}" data-word="${full}" data-pos="名詞">${full}</span>`;
