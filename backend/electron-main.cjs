@@ -117,10 +117,14 @@ function createWindow() {
 
 function getExtensionPath() {
   const possiblePaths = [
+    path.join(__dirname, '../backend/reader-ext'),
+    path.join(__dirname, 'backend/reader-ext'),
     path.join(__dirname, 'reader-ext'),
     path.join(__dirname, '../reader-ext'),
     path.join(app.getAppPath(), 'backend/reader-ext'),
-    path.join(app.getAppPath(), 'reader-ext')
+    path.join(app.getAppPath(), 'reader-ext'),
+    path.join(process.resourcesPath, 'app/backend/reader-ext'),
+    path.join(process.resourcesPath, 'backend/reader-ext')
   ];
   for (const p of possiblePaths) {
     let cleanP = p;
@@ -129,7 +133,7 @@ function getExtensionPath() {
     }
     if (fs.existsSync(cleanP)) return cleanP;
   }
-  return path.join(__dirname, 'reader-ext');
+  return path.join(__dirname, '../backend/reader-ext');
 }
 
 function getAjbPath() {
