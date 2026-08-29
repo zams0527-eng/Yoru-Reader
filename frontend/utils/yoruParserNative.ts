@@ -9,6 +9,7 @@ export function getStatusClass(status?: string): string {
 
 /**
  * Fast tokenization and markup generation for Japanese text paragraphs
+ * Handles both plain text and embedded <ruby> blocks without placeholders.
  */
 export function tokenizeJapaneseText(
   text: string,
@@ -16,81 +17,70 @@ export function tokenizeJapaneseText(
 ): string {
   if (!text) return '';
 
-  // Preserve existing ruby tags
-  const rubyPlaceholders: { id: string; html: string; surface: string; reading: string }[] = [];
-  let cleanText = text.replace(/<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>/gi, (_match, surface, reading) => {
-    const id = `__RUBY_${rubyPlaceholders.length}__`;
-    rubyPlaceholders.push({ id, html: _match, surface: surface.trim(), reading: reading.trim() });
-    return id;
-  });
-
-  // Check if Kuromoji is initialized
+  // Split text cleanly by <ruby>...</ruby> blocks
+  const parts = text.split(/(<ruby>.*?<\/rt><\/ruby>)/gi);
   const win = typeof window !== 'undefined' ? (window as any) : null;
   const tokenizer = win?.__yoru_tokenizer_instance;
 
-  if (tokenizer) {
-    try {
-      const rawTokens = tokenizer.tokenize(cleanText);
-      let html = '';
+  let resultHtml = '';
 
-      for (const token of rawTokens) {
-        const surface = token.surface_form;
-        
-        // Restore ruby placeholder if matched
-        const rubyMatch = rubyPlaceholders.find(r => r.id === surface);
-        if (rubyMatch) {
-          const status = wordStatuses[rubyMatch.surface] || 'new';
-          const cls = getStatusClass(status);
-          html += `<span class="${cls}" data-word="${rubyMatch.surface}" data-reading="${rubyMatch.reading}" data-pos="名詞"><ruby>${rubyMatch.surface}<rt class="jiten-furi">${rubyMatch.reading}</rt></ruby></span>`;
-          continue;
-        }
+  for (const part of parts) {
+    if (!part) continue;
 
-        const pos = token.pos;
-        if (pos === '記号' || !/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(surface)) {
-          html += surface;
-          continue;
-        }
-
-        const basicForm = token.basic_form && token.basic_form !== '*' ? token.basic_form : surface;
-        const katakanaReading = token.reading || '';
-        const reading = katakanaToHiragana(katakanaReading) || surface;
-        const status = wordStatuses[basicForm] || wordStatuses[surface] || 'new';
-        const cls = getStatusClass(status);
-
-        html += `<span class="${cls}" data-word="${basicForm}" data-reading="${reading}" data-pos="${pos}">${surface}</span>`;
-      }
-
-      return html;
-    } catch (e) {
-      console.warn('Native tokenizer tokenize error:', e);
-    }
-  }
-
-  // Fast fallback tokenizer (splitting by Kanji compounds and Kana sequences)
-  const regex = /([\u4e00-\u9faf\u3400-\u4dbf々ー]+)|([\u3040-\u309f]+)|([\u30a0-\u30ff]+)|(__RUBY_\d+__)|([^\u3040-\u30ff\u4e00-\u9faf\u3400-\u4dbf々ー_]+)/g;
-  let html = '';
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(cleanText)) !== null) {
-    const full = match[0];
-    const rubyMatch = rubyPlaceholders.find(r => r.id === full);
+    // Check if this part is a <ruby> block
+    const rubyMatch = part.match(/^<ruby>(.*?)<rt>(.*?)<\/rt><\/ruby>$/i);
     if (rubyMatch) {
-      const status = wordStatuses[rubyMatch.surface] || 'new';
+      const surface = rubyMatch[1].trim();
+      const reading = rubyMatch[2].trim();
+      const status = wordStatuses[surface] || 'new';
       const cls = getStatusClass(status);
-      html += `<span class="${cls}" data-word="${rubyMatch.surface}" data-reading="${rubyMatch.reading}" data-pos="名詞"><ruby>${rubyMatch.surface}<rt class="jiten-furi">${rubyMatch.reading}</rt></ruby></span>`;
+      resultHtml += `<span class="${cls}" data-word="${surface}" data-reading="${reading}" data-pos="名詞"><ruby>${surface}<rt class="jiten-furi">${reading}</rt></ruby></span>`;
       continue;
     }
 
-    if (/^[\u4e00-\u9faf\u3400-\u4dbf々ー]+$/.test(full) || /^[\u30a0-\u30ff]{2,}$/.test(full)) {
-      const status = wordStatuses[full] || 'new';
-      const cls = getStatusClass(status);
-      html += `<span class="${cls}" data-word="${full}" data-pos="名詞">${full}</span>`;
-    } else {
-      html += full;
+    // Process plain text chunk with Kuromoji if available
+    if (tokenizer) {
+      try {
+        const rawTokens = tokenizer.tokenize(part);
+        for (const token of rawTokens) {
+          const surface = token.surface_form;
+          const pos = token.pos;
+          if (pos === '記号' || !/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(surface)) {
+            resultHtml += surface;
+            continue;
+          }
+
+          const basicForm = token.basic_form && token.basic_form !== '*' ? token.basic_form : surface;
+          const katakanaReading = token.reading || '';
+          const reading = katakanaToHiragana(katakanaReading) || surface;
+          const status = wordStatuses[basicForm] || wordStatuses[surface] || 'new';
+          const cls = getStatusClass(status);
+
+          resultHtml += `<span class="${cls}" data-word="${basicForm}" data-reading="${reading}" data-pos="${pos}">${surface}</span>`;
+        }
+        continue;
+      } catch (e) {
+        console.warn('Tokenizer chunk error:', e);
+      }
+    }
+
+    // Fallback fast regex tokenizer
+    const regex = /([\u4e00-\u9faf\u3400-\u4dbf々ー]+)|([\u30a0-\u30ff]{2,})|([\u3040-\u30ff]+)|([^\u3040-\u30ff\u4e00-\u9faf\u3400-\u4dbf々ー]+)/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(part)) !== null) {
+      const full = match[0];
+      if (/^[\u4e00-\u9faf\u3400-\u4dbf々ー]+$/.test(full) || /^[\u30a0-\u30ff]{2,}$/.test(full)) {
+        const status = wordStatuses[full] || 'new';
+        const cls = getStatusClass(status);
+        resultHtml += `<span class="${cls}" data-word="${full}" data-pos="名詞">${full}</span>`;
+      } else {
+        resultHtml += full;
+      }
     }
   }
 
-  return html || text;
+  return resultHtml;
 }
 
 // Global initialization for native tokenizer
