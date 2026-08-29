@@ -43,6 +43,28 @@ interface ReaderEngineProps {
   colors: any;
 }
 
+export function sanitizeJapaneseText(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/[｀`]/g, '、')
+    .replace(/[゜°]/g, '。')
+    .replace(/［＃[^］]+］/g, '')
+    .replace(/｜([^\n《]+)《([^\n》]+)》/g, '<ruby>$1<rt>$2</rt></ruby>')
+    .replace(/([\u4e00-\u9faf\u3400-\u4dbf々ー]+)《([^\n》]+)》/g, '<ruby>$1<rt>$2</rt></ruby>')
+    .replace(/\{([^|{}]+)\|([^|{}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
+}
+
+export function processRuby(text: string): string {
+  return sanitizeJapaneseText(text);
+}
+
+export function countJapaneseChars(text: string): number {
+  if (!text) return 0;
+  const regex = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}ー々　]/gu;
+  const matches = text.match(regex);
+  return matches ? matches.length : 0;
+}
+
 /**
  * ReaderEngine — Direct EPUB rendering engine for Yoru Reader.
  * Replaces the Svelte iframe. Renders book chapter HTML directly in the DOM
@@ -542,28 +564,3 @@ const ReaderEngine = React.memo(function ReaderEngine({
 });
 
 export default ReaderEngine;
-
-function sanitizeJapaneseText(text: string): string {
-  if (!text) return '';
-  return text
-    .replace(/[｀`]/g, '、')
-    .replace(/[゜°]/g, '。')
-    .replace(/［＃[^］]+］/g, '')
-    .replace(/｜([^\n《]+)《([^\n》]+)》/g, '<ruby>$1<rt>$2</rt></ruby>')
-    .replace(/([\u4e00-\u9faf\u3400-\u4dbf々ー]+)《([^\n》]+)》/g, '<ruby>$1<rt>$2</rt></ruby>')
-    .replace(/\{([^|{}]+)\|([^|{}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
-}
-
-function processRuby(text: string): string {
-  return sanitizeJapaneseText(text);
-}
-
-function countJapaneseChars(text: string): number {
-  if (!text) return 0;
-  const regex = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}ー々〻]/gu;
-  const matches = text.match(regex);
-  return matches ? matches.length : 0;
-}
-
-// Export helpers for external use
-export { countJapaneseChars };
