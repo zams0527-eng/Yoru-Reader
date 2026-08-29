@@ -1,8 +1,8 @@
 {
   "appVersion": "1.1.4",
   "backendVersion": "1.2.0",
-  "hotUpdateVersion": "1.1.4.8",
+  "hotUpdateVersion": "1.1.4.9",
   "hotUpdateUrl": "https://github.com/zams0527-eng/Yoru-Reader/releases/download/v1.1.4/dist.zip",
   "url": "https://github.com/zams0527-eng/Yoru-Reader/releases/latest",
-  "description": "Yoru Reader v1.1.4 (Hot Update: Atajo Alt+P para parseo manual, guía de inicio y backend TypeScript)"
+  "description": "Yoru Reader v1.1.4 (Hot Update: Tokenización instantánea del parser en tiempo real)"
 }

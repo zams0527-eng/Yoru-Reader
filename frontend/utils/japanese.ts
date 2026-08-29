@@ -418,33 +418,6 @@ export async function parseExtensionText(paragraphs: string[]): Promise<Extensio
         wordId = key;
         
         if (!vocabularyMap.has(key)) {
-          const yomitanDB = await import('./yomitanDB');
-          let dictEntry: any = null;
-          try {
-            dictEntry = await yomitanDB.searchYomitanDB(basicForm, reading);
-          } catch (err) {
-            console.error("Yomitan DB search failed inside extension parser:", err);
-          }
-          
-          let partsOfSpeech = [pos];
-          let meaningsChunks = [[]] as string[][];
-          let meaningsPartOfSpeech = [[]] as string[][];
-          let frequencyRank = 999999;
-          let pitchAccents: string[] = [];
-          
-          if (dictEntry) {
-            partsOfSpeech = dictEntry.partsOfSpeech || [pos];
-            meaningsChunks = [dictEntry.definitions || []];
-            meaningsPartOfSpeech = [dictEntry.partsOfSpeech || []];
-            pitchAccents = dictEntry.pitches ? dictEntry.pitches.map((p: any) => typeof p === 'object' ? p.accent : p) : [];
-            if (dictEntry.frequencies && dictEntry.frequencies.length > 0) {
-              const ranks = dictEntry.frequencies.map((f: any) => typeof f === 'object' ? f.rank : f).filter((r: any) => typeof r === 'number');
-              if (ranks.length > 0) {
-                frequencyRank = Math.min(...ranks);
-              }
-            }
-          }
-          
           const status = wordStatuses[basicForm] || 'new';
           let knownState = [0];
           if (status === 'known') knownState = [2];
@@ -456,12 +429,12 @@ export async function parseExtensionText(paragraphs: string[]): Promise<Extensio
             readingIndex: 0,
             spelling: basicForm,
             reading: reading,
-            frequencyRank,
-            partsOfSpeech,
-            meaningsChunks,
-            meaningsPartOfSpeech,
+            frequencyRank: 999999,
+            partsOfSpeech: [pos],
+            meaningsChunks: [[]],
+            meaningsPartOfSpeech: [[]],
             knownState,
-            pitchAccents,
+            pitchAccents: [],
             studyDeckIds: []
           });
         }
