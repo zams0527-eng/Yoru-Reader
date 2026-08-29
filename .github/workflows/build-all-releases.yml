@@ -58,8 +58,30 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "${TAG}" || gh release create "${TAG}" --title "Yoru Reader ${TAG}" --notes "Release ${TAG}" || true
-          gh release view yorureader || gh release create yorureader --title "Yoru Reader Latest" --notes "Latest Stable Release" || true
+          cat << 'EOF' > release_body.md
+          ## 📥 Descargas Oficiales Multiplataforma (${{ env.TAG }})
+
+          | Plataforma | Paquete | Enlace de descarga |
+          | :--- | :--- | :--- |
+          | 🪟 **Windows** | Instalador Oficial (.exe) | [⬇️ Descargar Windows Setup (.exe)](https://github.com/${{ github.repository }}/releases/download/${{ env.TAG }}/Yoru-Reader.Setup.${{ env.VERSION }}.exe) |
+          | 🍏 **macOS (Apple Silicon)** | Instalador DMG (.dmg) | [⬇️ Descargar macOS (Apple Silicon desde M1 hasta M5 - arm64)](https://github.com/${{ github.repository }}/releases/download/${{ env.TAG }}/Yoru-Reader-${{ env.VERSION }}-arm64.dmg) |
+          | 🍏 **macOS (Intel)** | Instalador DMG (.dmg) | [⬇️ Descargar macOS (Intel - x64)](https://github.com/${{ github.repository }}/releases/download/${{ env.TAG }}/Yoru-Reader-${{ env.VERSION }}-x64.dmg) |
+          | 🐧 **Linux** | Flatpak (.flatpak) | [⬇️ Descargar Flatpak (x86_64)](https://github.com/${{ github.repository }}/releases/download/${{ env.TAG }}/Yoru-Reader-${{ env.VERSION }}-x86_64.flatpak) |
+          | 📱 **Android** | APK (.apk) | [⬇️ Descargar Android APK](https://github.com/${{ github.repository }}/releases/download/${{ env.TAG }}/Yoru-Reader-${{ env.VERSION }}.apk) |
+          | ⚡ **Actualización Rápida (OTA)** | Paquete Web (.zip) | [⬇️ Descargar dist.zip](https://github.com/${{ github.repository }}/releases/download/${{ env.TAG }}/dist.zip) |
+
+          ---
+
+          ### 🍏 Guía para usuarios de macOS (Apple Silicon desde M1 hasta M5 e Intel)
+          Al descargar el archivo `.dmg`, ábrelo y arrastra el icono de **Yoru Reader** a la carpeta **Aplicaciones**. Si macOS muestra una advertencia de seguridad al abrirla por primera vez:
+          1. Abre **Ajustes del Sistema** ➔ **Privacidad y Seguridad**.
+          2. Desplázate hacia abajo y haz clic en **"Abrir de todos modos"** (*Open Anyway*).
+          EOF
+
+          gh release view "${TAG}" || gh release create "${TAG}" --title "Yoru Reader ${TAG}" --notes-file release_body.md || true
+          gh release edit "${TAG}" --notes-file release_body.md || true
+          gh release view yorureader || gh release create yorureader --title "Yoru Reader Latest" --notes-file release_body.md || true
+          gh release edit yorureader --notes-file release_body.md || true
           gh release upload "${TAG}" dist.zip --clobber || true
           gh release upload yorureader dist.zip --clobber || true
 
