@@ -18,6 +18,7 @@
     "electron:package": "npm run build && electron-packager . Yoru-Reader --platform=win32 --arch=x64 --out=dist-electron --overwrite --ignore=\"(releases|dist-electron|dist-electron-installer|downloads|yoru-reader-svelte)\"",
     "electron:dev": "npm run build && electron-packager . Yoru-Reader-Dev --platform=win32 --arch=x64 --out=releases/dev --overwrite --ignore=\"(releases|dist-electron|dist-electron-installer|downloads|yoru-reader-svelte)\"",
     "electron:stable": "npm run build && electron-packager . Yoru-Reader --platform=win32 --arch=x64 --out=releases/stable --overwrite --ignore=\"(releases|dist-electron|dist-electron-installer|downloads|yoru-reader-svelte)\"",
+    "electron:mac": "npm run build && electron-packager . Yoru-Reader --platform=darwin --arch=x64,arm64 --out=releases/mac --overwrite --ignore=\"(releases|dist-electron|dist-electron-installer|downloads|yoru-reader-svelte)\"",
     "electron:build": "node build/generate-certificate.js && node build/prepare-nsis.js && npm run build && electron-builder",
     "android:sync": "npm run build && npx cap sync",
     "android:open": "npx cap open android",
