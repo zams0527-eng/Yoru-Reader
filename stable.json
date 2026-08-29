@@ -1,8 +1,8 @@
 {
   "appVersion": "1.1.4",
   "backendVersion": "1.2.0",
-  "hotUpdateVersion": "1.1.4.10",
+  "hotUpdateVersion": "1.1.4.11",
   "hotUpdateUrl": "https://github.com/zams0527-eng/Yoru-Reader/releases/download/v1.1.4/dist.zip",
   "url": "https://github.com/zams0527-eng/Yoru-Reader/releases/latest",
-  "description": "Yoru Reader v1.1.4 (Hot Update: Compatibilidad de mensajes para extensiones en Electron)"
+  "description": "Yoru Reader v1.1.4 (Hot Update: Puente directo de parseo sin dependencia de chrome.tabs)"
 }

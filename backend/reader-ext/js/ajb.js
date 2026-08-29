@@ -1461,6 +1461,85 @@ class ParseCommand extends _lib_background_command__WEBPACK_IMPORTED_MODULE_0__.
         super(...arguments);
         this.key = 'parse';
     }
+    send(afterSend) {
+        const sequenceData = this.arguments[0] || [];
+        const paragraphs = sequenceData.map(s => s[1]);
+        
+        fetch('http://127.0.0.1:23280/api/parse', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: paragraphs })
+        })
+        .then(res => res.json())
+        .then(data => {
+            const CARD_STATE_MAP = {
+                0: 'new',
+                1: 'young',
+                2: 'mature',
+                3: 'blacklisted',
+                4: 'due',
+                5: 'mastered',
+                6: 'redundant',
+                7: 'suspended',
+            };
+            const vocabulary = data.vocabulary || [];
+            const tokens = data.tokens || [];
+            const cards = vocabulary.map(vocab => {
+                const { wordId, readingIndex, spelling, reading, frequencyRank, partsOfSpeech, meaningsChunks, meaningsPartOfSpeech, knownState, pitchAccents, studyDeckIds } = vocab;
+                const cardState = (knownState || []).map(state => CARD_STATE_MAP[state]).filter(s => s !== undefined);
+                if (cardState.length === 0) cardState.push('mature');
+                return {
+                    wordId,
+                    readingIndex: readingIndex || 0,
+                    spelling,
+                    reading,
+                    frequencyRank: frequencyRank || 999999,
+                    partsOfSpeech: Array.isArray(partsOfSpeech) ? partsOfSpeech : [partsOfSpeech],
+                    meanings: (meaningsChunks || [[]]).map((glosses, i) => ({
+                        glosses,
+                        partsOfSpeech: (meaningsPartOfSpeech && meaningsPartOfSpeech[i]) || []
+                    })),
+                    cardState,
+                    pitchAccents: pitchAccents || [],
+                    wordWithReading: null,
+                    deckIds: studyDeckIds || []
+                };
+            });
+            const vocabMap = new Map();
+            const cardMap = new Map();
+            for (const v of vocabulary) {
+                vocabMap.set(String(v.wordId) + ':' + String(v.readingIndex || 0), v);
+            }
+            for (const c of cards) {
+                cardMap.set(String(c.wordId) + ':' + String(c.readingIndex || 0), c);
+            }
+            const parsedTokens = tokens.map(group => {
+                return group.map(token => {
+                    const key = String(token.wordId) + ':' + String(token.readingIndex || 0);
+                    const card = cardMap.get(key);
+                    return {
+                        ...token,
+                        card: card || null,
+                        pitchClass: '',
+                        rubies: []
+                    };
+                });
+            });
+            sequenceData.forEach(([seqId], i) => {
+                const result = parsedTokens[i] || [];
+                try {
+                    _integration_registry__WEBPACK_IMPORTED_MODULE_0__.Registry.sequenceManager.handleBackgroundMessage(seqId, (request) => request.resolve(result));
+                } catch (e) {
+                    console.error('[ParseCommand] Error resolving sequence:', seqId, e);
+                }
+            });
+            if (typeof afterSend === 'function') afterSend();
+        })
+        .catch(err => {
+            console.error('[ParseCommand Direct] Fallback to background message:', err);
+            super.send(afterSend);
+        });
+    }
 }
 
 
@@ -14219,15 +14298,19 @@ class AJB {
     });
 })();
 
-if (typeof window !== 'undefined' && window.location && window.location.href) {
-  const href = window.location.href.toLowerCase();
-  if (href.startsWith('file://') && !href.includes('/yoru-reader/') && !href.includes('/dist/index.html')) {
-    console.log('[Yoru Extension] Running inside Yoru Reader app (non-reader page). Disabling AJB content script.');
-  } else {
+if (typeof window !== 'undefined') {
+  try {
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => {
-        new AJB();
+        try { window.__ajbInstance = new AJB(); } catch (e) { console.error('AJB init error:', e); }
       });
+    } else {
+      window.__ajbInstance = new AJB();
+    }
+  } catch (e) {
+    console.error('AJB top-level init error:', e);
+  }
+});
     } else if (document.readyState === 'interactive') {
       window.addEventListener('load', () => {
         new AJB();
