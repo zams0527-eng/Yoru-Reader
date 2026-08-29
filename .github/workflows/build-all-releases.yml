@@ -54,10 +54,12 @@ jobs:
           path: dist.zip
           retention-days: 14
 
-      - name: Ensure Release Exists & Upload dist.zip
+            - name: Ensure Release Exists & Upload dist.zip
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Clean up any legacy duplicate release
+          gh release delete yorureader --yes --cleanup-tag || true
           cat << 'EOF' > release_body.md
           ## 📥 Descargas Oficiales Multiplataforma (${{ env.TAG }})
 
@@ -80,11 +82,8 @@ jobs:
 
           gh release view "${TAG}" || gh release create "${TAG}" --title "Yoru Reader ${TAG}" --notes-file release_body.md || true
           gh release edit "${TAG}" --notes-file release_body.md || true
-          gh release view yorureader || gh release create yorureader --title "Yoru Reader Latest" --notes-file release_body.md || true
-          gh release edit yorureader --notes-file release_body.md || true
-          gh release upload "${TAG}" dist.zip --clobber || true
-          gh release upload yorureader dist.zip --clobber || true
-
+                              gh release upload "${TAG}" dist.zip --clobber || true
+          
   # -------------------------------------------------------------
   # 1. WINDOWS (.exe NSIS Installer)
   # -------------------------------------------------------------
@@ -139,10 +138,8 @@ jobs:
         run: |
           cp "dist-electron-installer/Yoru-Reader Setup ${VERSION}.exe" "dist-electron-installer/Yoru-Reader.Setup.${VERSION}.exe" || true
           gh release view "${TAG}" || gh release create "${TAG}" --title "Yoru Reader ${TAG}" --notes "Release ${TAG}" || true
-          gh release view yorureader || gh release create yorureader --title "Yoru Reader Latest" --notes "Latest Stable Release" || true
-          gh release upload "${TAG}" dist-electron-installer/*.exe --clobber || true
-          gh release upload yorureader dist-electron-installer/*.exe --clobber || true
-
+                    gh release upload "${TAG}" dist-electron-installer/*.exe --clobber || true
+          
   # -------------------------------------------------------------
   # 2. MACOS (.dmg Apple Silicon arm64 & Intel x64)
   # -------------------------------------------------------------
@@ -193,10 +190,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "${TAG}" || gh release create "${TAG}" --title "Yoru Reader ${TAG}" --notes "Release ${TAG}" || true
-          gh release view yorureader || gh release create yorureader --title "Yoru Reader Latest" --notes "Latest Stable Release" || true
-          gh release upload "${TAG}" releases/mac/*.dmg --clobber || true
-          gh release upload yorureader releases/mac/*.dmg --clobber || true
-
+                    gh release upload "${TAG}" releases/mac/*.dmg --clobber || true
+          
   # -------------------------------------------------------------
   # 3. ANDROID (.apk)
   # -------------------------------------------------------------
@@ -262,10 +257,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "${TAG}" || gh release create "${TAG}" --title "Yoru Reader ${TAG}" --notes "Release ${TAG}" || true
-          gh release view yorureader || gh release create yorureader --title "Yoru Reader Latest" --notes "Latest Stable Release" || true
-          gh release upload "${TAG}" releases/android/Yoru-Reader-${VERSION}.apk --clobber || true
-          gh release upload yorureader releases/android/Yoru-Reader-${VERSION}.apk --clobber || true
-
+                    gh release upload "${TAG}" releases/android/Yoru-Reader-${VERSION}.apk --clobber || true
+          
   # -------------------------------------------------------------
   # 4. LINUX (.flatpak)
   # -------------------------------------------------------------
@@ -323,6 +316,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release view "${TAG}" || gh release create "${TAG}" --title "Yoru Reader ${TAG}" --notes "Release ${TAG}" || true
-          gh release view yorureader || gh release create yorureader --title "Yoru Reader Latest" --notes "Latest Stable Release" || true
-          gh release upload "${TAG}" releases/linux/*.flatpak --clobber || true
-          gh release upload yorureader releases/linux/*.flatpak --clobber || true
+                    gh release upload "${TAG}" releases/linux/*.flatpak --clobber || true
+          
