@@ -1,8 +1,8 @@
 {
   "appVersion": "1.1.4",
   "backendVersion": "1.2.0",
-  "hotUpdateVersion": "1.1.4.34",
+  "hotUpdateVersion": "1.1.4.35",
   "hotUpdateUrl": "https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/main/dist.zip",
   "url": "https://github.com/zams0527-eng/Yoru-Reader/releases/latest",
-  "description": "Yoru Reader v1.1.4 (Hot Update: Corrección completa de tokens Ruby y furigana nativo)"
+  "description": "Yoru Reader v1.1.4 (Hot Update: Segmentación completa de palabras con Intl.Segmenter y Kuromoji nativo)"
 }

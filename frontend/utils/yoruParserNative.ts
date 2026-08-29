@@ -7,9 +7,13 @@ export function getStatusClass(status?: string): string {
   return 'jiten-word new';
 }
 
+const segmenter = typeof Intl !== 'undefined' && (Intl as any).Segmenter
+  ? new (Intl as any).Segmenter('ja', { granularity: 'word' })
+  : null;
+
 /**
  * Fast tokenization and markup generation for Japanese text paragraphs
- * Handles both plain text and embedded <ruby> blocks without placeholders.
+ * Handles both plain text and embedded <ruby> blocks.
  */
 export function tokenizeJapaneseText(
   text: string,
@@ -64,13 +68,30 @@ export function tokenizeJapaneseText(
       }
     }
 
-    // Fallback fast regex tokenizer
-    const regex = /([\u4e00-\u9faf\u3400-\u4dbf々ー]+)|([\u30a0-\u30ff]{2,})|([\u3040-\u30ff]+)|([^\u3040-\u30ff\u4e00-\u9faf\u3400-\u4dbf々ー]+)/g;
+    // High-performance Intl.Segmenter fallback
+    if (segmenter) {
+      const segments = segmenter.segment(part);
+      for (const s of segments) {
+        const seg = s.segment;
+        if (!s.isWordLike || !/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(seg)) {
+          resultHtml += seg;
+          continue;
+        }
+
+        const status = wordStatuses[seg] || 'new';
+        const cls = getStatusClass(status);
+        resultHtml += `<span class="${cls}" data-word="${seg}" data-pos="名詞">${seg}</span>`;
+      }
+      continue;
+    }
+
+    // Last-resort regex tokenizer
+    const regex = /([\u4e00-\u9faf\u3400-\u4dbf々ー]+[\u3040-\u309f]*)|([\u30a0-\u30ff]{2,})|([\u3040-\u30ff]+)|([^\u3040-\u30ff\u4e00-\u9faf\u3400-\u4dbf々ー]+)/g;
     let match: RegExpExecArray | null;
 
     while ((match = regex.exec(part)) !== null) {
       const full = match[0];
-      if (/^[\u4e00-\u9faf\u3400-\u4dbf々ー]+$/.test(full) || /^[\u30a0-\u30ff]{2,}$/.test(full)) {
+      if (/[\u4e00-\u9faf\u3400-\u4dbf々ー]/.test(full) || /^[\u30a0-\u30ff]{2,}$/.test(full)) {
         const status = wordStatuses[full] || 'new';
         const cls = getStatusClass(status);
         resultHtml += `<span class="${cls}" data-word="${full}" data-pos="名詞">${full}</span>`;
@@ -89,6 +110,7 @@ export async function setupNativeYoruParser(): Promise<void> {
     const tokenizer = await initTokenizer();
     if (typeof window !== 'undefined') {
       (window as any).__yoru_tokenizer_instance = tokenizer;
+      window.dispatchEvent(new CustomEvent('yoru-tokenizer-ready'));
     }
   } catch (err) {
     console.warn('Kuromoji background load:', err);
