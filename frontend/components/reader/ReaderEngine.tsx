@@ -321,18 +321,26 @@ function ReaderEngineComponent({
         const currentScroll = Math.abs(content.scrollLeft);
         const maxScroll = Math.max(0, scrollW - clientW);
 
-        const isStart = currentScroll <= 4;
-        const isEnd = currentScroll >= maxScroll - 4;
+        const atStart = currentScroll <= 25;
+        const atEnd = currentScroll >= maxScroll - 25 || maxScroll === 0;
 
-        if (isStart && multiplier === -1) {
+        if (atStart && multiplier === -1) {
           if (currSection > 0) {
             setCurrSection(prev => prev - 1);
+            requestAnimationFrame(() => {
+              const c = contentRef.current;
+              if (c) c.scrollLeft = -(c.scrollWidth - c.clientWidth);
+            });
           }
           return;
         }
-        if (isEnd && multiplier === 1) {
+        if (atEnd && multiplier === 1) {
           if (currSection < sections.length - 1) {
             setCurrSection(prev => prev + 1);
+            requestAnimationFrame(() => {
+              const c = contentRef.current;
+              if (c) c.scrollLeft = 0;
+            });
           }
           return;
         }
@@ -346,18 +354,26 @@ function ReaderEngineComponent({
         const currentScroll = content.scrollLeft;
         const maxScroll = Math.max(0, scrollW - clientW);
 
-        const isStart = currentScroll <= 4;
-        const isEnd = currentScroll >= maxScroll - 4;
+        const atStart = currentScroll <= 25;
+        const atEnd = currentScroll >= maxScroll - 25 || maxScroll === 0;
 
-        if (isStart && multiplier === -1) {
+        if (atStart && multiplier === -1) {
           if (currSection > 0) {
             setCurrSection(prev => prev - 1);
+            requestAnimationFrame(() => {
+              const c = contentRef.current;
+              if (c) c.scrollLeft = c.scrollWidth - c.clientWidth;
+            });
           }
           return;
         }
-        if (isEnd && multiplier === 1) {
+        if (atEnd && multiplier === 1) {
           if (currSection < sections.length - 1) {
             setCurrSection(prev => prev + 1);
+            requestAnimationFrame(() => {
+              const c = contentRef.current;
+              if (c) c.scrollLeft = 0;
+            });
           }
           return;
         }
