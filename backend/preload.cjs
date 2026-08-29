@@ -45,6 +45,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.off('update-download-progress', listener);
   },
   checkHotUpdate: () => ipcRenderer.invoke('check-hot-update'),
+  downloadHotUpdate: (params) => ipcRenderer.invoke('download-hot-update', params),
+  applyHotUpdateAndRelaunch: () => ipcRenderer.invoke('apply-hot-update-and-relaunch'),
+  onOtaDownloadProgress: (callback) => {
+    const listener = (_event, data) => callback(data);
+    ipcRenderer.on('ota-download-progress', listener);
+    return () => ipcRenderer.off('ota-download-progress', listener);
+  },
   clearOtaCache: () => ipcRenderer.invoke('clear-ota-cache'),
   reloadApp: () => ipcRenderer.invoke('reload-app')
 });

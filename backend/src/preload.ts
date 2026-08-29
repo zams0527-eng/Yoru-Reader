@@ -21,6 +21,9 @@ export interface ElectronAPI {
   downloadAndInstallUpdate: (urlString: string) => Promise<any>;
   onUpdateDownloadProgress: (callback: (data: any) => void) => () => void;
   checkHotUpdate: () => Promise<any>;
+  downloadHotUpdate: (params: { url: string; version: string }) => Promise<any>;
+  applyHotUpdateAndRelaunch: () => Promise<void>;
+  onOtaDownloadProgress: (callback: (data: any) => void) => () => void;
   clearOtaCache: () => Promise<boolean>;
   reloadApp: () => Promise<void>;
 }
@@ -70,6 +73,13 @@ const electronAPI: ElectronAPI = {
     return () => ipcRenderer.off('update-download-progress', listener);
   },
   checkHotUpdate: () => ipcRenderer.invoke('check-hot-update'),
+  downloadHotUpdate: (params: { url: string; version: string }) => ipcRenderer.invoke('download-hot-update', params),
+  applyHotUpdateAndRelaunch: () => ipcRenderer.invoke('apply-hot-update-and-relaunch'),
+  onOtaDownloadProgress: (callback: (data: any) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, data: any) => callback(data);
+    ipcRenderer.on('ota-download-progress', listener);
+    return () => ipcRenderer.off('ota-download-progress', listener);
+  },
   clearOtaCache: () => ipcRenderer.invoke('clear-ota-cache'),
   reloadApp: () => ipcRenderer.invoke('reload-app')
 };
