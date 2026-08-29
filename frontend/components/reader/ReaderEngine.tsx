@@ -264,13 +264,15 @@ function ReaderEngineComponent({
           const col = Math.round(content.scrollLeft / content.clientWidth);
           content.scrollLeft = col * content.clientWidth;
         } else {
-          const col = Math.round(content.scrollTop / content.clientHeight);
-          content.scrollTop = col * content.clientHeight;
+          const col = Math.round(Math.abs(content.scrollLeft) / content.clientWidth);
+          content.scrollLeft = -col * content.clientWidth;
         }
       }
     };
-    handleResize();
+
     window.addEventListener('resize', handleResize);
+    handleResize();
+
     return () => {
       window.removeEventListener('resize', handleResize);
       container.style.removeProperty('--reader-height');
@@ -321,32 +323,41 @@ function ReaderEngineComponent({
         const currentScroll = Math.abs(content.scrollLeft);
         const maxScroll = Math.max(0, scrollW - clientW);
 
-        const atStart = currentScroll <= 25;
-        const atEnd = currentScroll >= maxScroll - 25 || maxScroll === 0;
+        // If section fits on a single screen
+        if (maxScroll <= 20) {
+          if (multiplier === 1 && currSection < sections.length - 1) {
+            setCurrSection(prev => prev + 1);
+          } else if (multiplier === -1 && currSection > 0) {
+            setCurrSection(prev => prev - 1);
+          }
+          return;
+        }
 
-        if (atStart && multiplier === -1) {
+        const isAtStart = currentScroll <= 20;
+        const isAtEnd = currentScroll >= maxScroll - 20;
+
+        if (isAtStart && multiplier === -1) {
           if (currSection > 0) {
             setCurrSection(prev => prev - 1);
-            requestAnimationFrame(() => {
-              const c = contentRef.current;
-              if (c) c.scrollLeft = -(c.scrollWidth - c.clientWidth);
-            });
-          }
-          return;
-        }
-        if (atEnd && multiplier === 1) {
-          if (currSection < sections.length - 1) {
-            setCurrSection(prev => prev + 1);
-            requestAnimationFrame(() => {
-              const c = contentRef.current;
-              if (c) c.scrollLeft = 0;
-            });
           }
           return;
         }
 
-        const nextScroll = Math.max(0, Math.min(maxScroll, currentScroll + clientW * multiplier));
-        content.scrollLeft = -nextScroll;
+        if (isAtEnd && multiplier === 1) {
+          if (currSection < sections.length - 1) {
+            setCurrSection(prev => prev + 1);
+          }
+          return;
+        }
+
+        const next = Math.max(0, Math.min(maxScroll, currentScroll + clientW * multiplier));
+        if (multiplier === 1 && (next >= maxScroll - 20 || next === currentScroll)) {
+          content.scrollLeft = -maxScroll;
+        } else if (multiplier === -1 && (next <= 20 || next === currentScroll)) {
+          content.scrollLeft = 0;
+        } else {
+          content.scrollLeft = -next;
+        }
       } else {
         // Horizontal paginated
         const clientW = content.clientWidth;
@@ -354,39 +365,47 @@ function ReaderEngineComponent({
         const currentScroll = content.scrollLeft;
         const maxScroll = Math.max(0, scrollW - clientW);
 
-        const atStart = currentScroll <= 25;
-        const atEnd = currentScroll >= maxScroll - 25 || maxScroll === 0;
+        if (maxScroll <= 20) {
+          if (multiplier === 1 && currSection < sections.length - 1) {
+            setCurrSection(prev => prev + 1);
+          } else if (multiplier === -1 && currSection > 0) {
+            setCurrSection(prev => prev - 1);
+          }
+          return;
+        }
 
-        if (atStart && multiplier === -1) {
+        const isAtStart = currentScroll <= 20;
+        const isAtEnd = currentScroll >= maxScroll - 20;
+
+        if (isAtStart && multiplier === -1) {
           if (currSection > 0) {
             setCurrSection(prev => prev - 1);
-            requestAnimationFrame(() => {
-              const c = contentRef.current;
-              if (c) c.scrollLeft = c.scrollWidth - c.clientWidth;
-            });
-          }
-          return;
-        }
-        if (atEnd && multiplier === 1) {
-          if (currSection < sections.length - 1) {
-            setCurrSection(prev => prev + 1);
-            requestAnimationFrame(() => {
-              const c = contentRef.current;
-              if (c) c.scrollLeft = 0;
-            });
           }
           return;
         }
 
-        const nextScroll = Math.max(0, Math.min(maxScroll, currentScroll + clientW * multiplier));
-        content.scrollTo({ left: nextScroll, behavior: 'instant' });
+        if (isAtEnd && multiplier === 1) {
+          if (currSection < sections.length - 1) {
+            setCurrSection(prev => prev + 1);
+          }
+          return;
+        }
+
+        const next = Math.max(0, Math.min(maxScroll, currentScroll + clientW * multiplier));
+        if (multiplier === 1 && (next >= maxScroll - 20 || next === currentScroll)) {
+          content.scrollTo({ left: maxScroll, behavior: 'instant' });
+        } else if (multiplier === -1 && (next <= 20 || next === currentScroll)) {
+          content.scrollTo({ left: 0, behavior: 'instant' });
+        } else {
+          content.scrollTo({ left: next, behavior: 'instant' });
+        }
       }
     } else {
       // Continuous scroll mode
       if (vertical) {
-        content.scrollLeft -= 100 * multiplier;
+        content.scrollLeft -= 150 * multiplier;
       } else {
-        content.scrollTop += 100 * multiplier;
+        content.scrollTop += 150 * multiplier;
       }
     }
     updateChars();
@@ -405,8 +424,13 @@ function ReaderEngineComponent({
         if (e.key === 'ArrowRight') flipPage(1);
         else if (e.key === 'ArrowLeft') flipPage(-1);
       }
-      if (e.key === 'ArrowDown' || e.key === 'PageDown') flipPage(1);
-      else if (e.key === 'ArrowUp' || e.key === 'PageUp') flipPage(-1);
+      if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
+        e.preventDefault();
+        flipPage(1);
+      } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+        e.preventDefault();
+        flipPage(-1);
+      }
     };
 
     document.addEventListener('keydown', handleKeyDown);
@@ -449,7 +473,6 @@ function ReaderEngineComponent({
         e.preventDefault();
         flipPage(e.deltaY > 0 ? 1 : -1);
       } else if (vertical && !paginated) {
-        // continuous vertical → scroll horizontally
         container.scrollLeft -= e.deltaY;
       }
     };
@@ -458,11 +481,16 @@ function ReaderEngineComponent({
     return () => container.removeEventListener('wheel', handleWheel);
   }, [paginated, vertical, flipPage]);
 
-  // Update chars on section change
+  // Reset scroll & update chars on section change
   useEffect(() => {
+    const c = contentRef.current;
+    if (c) {
+      c.scrollLeft = 0;
+      c.scrollTop = 0;
+    }
     requestAnimationFrame(() => updateChars());
     if (onSectionChange) onSectionChange(currSection);
-  }, [currSection]);
+  }, [currSection, onSectionChange, updateChars]);
 
   // Automatically trigger Yoru Parser on section change / page load
   useEffect(() => {
