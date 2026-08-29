@@ -115,16 +115,37 @@ function createWindow() {
     console.log(`[RENDERER CONSOLE] (${sourceFile}:${line}): ${message}`);
   });
 
+function getExtensionPath() {
+  const possiblePaths = [
+    path.join(__dirname, 'reader-ext'),
+    path.join(__dirname, '../reader-ext'),
+    path.join(app.getAppPath(), 'backend/reader-ext'),
+    path.join(app.getAppPath(), 'reader-ext')
+  ];
+  for (const p of possiblePaths) {
+    let cleanP = p;
+    if (cleanP.includes('app.asar')) {
+      cleanP = cleanP.replace('app.asar', 'app.asar.unpacked');
+    }
+    if (fs.existsSync(cleanP)) return cleanP;
+  }
+  return path.join(__dirname, 'reader-ext');
+}
+
+function getAjbPath() {
+  const extDir = getExtensionPath();
+  return path.join(extDir, 'js/ajb.js');
+}
+
   win.webContents.on('did-finish-load', () => {
     try {
-      let ajbPath = path.join(__dirname, 'reader-ext/js/ajb.js');
-      if (ajbPath.includes('app.asar')) {
-        ajbPath = ajbPath.replace('app.asar', 'app.asar.unpacked');
-      }
+      const ajbPath = getAjbPath();
       if (fs.existsSync(ajbPath)) {
         const scriptCode = fs.readFileSync(ajbPath, 'utf8');
         win.webContents.executeJavaScript(scriptCode).catch(() => {});
-        console.log('[main] Injected Yoru Reader Extension content script into window.');
+        console.log('[main] Injected Yoru Reader Extension content script into window from:', ajbPath);
+      } else {
+        console.warn('[main] ajb.js not found at:', ajbPath);
       }
     } catch (e) {
       console.warn('[main] Content script injection warning:', e);
@@ -1136,13 +1157,10 @@ app.whenReady().then(async () => {
     } catch (e) {
       console.warn('[main] Failed to clear service worker cache:', e);
     }
-    let extensionPath = path.join(__dirname, 'reader-ext');
-    if (extensionPath.includes('app.asar')) {
-      extensionPath = extensionPath.replace('app.asar', 'app.asar.unpacked');
-    }
+    const extensionPath = getExtensionPath();
     const ext = await session.defaultSession.loadExtension(extensionPath, { allowFileAccess: true });
     readerExtensionId = ext.id;
-    console.log(`[main] Loaded Yoru Reader Extension natively: ${ext.name} (${ext.id})`);
+    console.log(`[main] Loaded Yoru Reader Extension natively from ${extensionPath}: ${ext.name} (${ext.id})`);
 
     // Auto-inject shared API key into extension storage
     try {
