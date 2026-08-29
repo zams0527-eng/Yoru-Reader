@@ -3145,7 +3145,7 @@ const DEFAULT_HOSTS = [
         id: 'yoru-parser',
         name: 'Yoru Parser',
         description: 'Native parser for Yoru Reader',
-        host: ['file:///*', '*://localhost/*'],
+        host: '<all_urls>',
         auto: true,
         optOut: true,
         allFrames: false,

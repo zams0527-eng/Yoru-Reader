@@ -811,13 +811,13 @@ function startLocalExtServer() {
     res.setHeader('Content-Type', 'application/json');
 
     try {
-      if (pathName === 'reader/ping') {
+      if (pathName === 'reader/ping' || pathName === 'ping') {
         res.writeHead(200);
         res.end(JSON.stringify({ success: true }));
         return;
       }
       
-      if (pathName === 'reader/parse') {
+      if (pathName === 'reader/parse' || pathName === 'parse') {
         if (!mainWindow) throw new Error("Main window not available");
         
         const requestId = ++parseRequestCounter;
@@ -844,7 +844,7 @@ function startLocalExtServer() {
         return;
       }
 
-      if (pathName === 'reader/lookup-vocabulary') {
+      if (pathName === 'reader/lookup-vocabulary' || pathName === 'lookup-vocabulary') {
         const results = [];
         const deckIds = [];
         const wordsList = [];
@@ -875,7 +875,7 @@ function startLocalExtServer() {
         return;
       }
 
-      if (pathName === 'srs/reader-study-decks') {
+      if (pathName === 'srs/reader-study-decks' || pathName === 'reader-study-decks') {
         res.writeHead(200);
         res.end(JSON.stringify({
           success: true,
@@ -884,7 +884,7 @@ function startLocalExtServer() {
         return;
       }
 
-      if (pathName === 'srs/set-vocabulary-state') {
+      if (pathName === 'srs/set-vocabulary-state' || pathName === 'set-vocabulary-state') {
         const wordIdStr = String(payload.wordId || '');
         let spelling = payload.spelling || payload.word;
         if (!spelling && wordIdStr.includes(':')) {
@@ -905,7 +905,7 @@ function startLocalExtServer() {
         return;
       }
 
-      if (pathName.startsWith('srs/study-decks/')) {
+      if (pathName.startsWith('srs/study-decks/') || pathName.startsWith('study-decks/')) {
         const wordIdStr = String(payload.wordId || '');
         let spelling = payload.spelling || payload.word;
         if (!spelling && wordIdStr.includes(':')) {
@@ -963,14 +963,14 @@ app.whenReady().then(async () => {
     const pathName = url.pathname.slice(1);
     console.log(`[yoru-reader-ext] Intercepted path: ${pathName}`);
 
-    if (pathName === 'reader/ping') {
+    if (pathName === 'reader/ping' || pathName === 'ping') {
       return new Response(JSON.stringify({ success: true }), {
         status: 200,
         headers: { 'content-type': 'application/json' }
       });
     }
 
-    if (pathName === 'reader/parse') {
+    if (pathName === 'reader/parse' || pathName === 'parse') {
       try {
         const bodyText = await request.text();
         const payload = JSON.parse(bodyText);
@@ -1010,7 +1010,7 @@ app.whenReady().then(async () => {
       }
     }
 
-    if (pathName === 'reader/lookup-vocabulary') {
+    if (pathName === 'reader/lookup-vocabulary' || pathName === 'lookup-vocabulary') {
       try {
         const bodyText = await request.text();
         const payload = JSON.parse(bodyText);
@@ -1048,7 +1048,7 @@ app.whenReady().then(async () => {
       }
     }
 
-    if (pathName === 'srs/reader-study-decks') {
+    if (pathName === 'srs/reader-study-decks' || pathName === 'reader-study-decks') {
       return new Response(JSON.stringify({
         success: true,
         result: [{ id: 1, name: "Yoru Local SRS", wordCount: 0 }]
@@ -1058,7 +1058,7 @@ app.whenReady().then(async () => {
       });
     }
 
-    if (pathName === 'srs/set-vocabulary-state') {
+    if (pathName === 'srs/set-vocabulary-state' || pathName === 'set-vocabulary-state') {
       try {
         const bodyText = await request.text();
         const payload = JSON.parse(bodyText);
@@ -1087,7 +1087,7 @@ app.whenReady().then(async () => {
       }
     }
 
-    if (pathName.startsWith('srs/study-decks/')) {
+    if (pathName.startsWith('srs/study-decks/') || pathName.startsWith('study-decks/')) {
       try {
         const bodyText = await request.text();
         const payload = JSON.parse(bodyText);
