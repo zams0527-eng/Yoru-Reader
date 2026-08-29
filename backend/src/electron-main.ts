@@ -17,7 +17,7 @@ const extWordMap: Record<string, string> = {};
 // Hot-update Version Configuration
 const CURRENT_APP_VERSION = '1.1.4';
 const CURRENT_BACKEND_VERSION = '1.2.0';
-const CURRENT_HOT_UPDATE_VERSION = '1.1.4.19';
+const CURRENT_HOT_UPDATE_VERSION = '1.1.4.20';
 const STABLE_JSON_URL = 'https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/main/stable.json';
 
 // Shared API Key for native communication with Yoru Reader extension
