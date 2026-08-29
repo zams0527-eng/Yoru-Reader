@@ -550,6 +550,13 @@ ipcMain.handle('clear-ota-cache', () => {
 });
 
 ipcMain.handle('check-hot-update', async (event) => {
+  const appName = app.getName();
+  const execPath = process.execPath;
+  const isDevBuild = appName.toLowerCase().includes('dev') || execPath.toLowerCase().includes('dev') || !app.isPackaged;
+  if (isDevBuild) {
+    console.log('[OTA] Running in Dev version, skipping hot update checks.');
+    return { available: false, updated: false };
+  }
   console.log('[OTA] Checking for frontend hot updates...');
   const otaDistDir = path.join(app.getPath('userData'), 'ota_dist');
   const otaManifestFile = path.join(otaDistDir, 'ota_manifest.json');

@@ -1,8 +1,8 @@
 {
   "appVersion": "1.1.4",
   "backendVersion": "1.2.0",
-  "hotUpdateVersion": "1.1.4.37",
+  "hotUpdateVersion": "1.1.4.38",
   "hotUpdateUrl": "https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/main/dist.zip",
   "url": "https://github.com/zams0527-eng/Yoru-Reader/releases/latest",
-  "description": "Yoru Reader v1.1.4 (Hot Update: Sincronización exclusiva de mazos creados por el usuario en el SRS)"
+  "description": "Yoru Reader v1.1.4 (Hot Update: Desactivación de avisos OTA en la versión Dev)"
 }

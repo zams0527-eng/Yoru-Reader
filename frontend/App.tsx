@@ -170,6 +170,11 @@ export default function App() {
 
   // Background OTA Hot Update Check on startup (Electron)
   useEffect(() => {
+    const isDev = window.location.href.toLowerCase().includes('dev') ||
+                  document.title.toLowerCase().includes('dev') ||
+                  (typeof navigator !== 'undefined' && navigator.userAgent.toLowerCase().includes('dev'));
+    if (isDev) return;
+
     if (window.electronAPI && window.electronAPI.checkHotUpdate) {
       const timer = setTimeout(async () => {
         try {

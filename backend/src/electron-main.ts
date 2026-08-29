@@ -245,6 +245,15 @@ ipcMain.handle('open-reader-extension-settings', async (_event, theme = 'dark') 
 });
 
 ipcMain.handle('check-hot-update', async () => {
+  const appName = app.getName();
+  const execPath = process.execPath;
+  const isDevBuild = appName.toLowerCase().includes('dev') || execPath.toLowerCase().includes('dev') || !app.isPackaged;
+  
+  if (isDevBuild) {
+    console.log('[OTA] Running in Dev version, skipping hot update checks.');
+    return { hasUpdate: false, updated: false };
+  }
+
   return new Promise((resolve) => {
     https.get(STABLE_JSON_URL, { headers: { 'User-Agent': 'Yoru-Reader-App' } }, (res) => {
       let data = '';
