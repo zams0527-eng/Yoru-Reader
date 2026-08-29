@@ -470,122 +470,6 @@ export default function Reader({
     setIsExtSettingsOpen(true);
   }, []);
 
-  const handleReaderKeydown = useCallback((e: KeyboardEvent) => {
-    if (isExtSettingsOpen || isJumpModalOpen || isGalleryOpen) {
-      return;
-    }
-    const target = e.target as HTMLElement;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-      return;
-    }
-
-    const keybindings = settings.keybindings || {
-      toggleFullscreen: 'f',
-      nextPage: 'ArrowRight',
-      prevPage: 'ArrowLeft',
-      toggleMenu: 'Escape',
-      readAloud: 't'
-    };
-
-    const matchKey = (boundKey: string, pressedEvent: KeyboardEvent) => {
-      if (!boundKey) return false;
-      const lowerBound = boundKey.toLowerCase();
-      if (lowerBound === pressedEvent.key.toLowerCase()) return true;
-      if (lowerBound === pressedEvent.code.toLowerCase()) return true;
-      return false;
-    };
-
-    // Toggle vertical / horizontal mode (V key)
-    if (e.key === 'v' || e.key === 'V') {
-      e.preventDefault();
-      const newVertical = !readerSettings.vertical;
-      setReaderSetting('vertical', newVertical);
-      onSaveSettings({ ...settings, readingOrientation: newVertical ? 'vertical' : 'horizontal' });
-      showToast(lang === 'es' ? (newVertical ? 'Modo Vertical (Tategaki)' : 'Modo Horizontal (Yokogaki)') : (newVertical ? 'Vertical Mode' : 'Horizontal Mode'), 'info');
-      return;
-    }
-
-    // Toggle settings popover (Q key)
-    if (e.key === 'q' || e.key === 'Q') {
-      e.preventDefault();
-      setShowSettingsPopover(prev => !prev);
-      setIsHeaderVisible(true);
-      return;
-    }
-
-    // Create Anki card / Save to SRS (A key)
-    if (e.key === 'a' || e.key === 'A') {
-      if (selectedWord) {
-        e.preventDefault();
-        handleMineToAnki();
-        return;
-      }
-    }
-
-    // Next page (Space or J)
-    if (e.code === 'Space' || e.key === 'j' || e.key === 'J') {
-      e.preventDefault();
-      triggerTtuKeyboardAction('ArrowRight', 'ArrowRight');
-      return;
-    }
-
-    // Prev page (K)
-    if (e.key === 'k' || e.key === 'K') {
-      e.preventDefault();
-      triggerTtuKeyboardAction('ArrowLeft', 'ArrowLeft');
-      return;
-    }
-
-    if (matchKey(keybindings.toggleFullscreen, e)) {
-      e.preventDefault();
-      toggleFullscreen();
-      return;
-    }
-
-    if (matchKey(keybindings.nextPage, e)) {
-      e.preventDefault();
-      triggerTtuKeyboardAction('ArrowRight', 'ArrowRight');
-      return;
-    }
-
-    if (matchKey(keybindings.prevPage, e)) {
-      e.preventDefault();
-      triggerTtuKeyboardAction('ArrowLeft', 'ArrowLeft');
-      return;
-    }
-
-    if (matchKey(keybindings.toggleMenu, e)) {
-      e.preventDefault();
-      setIsHeaderVisible(prev => !prev);
-      return;
-    }
-
-    if (matchKey(keybindings.readAloud, e)) {
-      e.preventDefault();
-      if (isTtsPlaying) {
-        if (ttsAudioRef.current) {
-          ttsAudioRef.current.pause();
-          ttsAudioRef.current = null;
-        }
-        if ('speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-          clearInterval(ttsKeepAliveRef.current);
-        }
-        setIsTtsPlaying(false);
-      } else if (selectedWord && selectedWord.surface) {
-        reproducirTexto(selectedWord.surface);
-      }
-      return;
-    }
-  }, [settings, readerSettings.vertical, setReaderSetting, onSaveSettings, lang, showToast, isExtSettingsOpen, isJumpModalOpen, isGalleryOpen, toggleFullscreen, triggerTtuKeyboardAction, isTtsPlaying, selectedWord, handleMineToAnki]);
-
-  useEffect(() => {
-    window.addEventListener('keydown', handleReaderKeydown);
-    return () => {
-      window.removeEventListener('keydown', handleReaderKeydown);
-    };
-  }, [handleReaderKeydown]);
-
   useEffect(() => {
     if (selectedWord && selectedWord.basicForm) {
       setSrsCard(db.getSrsCard(selectedWord.basicForm));
@@ -1587,6 +1471,120 @@ export default function Reader({
     const nextText = grade === 1 ? '10m' : `${updatedCard.scheduled_days}d`;
     showToast(`SRS: ${gradeName} (${nextText})`, 'success');
   };
+
+  const handleReaderKeydown = useCallback((e: KeyboardEvent) => {
+    if (isExtSettingsOpen || isJumpModalOpen || isGalleryOpen) return;
+    const target = e.target as HTMLElement;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+      return;
+    }
+
+    const keybindings = settings.keybindings || {
+      toggleFullscreen: 'f',
+      nextPage: 'ArrowRight',
+      prevPage: 'ArrowLeft',
+      toggleMenu: 'Escape',
+      readAloud: 't'
+    };
+
+    const matchKey = (boundKey: string, pressedEvent: KeyboardEvent) => {
+      if (!boundKey) return false;
+      const lowerBound = boundKey.toLowerCase();
+      if (lowerBound === pressedEvent.key.toLowerCase()) return true;
+      if (lowerBound === pressedEvent.code.toLowerCase()) return true;
+      return false;
+    };
+
+    // Toggle vertical / horizontal mode (V key)
+    if (e.key === 'v' || e.key === 'V') {
+      e.preventDefault();
+      const newVertical = !readerSettings.vertical;
+      setReaderSetting('vertical', newVertical);
+      onSaveSettings({ ...settings, readingOrientation: newVertical ? 'vertical' : 'horizontal' });
+      showToast(lang === 'es' ? (newVertical ? 'Modo Vertical (Tategaki)' : 'Modo Horizontal (Yokogaki)') : (newVertical ? 'Vertical Mode' : 'Horizontal Mode'), 'info');
+      return;
+    }
+
+    // Toggle settings popover (Q key)
+    if (e.key === 'q' || e.key === 'Q') {
+      e.preventDefault();
+      setShowSettingsPopover(prev => !prev);
+      setIsHeaderVisible(true);
+      return;
+    }
+
+    // Create Anki card / Save to SRS (A key)
+    if (e.key === 'a' || e.key === 'A') {
+      if (selectedWord) {
+        e.preventDefault();
+        handleMineToAnki();
+        return;
+      }
+    }
+
+    // Next page (Space or J)
+    if (e.code === 'Space' || e.key === 'j' || e.key === 'J') {
+      e.preventDefault();
+      triggerTtuKeyboardAction('ArrowRight', 'ArrowRight');
+      return;
+    }
+
+    // Prev page (K)
+    if (e.key === 'k' || e.key === 'K') {
+      e.preventDefault();
+      triggerTtuKeyboardAction('ArrowLeft', 'ArrowLeft');
+      return;
+    }
+
+    if (matchKey(keybindings.toggleFullscreen, e)) {
+      e.preventDefault();
+      toggleFullscreen();
+      return;
+    }
+
+    if (matchKey(keybindings.nextPage, e)) {
+      e.preventDefault();
+      triggerTtuKeyboardAction('ArrowRight', 'ArrowRight');
+      return;
+    }
+
+    if (matchKey(keybindings.prevPage, e)) {
+      e.preventDefault();
+      triggerTtuKeyboardAction('ArrowLeft', 'ArrowLeft');
+      return;
+    }
+
+    if (matchKey(keybindings.toggleMenu, e)) {
+      e.preventDefault();
+      setIsHeaderVisible(prev => !prev);
+      return;
+    }
+
+    if (matchKey(keybindings.readAloud, e)) {
+      e.preventDefault();
+      if (isTtsPlaying) {
+        if (ttsAudioRef.current) {
+          ttsAudioRef.current.pause();
+          ttsAudioRef.current = null;
+        }
+        if ('speechSynthesis' in window) {
+          window.speechSynthesis.cancel();
+          clearInterval(ttsKeepAliveRef.current);
+        }
+        setIsTtsPlaying(false);
+      } else if (selectedWord && selectedWord.surface) {
+        reproducirTexto(selectedWord.surface);
+      }
+      return;
+    }
+  }, [settings, readerSettings.vertical, setReaderSetting, onSaveSettings, lang, showToast, isExtSettingsOpen, isJumpModalOpen, isGalleryOpen, toggleFullscreen, triggerTtuKeyboardAction, isTtsPlaying, selectedWord, handleMineToAnki]);
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleReaderKeydown);
+    return () => {
+      window.removeEventListener('keydown', handleReaderKeydown);
+    };
+  }, [handleReaderKeydown]);
 
   const colors = useMemo(() => {
     const themeName = readerSettings.theme || 'dark';
