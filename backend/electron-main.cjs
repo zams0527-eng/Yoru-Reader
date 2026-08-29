@@ -386,11 +386,19 @@ ipcMain.handle('download-and-install-update', async (event, { urlString }) => {
         }
         
         if (res.statusCode !== 200) {
-          if (res.statusCode === 404 && urlToDownload.includes('.Setup.')) {
-            const fallbackUrl = urlToDownload.replace('.Setup.', '%20Setup%20');
-            console.log('[update-downloader] 404 encountered, trying fallback URL:', fallbackUrl);
-            download(fallbackUrl);
-            return;
+          if (res.statusCode === 404) {
+            if (urlToDownload.includes('/download/yorureader/')) {
+              const fallbackUrl = urlToDownload.replace('/download/yorureader/', '/download/v1.1.4/');
+              console.log('[update-downloader] 404 on yorureader tag, retrying with v1.1.4 tag:', fallbackUrl);
+              download(fallbackUrl);
+              return;
+            }
+            if (urlToDownload.includes('.Setup.')) {
+              const fallbackUrl = urlToDownload.replace('.Setup.', '%20Setup%20');
+              console.log('[update-downloader] 404 encountered, trying fallback URL:', fallbackUrl);
+              download(fallbackUrl);
+              return;
+            }
           }
           reject(new Error(`HTTP ${res.statusCode} al descargar la actualización.`));
           return;
