@@ -565,16 +565,19 @@ export default function SrsReviewModal({ isOpen, onClose, filterDeck = null }: S
     localStorage.setItem(reviewsKey, JSON.stringify(reviewsList));
 
     const intervals = calculateSrsIntervals(currentCard, fsrs);
-    const updatedCard = { ...(intervals.repeats as any)[grade] };
+    const updatedCard = { 
+      ...currentCard,
+      ...(intervals.repeats as any)[grade] 
+    };
 
-    // Ensure all metadata fields are preserved and do not fall back to default
+    // Ensure all metadata fields are preserved
     if (!updatedCard.word) updatedCard.word = word;
     if (currentCard) {
       if (!updatedCard.reading) updatedCard.reading = currentCard.reading || '';
       if (!updatedCard.sentence) updatedCard.sentence = currentCard.sentence || '';
-      if (!updatedCard.source) updatedCard.source = currentCard.source || 'Yoru Reader';
+      if (!updatedCard.source) updatedCard.source = currentCard.source || selectedDeck || '';
     } else {
-      updatedCard.source = 'Yoru Reader';
+      updatedCard.source = selectedDeck || '';
     }
 
     if (grade === 1) {
@@ -584,7 +587,7 @@ export default function SrsReviewModal({ isOpen, onClose, filterDeck = null }: S
     }
 
     db.saveSrsCard(word, updatedCard);
-    db.addSrsHistory(word, grade, updatedCard.scheduled_days ?? updatedCard.interval ?? 0, updatedCard.source || 'Yoru Reader');
+    db.addSrsHistory(word, grade, updatedCard.scheduled_days ?? updatedCard.interval ?? 0, updatedCard.source || '');
 
     if (grade === 1) {
       setDueCards(prev => {

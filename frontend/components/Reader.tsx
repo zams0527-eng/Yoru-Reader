@@ -1452,16 +1452,21 @@ export default function Reader({
   const handleSrsReview = (word: string, grade: number) => {
     const currentCard = db.getSrsCard(word);
     const intervals = calculateSrsIntervals(currentCard);
-    const updatedCard = { ...(intervals.repeats as any)[grade] };
+    const updatedCard = { 
+      ...currentCard,
+      ...(intervals.repeats as any)[grade] 
+    };
     
     // Ensure all metadata fields are populated
     if (!updatedCard.word) updatedCard.word = word;
-    if (!updatedCard.reading) updatedCard.reading = selectedWord?.reading || '';
-    if (!updatedCard.sentence) updatedCard.sentence = selectedWord?.sentence || '';
-    if (!updatedCard.source) updatedCard.source = book?.title || 'Yoru Reader';
+    if (!updatedCard.reading) updatedCard.reading = selectedWord?.reading || selectedWord?.surface || '';
+    if (!updatedCard.sentence) updatedCard.sentence = selectedWord?.sentenceText || selectedWord?.sentence || '';
+    if (!updatedCard.source) {
+      updatedCard.source = currentCard?.source || '';
+    }
     
     db.saveSrsCard(word, updatedCard);
-    db.addSrsHistory(word, grade, updatedCard.scheduled_days ?? updatedCard.interval ?? 0, updatedCard.source || 'Yoru Reader');
+    db.addSrsHistory(word, grade, updatedCard.scheduled_days ?? updatedCard.interval ?? 0, updatedCard.source || '');
     setSrsCard(db.getSrsCard(word));
     
     if (wordStatuses[word] !== 'learning') {
