@@ -8501,6 +8501,7 @@ const Library = React.memo(function Library({
       <OnboardingTutorialModal
         isOpen={showTutorialModal}
         onClose={() => setShowTutorialModal(false)}
+        onOpenDictionaries={() => setIsLibraryModalOpen('dict')}
         lang={lang}
       />
 
