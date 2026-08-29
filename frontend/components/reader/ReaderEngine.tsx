@@ -60,7 +60,7 @@ export function processRuby(text: string): string {
 
 export function countJapaneseChars(text: string): number {
   if (!text) return 0;
-  const regex = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}ー々　]/gu;
+  const regex = /[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9faf\u3400-\u4dbf々ー]/g;
   const matches = text.match(regex);
   return matches ? matches.length : 0;
 }
@@ -69,10 +69,8 @@ export function countJapaneseChars(text: string): number {
  * ReaderEngine — Direct EPUB rendering engine for Yoru Reader.
  * Replaces the Svelte iframe. Renders book chapter HTML directly in the DOM
  * using CSS columns for pagination and writing-mode for vertical reading.
- *
-
  */
-const ReaderEngine = React.memo(function ReaderEngine({
+function ReaderEngineComponent({
   book,
   readerSettings,
   onCharsUpdate,
@@ -539,7 +537,9 @@ const ReaderEngine = React.memo(function ReaderEngine({
       {children}
     </div>
   );
-}, (prevProps, nextProps) => {
+}
+
+const ReaderEngine = React.memo(ReaderEngineComponent, (prevProps, nextProps) => {
   return (
     prevProps.book.id === nextProps.book.id &&
     prevProps.book._savedSection === nextProps.book._savedSection &&
