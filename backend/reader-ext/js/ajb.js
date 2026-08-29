@@ -12982,6 +12982,25 @@ class YoruParser extends _automatic_parser__WEBPACK_IMPORTED_MODULE_2__.Automati
         this._yoruPollTimer = null;
         this._yoruCurrentId = null;
         this._yoruParsing = false;
+        try {
+            window.__yoruParserInstance = this;
+            window.addEventListener('yoru:parse-page', () => {
+                const container = document.querySelector('.book-content-container') || document.querySelector('.book-content') || document.body;
+                if (container) {
+                    _integration_registry__WEBPACK_IMPORTED_MODULE_0__.Registry.sentenceManager.reset();
+                    this.parseNode(container);
+                }
+            });
+            window.addEventListener('message', (e) => {
+                if (e.data && (e.data.type === 'YORU_PARSE_PAGE' || e.data.type === 'YORU_FORCE_PARSE')) {
+                    const container = document.querySelector('.book-content-container') || document.querySelector('.book-content') || document.body;
+                    if (container) {
+                        _integration_registry__WEBPACK_IMPORTED_MODULE_0__.Registry.sentenceManager.reset();
+                        this.parseNode(container);
+                    }
+                }
+            });
+        } catch (e) {}
     }
 
     destroy() {

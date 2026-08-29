@@ -1472,6 +1472,22 @@ export default function Reader({
     showToast(`SRS: ${gradeName} (${nextText})`, 'success');
   };
 
+  const handleParsePage = useCallback(() => {
+    try {
+      window.dispatchEvent(new CustomEvent('yoru:parse-page'));
+      window.postMessage({ type: 'YORU_PARSE_PAGE' }, '*');
+      if ((window as any).__yoruParserInstance) {
+        const container = document.querySelector('.book-content-container') || document.querySelector('.book-content') || document.body;
+        if (container) {
+          (window as any).__yoruParserInstance.parseNode(container);
+        }
+      }
+      showToast(lang === 'es' ? 'Página parseada con éxito (Alt+P)' : 'Page parsed successfully (Alt+P)', 'success');
+    } catch (err) {
+      console.error('Error triggering manual parse:', err);
+    }
+  }, [lang, showToast]);
+
   const handleReaderKeydown = useCallback((e: KeyboardEvent) => {
     if (isExtSettingsOpen || isJumpModalOpen || isGalleryOpen) return;
     const target = e.target as HTMLElement;
@@ -1484,7 +1500,8 @@ export default function Reader({
       nextPage: 'ArrowRight',
       prevPage: 'ArrowLeft',
       toggleMenu: 'Escape',
-      readAloud: 't'
+      readAloud: 't',
+      parsePage: 'Alt+p'
     };
 
     const matchKey = (boundKey: string, pressedEvent: KeyboardEvent) => {
@@ -1494,6 +1511,13 @@ export default function Reader({
       if (lowerBound === pressedEvent.code.toLowerCase()) return true;
       return false;
     };
+
+    // Manual parse page (Alt+P)
+    if (matchKey(keybindings.parsePage || 'Alt+p', e) || (e.altKey && (e.key === 'p' || e.key === 'P' || e.code === 'KeyP'))) {
+      e.preventDefault();
+      handleParsePage();
+      return;
+    }
 
     // Toggle vertical / horizontal mode (V key)
     if (e.key === 'v' || e.key === 'V') {
@@ -1577,7 +1601,7 @@ export default function Reader({
       }
       return;
     }
-  }, [settings, readerSettings.vertical, setReaderSetting, onSaveSettings, lang, showToast, isExtSettingsOpen, isJumpModalOpen, isGalleryOpen, toggleFullscreen, triggerTtuKeyboardAction, isTtsPlaying, selectedWord, handleMineToAnki]);
+  }, [settings, readerSettings.vertical, setReaderSetting, onSaveSettings, lang, showToast, isExtSettingsOpen, isJumpModalOpen, isGalleryOpen, toggleFullscreen, triggerTtuKeyboardAction, isTtsPlaying, selectedWord, handleMineToAnki, handleParsePage]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleReaderKeydown);

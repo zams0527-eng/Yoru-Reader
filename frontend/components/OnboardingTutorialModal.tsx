@@ -555,6 +555,16 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
                   <span style={{ fontSize: '0.82rem', color: '#ccc' }}>{lang === 'es' ? 'Ajustes de Lectura' : 'Reading Settings'}</span>
                   <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 7px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, color: '#FFE000' }}>Q</span>
                 </div>
+
+                <div style={{ background: 'rgba(255, 224, 0, 0.08)', border: '1px solid rgba(255, 224, 0, 0.3)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gridColumn: 'span 2' }}>
+                  <div>
+                    <div style={{ fontSize: '0.84rem', color: '#fff', fontWeight: 700 }}>{lang === 'es' ? 'Parsear Página (Yoru Parser)' : 'Parse Page (Yoru Parser)'}</div>
+                    <div style={{ fontSize: '0.72rem', color: '#a0a0b0' }}>{lang === 'es' ? 'Activa el parseo y resalte de palabras en la página.' : 'Force parse and highlight words on the current page.'}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    <span style={{ background: '#FFE000', color: '#000', padding: '3px 8px', borderRadius: '4px', fontSize: '0.78rem', fontWeight: 800 }}>Alt + P</span>
+                  </div>
+                </div>
               </div>
             </div>
           )}
