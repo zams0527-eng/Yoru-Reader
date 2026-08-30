@@ -328,7 +328,7 @@ export async function importYomitanZip(file: File, onProgress: (msg: string, per
   try {
     // Invalidar cachés: un nuevo diccionario cambia los resultados de búsqueda
     clearYomitanCache();
-        const isEs = lang === 'es';
+    const isEs = lang === 'es';
     onProgress(isEs ? 'Leyendo archivo .zip...' : 'Reading .zip archive...', 0);
     zip = await JSZip.loadAsync(file);
     
@@ -338,7 +338,7 @@ export async function importYomitanZip(file: File, onProgress: (msg: string, per
       const indexStr = await indexFile.async('string');
       indexData = JSON.parse(indexStr);
     } else {
-      throw new Error('Archivo index.json no encontrado. ¿Es un diccionario de Yomitan válido?');
+      throw new Error(isEs ? 'Archivo index.json no encontrado. ¿Es un diccionario de Yomitan válido?' : 'index.json file not found. Is this a valid Yomitan dictionary?');
     }
     
     let dictTitle: string = indexData.title;
@@ -351,7 +351,7 @@ export async function importYomitanZip(file: File, onProgress: (msg: string, per
     const metaFiles = Object.keys(zip.files).filter(name => name.startsWith('term_meta_bank_') && name.endsWith('.json'));
     
     if (termFiles.length === 0 && metaFiles.length === 0) {
-      throw new Error('No se encontraron bancos de términos ni metadatos de frecuencia.');
+      throw new Error(isEs ? 'No se encontraron bancos de términos ni metadatos de frecuencia.' : 'No term banks or frequency metadata found.');
     }
     
     const db = await getDB();
@@ -375,55 +375,44 @@ export async function importYomitanZip(file: File, onProgress: (msg: string, per
     });
 
     let totalProcessed = 0;
-    const BATCH_SIZE = 5000;
 
     if (termFiles.length > 0) {
       const totalFiles = termFiles.length;
       for (let i = 0; i < totalFiles; i++) {
         const filename = termFiles[i];
-        
         const zipFile = zip.file(filename);
         if (!zipFile) continue;
-        let content: string | null = await zipFile.async('string');
-        let termsArray: any[] | null = JSON.parse(content);
-        content = null;
         
-        const totalTerms = termsArray!.length;
-        for (let j = 0; j < totalTerms; j += BATCH_SIZE) {
-          const chunk = termsArray!.slice(j, j + BATCH_SIZE);
-          
-          const currentPercent = 10 + Math.round((i / totalFiles) * 40) + Math.round((j / totalTerms) * (40 / totalFiles));
-          const termProgressMsg = totalFiles > 1 
-            ? `Procesando términos ${i+1}/${totalFiles} (${Math.round((j / totalTerms) * 100)}%)...` 
-            : `Procesando términos (${Math.round((j / totalTerms) * 100)}%)...`;
-          onProgress(termProgressMsg, currentPercent);
-          
-          await new Promise<void>((resolve, reject) => {
-            const tx = db.transaction(STORE_TERMS, 'readwrite');
-            const store = tx.objectStore(STORE_TERMS);
-            
-            chunk.forEach(termData => {
-              if (Array.isArray(termData)) {
-                store.add({
-                  dictionary: dictTitle,
-                  term: termData[0],
-                  reading: termData[1] || '',
-                  definitions: typeof termData[5] === 'string' ? [termData[5]] : termData[5] || [],
-                  tags: termData[2] || '',
-                  score: termData[4] || 0
-                });
-                totalProcessed++;
-              }
-            });
-            
-            tx.oncomplete = () => resolve();
-            tx.onerror = reject;
-          });
-          
-          await new Promise(r => setTimeout(r, 1));
-        }
-        
-        termsArray = null;
+        const content = await zipFile.async('string');
+        const termsArray = JSON.parse(content);
+        const currentPercent = 10 + Math.round(((i + 1) / totalFiles) * 40);
+        const termProgressMsg = totalFiles > 1 
+          ? (isEs ? `Procesando términos ${i+1}/${totalFiles}...` : `Processing terms ${i+1}/${totalFiles}...`)
+          : (isEs ? 'Procesando términos...' : 'Processing terms...');
+        onProgress(termProgressMsg, currentPercent);
+
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(STORE_TERMS, 'readwrite');
+          const store = tx.objectStore(STORE_TERMS);
+
+          for (let k = 0; k < termsArray.length; k++) {
+            const termData = termsArray[k];
+            if (Array.isArray(termData)) {
+              store.add({
+                dictionary: dictTitle,
+                term: termData[0],
+                reading: termData[1] || '',
+                definitions: typeof termData[5] === 'string' ? [termData[5]] : termData[5] || [],
+                tags: termData[2] || '',
+                score: termData[4] || 0
+              });
+              totalProcessed++;
+            }
+          }
+
+          tx.oncomplete = () => resolve();
+          tx.onerror = reject;
+        });
       }
     }
 
@@ -431,102 +420,92 @@ export async function importYomitanZip(file: File, onProgress: (msg: string, per
       const totalMetaFiles = metaFiles.length;
       for (let i = 0; i < totalMetaFiles; i++) {
         const filename = metaFiles[i];
-        
         const zipFile = zip.file(filename);
         if (!zipFile) continue;
-        let content: string | null = await zipFile.async('string');
-        let metaArray: any[] | null = JSON.parse(content);
-        content = null;
         
-        const totalMeta = metaArray!.length;
-        for (let j = 0; j < totalMeta; j += BATCH_SIZE) {
-          const chunk = metaArray!.slice(j, j + BATCH_SIZE);
-          
-          const currentPercent = 50 + Math.round((i / totalMetaFiles) * 40) + Math.round((j / totalMeta) * (40 / totalMetaFiles));
-          const metaProgressMsg = totalMetaFiles > 1 
-            ? `Procesando frecuencias ${i+1}/${totalMetaFiles} (${Math.round((j / totalMeta) * 100)}%)...` 
-            : `Procesando frecuencias (${Math.round((j / totalMeta) * 100)}%)...`;
-          onProgress(metaProgressMsg, currentPercent);
-          
-          await new Promise<void>((resolve, reject) => {
-            const tx = db.transaction([STORE_FREQS, STORE_PITCHES], 'readwrite');
-            const storeFreq = tx.objectStore(STORE_FREQS);
-            const storePitch = tx.objectStore(STORE_PITCHES);
-            
-            chunk.forEach(metaData => {
-              if (Array.isArray(metaData)) {
-                const term = metaData[0];
-                const type = metaData[1];
-                
-                if (type === 'freq') {
-                  let value = 0;
-                  let displayValue = '';
-                  
-                  let freqVal = null;
-                  if (metaData.length === 3) {
-                    freqVal = metaData[2];
-                  } else if (metaData.length === 4) {
-                    freqVal = metaData[3];
-                  }
+        const content = await zipFile.async('string');
+        const metaArray = JSON.parse(content);
+        const currentPercent = 50 + Math.round(((i + 1) / totalMetaFiles) * 40);
+        const metaProgressMsg = totalMetaFiles > 1 
+          ? (isEs ? `Procesando frecuencias ${i+1}/${totalMetaFiles}...` : `Processing frequencies ${i+1}/${totalMetaFiles}...`)
+          : (isEs ? 'Procesando frecuencias...' : 'Processing frequencies...');
+        onProgress(metaProgressMsg, currentPercent);
 
-                  if (freqVal !== null && freqVal !== undefined) {
-                    const targetVal = (typeof freqVal === 'object' && freqVal.frequency !== undefined)
-                      ? freqVal.frequency
-                      : freqVal;
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction([STORE_FREQS, STORE_PITCHES], 'readwrite');
+          const storeFreq = tx.objectStore(STORE_FREQS);
+          const storePitch = tx.objectStore(STORE_PITCHES);
 
-                    if (typeof targetVal === 'object' && targetVal !== null) {
-                      value = targetVal.value || 0;
-                      displayValue = targetVal.displayValue || String(value);
-                    } else {
-                      value = Number(targetVal) || 0;
-                      displayValue = String(targetVal);
-                    }
+          for (let k = 0; k < metaArray.length; k++) {
+            const metaData = metaArray[k];
+            if (Array.isArray(metaData)) {
+              const term = metaData[0];
+              const type = metaData[1];
+
+              if (type === 'freq') {
+                let value = 0;
+                let displayValue = '';
+                let freqVal = null;
+                if (metaData.length === 3) {
+                  freqVal = metaData[2];
+                } else if (metaData.length === 4) {
+                  freqVal = metaData[3];
+                }
+                if (typeof freqVal === 'number') {
+                  value = freqVal;
+                  displayValue = '#' + freqVal;
+                } else if (typeof freqVal === 'string') {
+                  const parsed = parseInt(freqVal, 10);
+                  value = isNaN(parsed) ? 0 : parsed;
+                  displayValue = freqVal;
+                } else if (freqVal && typeof freqVal === 'object') {
+                  if (typeof freqVal.value === 'number') {
+                    value = freqVal.value;
+                    displayValue = '#' + value;
+                  } else if (typeof freqVal.frequency === 'number') {
+                    value = freqVal.frequency;
+                    displayValue = '#' + value;
                   }
-                  
-                  storeFreq.add({
-                    dictionary: dictTitle,
-                    term,
-                    value,
-                    displayValue
-                  });
-                  totalProcessed++;
-                } else if (type === 'pitch') {
-                  const pitchData = metaData[2];
-                  if (pitchData && typeof pitchData === 'object') {
-                    storePitch.add({
-                      dictionary: dictTitle,
-                      term,
-                      reading: pitchData.reading || '',
-                      pitches: pitchData.pitches || []
-                    });
-                    totalProcessed++;
+                  if (freqVal.displayValue) {
+                    displayValue = freqVal.displayValue;
                   }
                 }
+
+                storeFreq.add({
+                  dictionary: dictTitle,
+                  term: term,
+                  value: value,
+                  displayValue: displayValue
+                });
+                totalProcessed++;
+              } else if (type === 'pitch') {
+                const pitchData = metaData[2];
+                if (pitchData && typeof pitchData === 'object') {
+                  storePitch.add({
+                    dictionary: dictTitle,
+                    term: term,
+                    reading: pitchData.reading || '',
+                    pitches: pitchData.pitches || []
+                  });
+                  totalProcessed++;
+                }
               }
-            });
-            
-            tx.oncomplete = () => resolve();
-            tx.onerror = reject;
-          });
-          
-          await new Promise(r => setTimeout(r, 1));
-        }
-        
-        metaArray = null;
+            }
+          }
+
+          tx.oncomplete = () => resolve();
+          tx.onerror = reject;
+        });
       }
     }
     
-    onProgress('¡Instalación completada!', 100);
+    onProgress(isEs ? '¡Instalación completada!' : 'Installation completed!', 100);
     return { success: true, title: dictTitle, termsCount: totalProcessed };
   } finally {
     zip = null;
   }
 }
 
-/**
- * Obtiene las frecuencias de una palabra. Usa caché en memoria para evitar
- * consultas IDB y relecturas de localStorage repetidas por página.
- */
 export async function getFrequenciesForWord(word: string): Promise<any[]> {
   // Cache hit
   if (_freqCache.has(word)) return _freqCache.get(word)!;

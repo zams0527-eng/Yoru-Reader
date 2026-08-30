@@ -158,7 +158,7 @@ export default function App() {
     window.__yoruTheme = s.theme || 'dark';
     return s;
   });
-  const lang = settings.appLanguage || 'es';
+  const lang = settings.appLanguage || 'en';
   const [isInfoOpen, setIsInfoOpen] = useState(false);
   const [infoBook, setInfoBook] = useState<any | null>(null);
   const [showHotUpdateBanner, setShowHotUpdateBanner] = useState(false);

@@ -247,7 +247,7 @@ export const TRANSLATIONS: Record<string, Record<string, string>> = {
   }
 };
 
-export function t(key: string, lang: string = 'es'): string {
+export function t(key: string, lang: string = 'en'): string {
   const currentLang = lang === 'en' ? 'en' : 'es';
   return TRANSLATIONS[currentLang]?.[key] || TRANSLATIONS['es']?.[key] || key;
 }
