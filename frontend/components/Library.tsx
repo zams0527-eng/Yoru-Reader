@@ -177,17 +177,22 @@ const Library = React.memo(function Library({
   };
 
   const fetchRemoteStable = async () => {
-    // Fetch stable.json from the main branch raw content
-    const urls = [
-      'https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/main/stable.json',
-      'https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/master/stable.json'
-    ];
+    const isAndroid = (window as any).Capacitor && (window as any).Capacitor.getPlatform && (window as any).Capacitor.getPlatform() === 'android';
+    const urls = isAndroid
+      ? [
+          'https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/main/mobile/mobile-stable.json',
+          'https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/master/mobile/mobile-stable.json'
+        ]
+      : [
+          'https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/main/stable.json',
+          'https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/master/stable.json'
+        ];
     for (const url of urls) {
       try {
         const res = await fetch(url, { cache: 'no-store' });
         if (res.ok) {
           const data = await res.json();
-          return data as { appVersion: string; backendVersion: string; url: string; description: string };
+          return data as { appVersion: string; backendVersion: string; url: string; description: string; apkUrl?: string; hotUpdateUrl?: string };
         }
       } catch (_) { /* try next */ }
     }
@@ -316,10 +321,10 @@ const Library = React.memo(function Library({
       const isLinux = (platform.includes('linux') || ua.includes('linux')) && !isAndroid;
 
       let targetUrl: string;
-      if (remoteManifest?.url) {
+      if (isAndroid) {
+        targetUrl = remoteManifest?.apkUrl || `https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/main/mobile/releases/Yoru-Reader-v${version}.apk`;
+      } else if (remoteManifest?.url) {
         targetUrl = remoteManifest.url;
-      } else if (isAndroid) {
-        targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/v${version}/Yoru-Reader-${version}.apk`;
       } else if (isMacArm) {
         targetUrl = `https://github.com/zams0527-eng/Yoru-Reader/releases/download/v${version}/Yoru-Reader-${version}-arm64.dmg`;
       } else if (isMac) {
