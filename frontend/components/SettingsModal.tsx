@@ -43,7 +43,7 @@ export default function SettingsModal({
   const { showConfirm, confirmModal } = useConfirm();
   const [mobileSubView, setMobileSubView] = useState<'menu' | 'content'>('menu');
   
-  const lang = settings.appLanguage || 'es';
+  const lang = settings.appLanguage || 'en';
 
   // Modal de información del libro (mode === 'info')
   if (mode === 'info') {
@@ -272,7 +272,7 @@ export default function SettingsModal({
       <div className="migaku-row">
         <span className="migaku-label">{t('interfaceLanguage', lang)}</span>
         <select 
-          value={settings.appLanguage || 'es'}
+          value={settings.appLanguage || 'en'}
           onChange={(e) => updateSetting('appLanguage', e.target.value)}
           className="migaku-select"
         >

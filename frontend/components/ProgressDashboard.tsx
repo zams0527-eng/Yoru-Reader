@@ -22,7 +22,7 @@ interface ProgressDashboardProps {
   excludedBookIds?: string[];
 }
 
-export default function ProgressDashboard({ books, lang = 'es', excludedBookIds = [] }: ProgressDashboardProps) {
+export default function ProgressDashboard({ books, lang = 'en', excludedBookIds = [] }: ProgressDashboardProps) {
   const [dbStats, setDbStats] = useState<DbStatistic[]>([]);
   const [timeWindow, setTimeWindow] = useState<'7D' | '30D' | '90D' | 'All'>('30D');
   const [hoveredDay, setHoveredDay] = useState<{ dateStr: string; time: number; chars: number } | null>(null);

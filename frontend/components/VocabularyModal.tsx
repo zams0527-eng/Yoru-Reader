@@ -22,7 +22,7 @@ export default function VocabularyModal({
   const [importMethod, setImportMethod] = useState(initialImportMethod);
   
   const { showConfirm, confirmModal } = useConfirm();
-  const lang = db.getSettings().appLanguage || 'es';
+  const lang = db.getSettings().appLanguage || 'en';
 
   // Stats
   const [stats, setStats] = useState({ total: 0, known: 0, learning: 0, starred: 0, ignored: 0 });

@@ -193,7 +193,7 @@ export const db = {
   getSettings(): Settings {
     try {
       const data = localStorage.getItem(this._getKey(STORAGE_KEYS.SETTINGS));
-      const globalLang = localStorage.getItem('app_language') || 'es';
+      const globalLang = localStorage.getItem('app_language') || 'en';
       const parsed = data ? JSON.parse(data) : {};
       // Ensure globalLang overrides defaults, but settings can override if they exist and match
       return { ...DEFAULT_SETTINGS, appLanguage: globalLang, ...parsed };

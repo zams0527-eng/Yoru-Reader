@@ -178,7 +178,7 @@ interface HistoryEntry {
 
 export default function SrsReviewModal({ isOpen, onClose, filterDeck = null }: SrsReviewModalProps) {
   const rawSettings = (() => { try { return JSON.parse(localStorage.getItem(Object.keys(localStorage).find(k => k.includes('reader_settings')) || '') || '{}'); } catch { return {}; } })();
-  const lang = rawSettings.appLanguage || 'es';
+  const lang = rawSettings.appLanguage || 'en';
 
   const fsrsRetentionRate = rawSettings.fsrsRetentionRate !== undefined ? Number(rawSettings.fsrsRetentionRate) : 0.90;
   const fsrsMaxInterval = rawSettings.fsrsMaxInterval !== undefined ? Number(rawSettings.fsrsMaxInterval) : 36500;

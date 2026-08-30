@@ -74,7 +74,7 @@ const Library = React.memo(function Library({
   wordStatuses = {},
   initialTab
 }) {
-  const lang = settings.appLanguage || 'es';
+  const lang = settings.appLanguage || 'en';
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
   const backupInputRef = useRef(null);
@@ -1645,7 +1645,7 @@ const Library = React.memo(function Library({
         exportDate: new Date().toISOString(),
         profiles,
         activeProfileId: localStorage.getItem('migaku_reader_active_profile_id') || 'profile-default',
-        appLanguage: settings.appLanguage || localStorage.getItem('app_language') || 'es',
+        appLanguage: settings.appLanguage || localStorage.getItem('app_language') || 'en',
         books,
         wordStatuses,
         settings,
@@ -1988,7 +1988,7 @@ const Library = React.memo(function Library({
         exportDate: new Date().toISOString(),
         profiles: profiles,
         activeProfileId: localStorage.getItem('migaku_reader_active_profile_id') || 'profile-default',
-        appLanguage: settings.appLanguage || localStorage.getItem('app_language') || 'es',
+        appLanguage: settings.appLanguage || localStorage.getItem('app_language') || 'en',
         books: books,
         wordStatuses: wordStatuses,
         settings: settings,
@@ -3935,7 +3935,7 @@ const Library = React.memo(function Library({
                       {lang === 'es' ? 'Idioma general de menús y opciones.' : 'Language for menus and app settings.'}
                     </div>
                     <select 
-                      value={settings.appLanguage || 'es'}
+                      value={settings.appLanguage || 'en'}
                       onChange={(e) => {
                         const selectedLang = e.target.value;
                         localStorage.setItem('app_language', selectedLang);

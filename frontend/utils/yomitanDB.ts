@@ -323,7 +323,7 @@ export async function deleteDictionary(title: string): Promise<void> {
 /**
  * Importa un diccionario Yomitan en formato ZIP liberando memoria de forma proactiva.
  */
-export async function importYomitanZip(file: File, onProgress: (msg: string, percent: number) => void, lang: 'es' | 'en' = 'es'): Promise<any> {
+export async function importYomitanZip(file: File, onProgress: (msg: string, percent: number) => void, lang: 'es' | 'en' = 'en'): Promise<any> {
   let zip: JSZip | null = null;
   try {
     // Invalidar cachés: un nuevo diccionario cambia los resultados de búsqueda

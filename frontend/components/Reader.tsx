@@ -262,7 +262,7 @@ export default function Reader({
   onSaveSettings,
   onUpdateBookDetails
 }: ReaderProps) {
-  const lang = settings.appLanguage || 'es';
+  const lang = settings.appLanguage || 'en';
 
   const handleBack = useCallback(() => {
     const updatedSettings = db.getSettings();

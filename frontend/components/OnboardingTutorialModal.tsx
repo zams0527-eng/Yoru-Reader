@@ -32,7 +32,7 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
   isOpen,
   onClose,
   onOpenDictionaries,
-  lang = 'es'
+  lang = 'en'
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [installedDicts, setInstalledDicts] = useState<any[]>([]);
