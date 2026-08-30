@@ -4547,33 +4547,6 @@ const Library = React.memo(function Library({
               {/* Botón e inputs de Google Drive */}
               <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '14px', marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 
-                {/* Inputs de credenciales si no está conectado */}
-                {!gDriveTokens && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div>
-                      <span className="settings-label-text" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>CLIENT ID</span>
-                      <input 
-                        type="password"
-                        value={gDriveClientId}
-                        onChange={(e) => setGDriveClientId(e.target.value)}
-                        placeholder="Enter Client ID..."
-                        className="migaku-select"
-                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 12px' }}
-                      />
-                    </div>
-                    <div>
-                      <span className="settings-label-text" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>CLIENT SECRET (OPTIONAL)</span>
-                      <input 
-                        type="password"
-                        value={gDriveClientSecret}
-                        onChange={(e) => setGDriveClientSecret(e.target.value)}
-                        placeholder="Enter Client Secret..."
-                        className="migaku-select"
-                        style={{ width: '100%', boxSizing: 'border-box', padding: '6px 12px' }}
-                      />
-                    </div>
-                  </div>
-                )}
 
                 <button 
                   type="button"
@@ -8446,44 +8419,11 @@ const Library = React.memo(function Library({
                 <X size={20} />
               </button>
             </div>
-
             <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', lineHeight: 1.5, marginBottom: '20px' }}>
               {lang === 'es' 
                 ? 'Sincroniza tus libros, progreso y vocabulario directamente con tu cuenta de Google Drive utilizando la API oficial.' 
                 : 'Sync your books, progress, and vocabulary directly with your Google Drive account using the official API.'}
             </div>
-
-            {/* Client ID / Secret Configuration */}
-            {!gDriveTokens && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
-                <div>
-                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
-                    CLIENT ID
-                  </label>
-                  <input 
-                    type="password"
-                    value={gDriveClientId}
-                    onChange={(e) => setGDriveClientId(e.target.value)}
-                    placeholder="Enter Client ID..."
-                    className="edit-form-input"
-                    style={{ width: '100%', fontSize: '0.8rem', padding: '8px 10px', background: 'var(--bg-card-hover)', border: '1px solid var(--border-light)', borderRadius: '6px', color: 'var(--text-main)' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
-                    CLIENT SECRET (OPTIONAL)
-                  </label>
-                  <input 
-                    type="password"
-                    value={gDriveClientSecret}
-                    onChange={(e) => setGDriveClientSecret(e.target.value)}
-                    placeholder="Enter Client Secret..."
-                    className="edit-form-input"
-                    style={{ width: '100%', fontSize: '0.8rem', padding: '8px 10px', background: 'var(--bg-card-hover)', border: '1px solid var(--border-light)', borderRadius: '6px', color: 'var(--text-main)' }}
-                  />
-                </div>
-              </div>
-            )}
 
             {/* Connection Status Card */}
             <div style={{ 
