@@ -3641,7 +3641,7 @@ const Library = React.memo(function Library({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
                   {renderSidebarBtn('sec-general', lang === 'es' ? 'Apariencia e Idioma' : 'Appearance & Language', Palette, 'tema theme idioma lang interface language tutorial guia atajos general')}
                   {renderSidebarBtn('sec-dicts', lang === 'es' ? 'Diccionarios' : 'Dictionaries', BookOpen, 'diccionario dictionary offline jmdict frecuencia meta meta_bank zip')}
-                  {!isMobile && renderSidebarBtn('sec-keybindings', lang === 'es' ? 'Atajos de teclado' : 'Keyboard Shortcuts', Keyboard, 'keybins keybindings atajos teclado shortcuts keys full screen pantalla completa')}
+                  {renderSidebarBtn('sec-keybindings', lang === 'es' ? 'Atajos de teclado' : 'Keyboard Shortcuts', Keyboard, 'keybins keybindings atajos teclado shortcuts keys full screen pantalla completa')}
                 </div>
               </div>
   
@@ -3665,7 +3665,7 @@ const Library = React.memo(function Library({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
                   {renderSidebarBtn('sec-vocab-manage', lang === 'es' ? 'Gestión de Vocabulario y Anki' : 'Vocabulary & Anki Management', Database, 'vocabulario vocabulary import export jpdb anki file frequency')}
                   {renderSidebarBtn('sec-cloud-sync', lang === 'es' ? 'Sincronización Cloud' : 'Cloud Sync', Cloud, 'sync merge sincronizar combinar conflicto storage sync settings gdrive drive cloud cloud-sync')}
-                  {!isMobile && renderSidebarBtn('sec-discord', 'Discord', MessageSquare, 'discord rpc presence enabled timer icon stats blacklist')}
+                  {renderSidebarBtn('sec-discord', 'Discord', MessageSquare, 'discord rpc presence enabled timer icon stats blacklist')}
                 </div>
               </div>
   
@@ -7788,7 +7788,7 @@ const Library = React.memo(function Library({
       )}
 
       {activeTab === 'statistics' && renderStatisticsTab()}
-      {activeTab === 'settings' && (isMobile && !mobileSettingsSectionOpen ? renderMasScreen() : renderSettingsTab())}
+      {activeTab === 'settings' && renderSettingsTab()}
       {activeTab === 'notes' && renderNotesTab()}
       {activeTab === 'srs' && renderSrsTab()}
 
