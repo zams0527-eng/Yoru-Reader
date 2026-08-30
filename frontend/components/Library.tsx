@@ -3006,125 +3006,6 @@ const Library = React.memo(function Library({
                   {showCardTags && book.tags && book.tags.length > 0 && (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
                       {book.tags.slice(0, 2).map(tag => (
-                        <span key={tag} style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px', background: 'var(--bg-app)', border: '1px solid var(--border-light)', color: 'var(--text-muted)' }}>
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
-  const renderGroupedByAuthor = () => {
-    // Group the active books by author
-    const groups = {};
-    filteredBooksList.forEach(book => {
-      const author = book.author || 'Desconocido';
-      if (!groups[author]) groups[author] = [];
-      groups[author].push(book);
-    });
-
-    const sortedAuthors = Object.keys(groups).sort((a, b) => {
-      if (a === 'Desconocido') return 1;
-      if (b === 'Desconocido') return -1;
-      return a.localeCompare(b, 'ja');
-    });
-
-    return (
-      <div className="library-grouped-container">
-        {sortedAuthors.map(author => {
-          const authorBooks = groups[author];
-          return (
-            <div key={author} className="library-group-section">
-              <div className="section-header">
-                <h2 className="section-title">Autor: {author}</h2>
-                <span className="section-count">{authorBooks.length}</span>
-              </div>
-              <div className="library-group-scroll-container">
-                {authorBooks.map(book => {
-                  const isSelected = selectedBookIds.includes(book.id);
-                  return (
-                    <div 
-                      key={book.id} 
-                      className={`book-card ${isSelected ? 'selected' : ''} ${selectMode ? 'select-mode-active' : ''}`}
-                      onClick={() => handleCardClick(book)}
-                      style={{ flexShrink: 0, position: 'relative', zIndex: activeMenuBookId === book.id ? 500 : 'auto' }}
-                    >
-                      {/* Card Context Menu Trigger and Popup */}
-                      {renderBookCardMenu(book)}
-
-                      {/* Status Badge overlay */}
-                      {!selectMode && renderStatusBadge(book)}
-
-                      {/* Checkbox overlay */}
-                      {selectMode && (
-                        <div className="card-checkbox-container">
-                          <Check size={12} className="card-checkbox-icon" />
-                        </div>
-                      )}
-
-                      {/* Book Cover */}
-                      <div className="book-cover-container">
-                        {book.cover && !book.cover.startsWith('linear-gradient') ? (
-                          <img 
-                            src={book.cover} 
-                            alt={book.title} 
-                            className="book-cover-img"
-                            style={book.hideCover ? { filter: 'blur(12px)', opacity: 0.5 } : undefined}
-                            onError={(e) => {
-                              e.target.src = 'https://via.placeholder.com/150x220?text=Lector';
-                            }}
-                          />
-                        ) : (
-                          <div 
-                            className="book-cover-placeholder" 
-                            style={{ 
-                              background: book.cover && book.cover.startsWith('linear-gradient') 
-                                ? book.cover 
-                                : 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)' 
-                            }}
-                          >
-                            <span>{book.title}</span>
-                          </div>
-                        )}
-
-                        {showCardProgress && book.progress.percent > 0 && (
-                          <div className="book-progress-badge">
-                            <span>{book.progress.percent}%</span>
-                          </div>
-                        )}
-
-                        {book.progress.percent === 0 && book.vocabularyCoverage && (
-                          <div className="book-progress-badge" style={{ color: '#248ff2', borderColor: 'rgba(36, 143, 242, 0.3)' }}>
-                            <span>{book.vocabularyCoverage}%</span>
-                          </div>
-                        )}
-
-                        {showCardProgress && book.progress.percent > 0 && (
-                          <div className="book-progress-bar-container">
-                            <div 
-                              className="book-progress-bar" 
-                              style={{ width: `${book.progress.percent}%` }}
-                            ></div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Book Details */}
-                      {(showCardTitle || showCardAuthor || showCardSeries || showCardTags) && (
-                        <div className="book-info" style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                          {showCardTitle && <h4 className="book-title" title={book.title} style={{ margin: 0, fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-main)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.title}</h4>}
-                          {showCardSeries && book.series && <p className="book-series" style={{ margin: 0, fontSize: '0.72rem', color: 'var(--primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.series}</p>}
-                          {showCardAuthor && <p className="book-author" style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.author}</p>}
-                          {showCardTags && book.tags && book.tags.length > 0 && (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
-                              {book.tags.slice(0, 2).map(tag => (
                                 <span key={tag} style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px', background: 'var(--bg-app)', border: '1px solid var(--border-light)', color: 'var(--text-muted)' }}>
                                   #{tag}
                                 </span>
@@ -3137,160 +3018,25 @@ const Library = React.memo(function Library({
                   );
                 })}
               </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
-
-  const renderGroupedBySeries = () => {
-    // Group the active books by series
-    const groups = {};
-    filteredBooksList.forEach(book => {
-      const series = book.series || 'Sin Serie';
-      if (!groups[series]) groups[series] = [];
-      groups[series].push(book);
-    });
-
-    const sortedSeries = Object.keys(groups).sort((a, b) => {
-      // Keep "Sin Serie" at the bottom
-      const cleanA = a === 'Sin Serie';
-      const cleanB = b === 'Sin Serie';
-      if (cleanA && !cleanB) return 1;
-      if (!cleanA && cleanB) return -1;
-
-      let comparison = 0;
-      if (groupSort === 'alphabetical') {
-        comparison = a.localeCompare(b, 'ja');
-      } else {
-        // Sort by the latest book date in each group
-        const latestA = groups[a].reduce((latest, book) => {
-          const date = book.createdAt || new Date(0).toISOString();
-          return date > latest ? date : latest;
-        }, new Date(0).toISOString());
-        const latestB = groups[b].reduce((latest, book) => {
-          const date = book.createdAt || new Date(0).toISOString();
-          return date > latest ? date : latest;
-        }, new Date(0).toISOString());
-        comparison = latestA.localeCompare(latestB);
-      }
-      return groupDirection === 'asc' ? comparison : -comparison;
-    });
-
-    return (
-      <div className="library-grouped-container">
-        {sortedSeries.map(seriesName => {
-          const seriesBooks = groups[seriesName];
-          return (
-            <div key={seriesName} className="library-group-section">
-              <div className="section-header">
-                <h2 className="section-title">Serie: {seriesName}</h2>
-                <span className="section-count">{seriesBooks.length}</span>
-              </div>
-              <div className="library-group-scroll-container">
-                {seriesBooks.map(book => {
-                  const isSelected = selectedBookIds.includes(book.id);
-                  return (
-                    <div 
-                      key={book.id} 
-                      className={`book-card ${isSelected ? 'selected' : ''} ${selectMode ? 'select-mode-active' : ''}`}
-                      onClick={() => handleCardClick(book)}
-                      style={{ flexShrink: 0, position: 'relative', zIndex: activeMenuBookId === book.id ? 500 : 'auto' }}
-                    >
-                      {/* Card Context Menu Trigger and Popup */}
-                      {renderBookCardMenu(book)}
-
-                      {/* Status Badge overlay */}
-                      {!selectMode && showCardStatus && renderStatusBadge(book)}
-
-                      {/* Checkbox overlay */}
-                      {selectMode && (
-                        <div className="card-checkbox-container">
-                          <Check size={12} className="card-checkbox-icon" />
-                        </div>
-                      )}
-
-                      {/* Book Cover */}
-                      <div className="book-cover-container">
-                        {book.cover && !book.cover.startsWith('linear-gradient') ? (
-                          <img 
-                            src={book.cover} 
-                            alt={book.title} 
-                            className="book-cover-img"
-                            style={book.hideCover ? { filter: 'blur(12px)', opacity: 0.5 } : undefined}
-                            onError={(e) => {
-                              e.target.src = 'https://via.placeholder.com/150x220?text=Lector';
-                            }}
-                          />
-                        ) : (
-                          <div 
-                            className="book-cover-placeholder" 
-                            style={{ 
-                              background: book.cover && book.cover.startsWith('linear-gradient') 
-                                ? book.cover 
-                                : 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)' 
-                            }}
-                          >
-                            <span>{book.title}</span>
-                          </div>
-                        )}
-
-                        {/* Progress badge at top left of cover */}
-                        {showCardProgress && book.progress.percent > 0 && (
-                          <div className="book-progress-badge">
-                            <span>{book.progress.percent}%</span>
-                          </div>
-                        )}
-
-                        {/* Vocab Coverage indicator */}
-                        {book.progress.percent === 0 && book.vocabularyCoverage && (
-                          <div className="book-progress-badge" style={{ color: '#248ff2', borderColor: 'rgba(36, 143, 242, 0.3)' }}>
-                            <span>{book.vocabularyCoverage}%</span>
-                          </div>
-                        )}
-
-                        {/* Progress bar at bottom of cover */}
-                        {showCardProgress && book.progress.percent > 0 && (
-                          <div className="book-progress-bar-container">
-                            <div 
-                              className="book-progress-bar" 
-                              style={{ width: `${book.progress.percent}%` }}
-                            ></div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Book Details */}
-                      {(showCardTitle || showCardAuthor || showCardSeries || showCardTags) && (
-                        <div className="book-info" style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                          {showCardTitle && <h4 className="book-title" title={book.title} style={{ margin: 0, fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-main)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.title}</h4>}
-                          {showCardSeries && book.series && <p className="book-series" style={{ margin: 0, fontSize: '0.72rem', color: 'var(--primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.series}</p>}
-                          {showCardAuthor && <p className="book-author" style={{ margin: 0, fontSize: '0.72rem', color: 'var(--text-muted)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>{book.author}</p>}
-                          {showCardTags && book.tags && book.tags.length > 0 && (
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
-                              {book.tags.slice(0, 2).map(tag => (
-                                <span key={tag} style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px', background: 'var(--bg-app)', border: '1px solid var(--border-light)', color: 'var(--text-muted)' }}>
-                                  #{tag}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
+            );
+          };
 
   const renderStatisticsTab = () => {
-    return <ProgressDashboard books={books} lang={lang} excludedBookIds={statsExcludedBookIds} />;
+    return (
+      <div 
+        className="stats-tab-content"
+        style={{
+          width: '100%',
+          minHeight: '100vh',
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          paddingBottom: '110px',
+          boxSizing: 'border-box'
+        }}
+      >
+        <ProgressDashboard books={books} lang={lang} excludedBookIds={statsExcludedBookIds} />
+      </div>
+    );
   };
 
   const handleDeleteAllData = async () => {

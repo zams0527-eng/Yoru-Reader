@@ -1,33 +1,19 @@
 /* ==========================================================================
-   Universal Sleek Dark Scrollbars (Yoru Modern Glass Theme)
+   Universal Zero-Width Hidden Scrollbars (Clean No-Scrollbar UI)
    ========================================================================== */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+html, body, #root, *, *::before, *::after {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
 
-*::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
 
-*::-webkit-scrollbar-track {
-  background: transparent;
-}
 
-*::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.14);
-  border-radius: 6px;
-  transition: background 0.2s ease;
-}
 
-*::-webkit-scrollbar-thumb:hover {
-  background: rgba(168, 85, 247, 0.55);
-}
 
-*::-webkit-scrollbar-corner {
-  background: transparent;
-}
+
+
+
+
 
 /* ==========================================================================
    Yoru Parser Word Styles (Dynamic State & Color System)
@@ -194,9 +180,7 @@ html {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
-html::-webkit-scrollbar {
-  display: none;
-}
+
 
 body {
   background-color: var(--bg-app);
@@ -208,9 +192,7 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
 }
-body::-webkit-scrollbar {
-  display: none;
-}
+
 
 button {
   font-family: var(--font-ui);
@@ -495,12 +477,7 @@ button {
 .reader-engine-container::-webkit-scrollbar,
 .reader-engine-content::-webkit-scrollbar,
 .book-content-container::-webkit-scrollbar,
-.book-content::-webkit-scrollbar {
-  display: none !important;
-  width: 0px !important;
-  height: 0px !important;
-  background: transparent !important;
-}
+
 
 .reader-engine-container,
 .reader-engine-content,
@@ -643,9 +620,7 @@ body.reader-active .app-container {
 
 /* Hide scrollbars for Chrome, Safari and Opera */
 .reader-content-wrapper::-webkit-scrollbar,
-.reader-text-container::-webkit-scrollbar {
-  display: none;
-}
+
 
 /* Hide scrollbars for IE, Edge and Firefox */
 .reader-content-wrapper,
@@ -922,19 +897,10 @@ rt {
   scrollbar-color: rgba(255,255,255,0.18) transparent;
 }
 
-.dict-body::-webkit-scrollbar {
-  width: 4px;
-}
-.dict-body::-webkit-scrollbar-track {
-  background: transparent;
-}
-.dict-body::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.18);
-  border-radius: 0px;
-}
-.dict-body::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.32);
-}
+
+
+
+
 
 .dict-definition-item {
   margin-bottom: 6px;
@@ -1669,22 +1635,13 @@ rt {
 }
 
 /* Custom scrollbar for settings modal */
-.migaku-settings-content::-webkit-scrollbar {
-  width: 6px;
-}
 
-.migaku-settings-content::-webkit-scrollbar-track {
-  background: transparent;
-}
 
-.migaku-settings-content::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 3px;
-}
 
-.migaku-settings-content::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
+
+
+
+
 
 .migaku-section-title {
   color: var(--primary);
@@ -1948,9 +1905,9 @@ rt {
   scrollbar-width: thin;
   scrollbar-color: rgba(255,255,255,0.15) transparent;
 }
-.yomitan-anki-body::-webkit-scrollbar { width: 5px; }
-.yomitan-anki-body::-webkit-scrollbar-track { background: transparent; }
-.yomitan-anki-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+
+
+
 
 .yomitan-anki-section {
   padding: 12px 16px;
@@ -2054,9 +2011,9 @@ rt {
   flex-direction: column;
   gap: 6px;
 }
-.yomitan-cards-body::-webkit-scrollbar { width: 5px; }
-.yomitan-cards-body::-webkit-scrollbar-track { background: transparent; }
-.yomitan-cards-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+
+
+
 
 .yomitan-cards-row {
   display: flex;
@@ -3400,19 +3357,10 @@ rt {
 }
 
 /* Custom scrollbar for sidebar */
-.library-sidebar::-webkit-scrollbar {
-  width: 5px;
-}
-.library-sidebar::-webkit-scrollbar-track {
-  background: transparent;
-}
-.library-sidebar::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 3px;
-}
-.library-sidebar::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
+
+
+
+
 
 .library-main-content {
   flex-grow: 1;
@@ -3423,19 +3371,10 @@ rt {
 }
 
 /* Custom scrollbar for library content */
-.library-main-content::-webkit-scrollbar {
-  width: 6px;
-}
-.library-main-content::-webkit-scrollbar-track {
-  background: transparent;
-}
-.library-main-content::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 3px;
-}
-.library-main-content::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
+
+
+
+
 
 /* Sidebar Search Box */
 .sidebar-search-container {
@@ -3666,18 +3605,11 @@ rt {
 }
 
 /* Scrollbar for Drawer content */
-.drawer-content::-webkit-scrollbar {
-  width: 5px;
-}
 
-.drawer-content::-webkit-scrollbar-track {
-  background: transparent;
-}
 
-.drawer-content::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
-}
+
+
+
 
 .drawer-section {
   display: flex;
@@ -3793,24 +3725,13 @@ rt {
 }
 
 /* Webkit scrollbar styling for horizontal groups */
-.library-group-scroll-container::-webkit-scrollbar {
-  height: 6px;
-}
 
-.library-group-scroll-container::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 3px;
-}
 
-.library-group-scroll-container::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 3px;
-  transition: background 0.2s;
-}
 
-.library-group-scroll-container::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 224, 0, 0.35);
-}
+
+
+
+
 
 /* --- TABS SYSTEM NAVIGATION --- */
 .header-navigation-tabs {
@@ -3869,39 +3790,20 @@ rt {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
 }
-.srs-view-panel::-webkit-scrollbar {
-  width: 6px;
-}
-.srs-view-panel::-webkit-scrollbar-track {
-  background: transparent;
-}
-.srs-view-panel::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 3px;
-}
-.srs-view-panel::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
+
+
+
+
 
 /* Discrete horizontal scrollbar for calendar heatmap */
 .srs-calendar-scroll {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
-.srs-calendar-scroll::-webkit-scrollbar {
-  height: 5px;
-}
-.srs-calendar-scroll::-webkit-scrollbar-track {
-  background: transparent;
-  border-radius: 3px;
-}
-.srs-calendar-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
-}
-.srs-calendar-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
+
+
+
+
 
 @keyframes tabViewFadeIn {
   from { opacity: 0; transform: translateY(12px); }
@@ -3994,9 +3896,7 @@ rt {
 }
 
 /* Yomitan Settings Sidebar & Pane Custom Styles */
-.yomitan-settings-sidebar::-webkit-scrollbar {
-  display: none !important;
-}
+
 .yomitan-settings-sidebar {
   -ms-overflow-style: none !important;
   scrollbar-width: none !important;
@@ -4010,19 +3910,10 @@ rt {
   background: rgba(255, 255, 255, 0.05) !important;
   color: #ffffff !important;
 }
-.yomitan-settings-pane::-webkit-scrollbar {
-  width: 6px !important;
-}
-.yomitan-settings-pane::-webkit-scrollbar-track {
-  background: transparent !important;
-}
-.yomitan-settings-pane::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12) !important;
-  border-radius: 10px !important;
-}
-.yomitan-settings-pane::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25) !important;
-}
+
+
+
+
 
 .settings-view-panel.tab-view-container {
   max-width: none !important;
@@ -4717,25 +4608,16 @@ rt {
 }
 
 .statistics-view::-webkit-scrollbar,
-.notes-view-panel::-webkit-scrollbar {
-  width: 6px !important;
-}
+
 
 .statistics-view::-webkit-scrollbar-track,
-.notes-view-panel::-webkit-scrollbar-track {
-  background: transparent !important;
-}
+
 
 .statistics-view::-webkit-scrollbar-thumb,
-.notes-view-panel::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12) !important;
-  border-radius: 10px !important;
-}
+
 
 .statistics-view::-webkit-scrollbar-thumb:hover,
-.notes-view-panel::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25) !important;
-}
+
 
 
 
@@ -6651,22 +6533,11 @@ input[type="range"]::-webkit-slider-runnable-track {
 }
 
 /* Thin modern scrollbar */
-.settings-popover-body::-webkit-scrollbar {
-  width: 5px;
-}
-.settings-popover-body::-webkit-scrollbar-track {
-  background: transparent;
-}
-.settings-popover-body::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 3px;
-}
-[data-theme="light"] .settings-popover-body::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15);
-}
-[data-theme="sepia"] .settings-popover-body::-webkit-scrollbar-thumb {
-  background: rgba(92, 57, 18, 0.2);
-}
+
+
+
+
+
 
 .settings-popover-section-label {
   font-size: 0.65rem;
@@ -7494,9 +7365,7 @@ body:has(.reader-container) #ajb-reader {
     scrollbar-width: none !important;
     padding-bottom: 6px !important;
   }
-  .srs-subtabs-container::-webkit-scrollbar {
-    display: none !important;
-  }
+
 
   /* Top Navigation Bar Spacing */
   .library-header {
@@ -7933,4 +7802,36 @@ body:has(.reader-container) #ajb-reader {
     -webkit-overflow-scrolling: touch !important;
     padding-bottom: 90px !important;
   }
+}
+
+/* ==========================================================================
+   Enforced No-Scrollbar Everywhere
+   ========================================================================== */
+html, body, #root, 
+.library-container, 
+.library-main, 
+.library-sidebar, 
+.mobile-novel-grid, 
+.reader-container, 
+.reader-engine-container, 
+.reader-engine-content, 
+.book-content, 
+.settings-popover-body, 
+.stats-tab-content, 
+.progress-dashboard, 
+.mas-screen-container, 
+.srs-view-panel, 
+.yomitan-settings-pane, 
+.yomitan-settings-sidebar,
+.display-settings-drawer,
+.drawer-content {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+  -webkit-overflow-scrolling: touch !important;
+}
+
+*::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
