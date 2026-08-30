@@ -3539,10 +3539,10 @@ const Library = React.memo(function Library({
           <div 
             className="mas-list-item"
             onClick={() => {
-              if (googleUser) {
+              if (gDriveTokens) {
                 showToast(lang === 'es' ? 'Sincronización activa con Google Drive' : 'Cloud sync active with Google Drive', 'info');
               } else {
-                handleGoogleLogin();
+                setIsGDriveSyncOpen(true);
               }
             }}
           >
@@ -3552,10 +3552,10 @@ const Library = React.memo(function Library({
               </div>
               <div>
                 <div className="mas-item-title">
-                  {googleUser ? (googleUser.name || 'Google Drive') : (lang === 'es' ? 'Cuenta Yoru / Google Drive' : 'Yoru account')}
+                  {gDriveTokens ? (gDriveTokens.name || 'Google Drive') : (lang === 'es' ? 'Cuenta Yoru / Google Drive' : 'Yoru account')}
                 </div>
                 <div className="mas-item-subtitle">
-                  {googleUser ? (lang === 'es' ? 'Sincronización en la nube activa' : 'Cloud sync active') : (lang === 'es' ? 'Inicia sesión para sincronizar y guardar' : 'Sign in for cloud sync and backups')}
+                  {gDriveTokens ? (lang === 'es' ? 'Sincronización en la nube activa' : 'Cloud sync active') : (lang === 'es' ? 'Inicia sesión para sincronizar y guardar' : 'Sign in for cloud sync and backups')}
                 </div>
               </div>
             </div>
@@ -7053,15 +7053,15 @@ const Library = React.memo(function Library({
           <button 
             className="mobile-icon-btn" 
             onClick={() => {
-              if (googleUser) {
+              if (gDriveTokens) {
                 showToast(lang === 'es' ? 'Sincronizado con Google Drive' : 'Synced with Google Drive', 'info');
               } else {
-                handleGoogleLogin();
+                setIsGDriveSyncOpen(true);
               }
             }} 
             title="Google Drive"
           >
-            <Cloud size={22} color={googleUser ? '#4ade80' : '#FFE000'} />
+            <Cloud size={22} color={gDriveTokens ? '#4ade80' : '#FFE000'} />
           </button>
           <h1 className="mobile-top-title">{lang === 'es' ? 'Novelas' : 'Novel'}</h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
