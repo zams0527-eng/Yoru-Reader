@@ -8,10 +8,11 @@ const DEFAULT_ICON_URL = 'https://raw.githubusercontent.com/zams0527-eng/Yoru-Re
 
 function getLargeImageKey(discordIcon?: string): string {
   const icon = (discordIcon || 'yoru').toLowerCase();
-  if (icon === 'cute') return 'gsm_cute';
-  if (icon === 'jacked') return 'gsm_jacked';
-  if (icon === 'cursed') return 'gsm_cursed';
-  return DEFAULT_ICON_URL;
+  if (icon === 'cute' || icon === 'gsm_cute') return 'gsm_cute';
+  if (icon === 'jacked' || icon === 'gsm_jacked') return 'gsm_jacked';
+  if (icon === 'cursed' || icon === 'gsm_cursed') return 'gsm_cursed';
+  if (icon === 'yoru' || icon === 'default') return 'gsm_cute'; // Active verified Discord asset key
+  return 'gsm_cute';
 }
 
 function buildPresence(details: string, state: string, largeImageKey: string, startTimestamp?: number, lang: 'es' | 'en' = 'en'): any {
