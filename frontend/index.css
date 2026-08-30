@@ -7517,4 +7517,16 @@ body:has(.reader-container) #ajb-reader {
     width: 100% !important;
     justify-content: center !important;
   }
+
+  /* Welcome Screen Mobile Layout */
+  .welcome-screen-container {
+    padding: 16px !important;
+    min-height: 100vh !important;
+    box-sizing: border-box !important;
+  }
+  .welcome-card {
+    padding: 20px 16px !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
 }

@@ -523,33 +523,108 @@ function ReaderEngineComponent({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [vertical, flipPage]);
 
-  // Touch swipe
+  // Mobile Touch Swipe & Tap Zones
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !paginated) return;
+    if (!container) return;
 
-    let startX = 0;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchStartTime = 0;
+
     const handleTouchStart = (e: TouchEvent) => {
-      startX = e.touches[0].clientX;
+      if (e.touches.length === 1) {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchStartTime = Date.now();
+      }
     };
+
     const handleTouchEnd = (e: TouchEvent) => {
-      const delta = e.changedTouches[0].clientX - startX;
-      if (Math.abs(delta) > 50) {
-        if (vertical) {
-          flipPage(delta < 0 ? -1 : 1);
+      if (e.changedTouches.length === 0) return;
+      const touchEndX = e.changedTouches[0].clientX;
+      const touchEndY = e.changedTouches[0].clientY;
+      const deltaX = touchEndX - touchStartX;
+      const deltaY = touchEndY - touchStartY;
+      const deltaTime = Date.now() - touchStartTime;
+
+      const absX = Math.abs(deltaX);
+      const absY = Math.abs(deltaY);
+
+      // SWIPE DETECTION (Threshold: 30px distance or quick flick)
+      if (absX > 30 || absY > 30) {
+        if (absX > absY) {
+          // Horizontal Swipe
+          if (vertical) {
+            // In Japanese vertical right-to-left: Swipe Right = Next Page, Swipe Left = Prev Page
+            if (deltaX > 30) {
+              flipPage(1); // Next page
+            } else if (deltaX < -30) {
+              flipPage(-1); // Prev page
+            }
+          } else {
+            // Horizontal text: Swipe Left = Next Page, Swipe Right = Prev Page
+            if (deltaX < -30) {
+              flipPage(1); // Next page
+            } else if (deltaX > 30) {
+              flipPage(-1); // Prev page
+            }
+          }
         } else {
-          flipPage(delta < 0 ? 1 : -1);
+          // Vertical Swipe (Swipe Up = Next, Swipe Down = Prev)
+          if (deltaY < -30) {
+            flipPage(1);
+          } else if (deltaY > 30) {
+            flipPage(-1);
+          }
+        }
+        return;
+      }
+
+      // TAP ZONES (Short touch without drag)
+      if (deltaTime < 350 && absX < 15 && absY < 15) {
+        const target = e.target as HTMLElement;
+        // Don't trigger page turn if tapping a ruby, word tag or interactive element
+        if (target && (target.tagName === 'RUBY' || target.tagName === 'RT' || target.classList.contains('yoru-word') || target.closest('.yoru-word') || target.closest('.reader-dict-popup'))) {
+          return;
+        }
+
+        const screenWidth = window.innerWidth;
+        const tapX = touchEndX;
+
+        // Left 25% of screen
+        if (tapX < screenWidth * 0.25) {
+          if (vertical) {
+            flipPage(1); // Next page in vertical RL
+          } else {
+            flipPage(-1); // Prev page in horizontal
+          }
+        } 
+        // Right 25% of screen
+        else if (tapX > screenWidth * 0.75) {
+          if (vertical) {
+            flipPage(-1); // Prev page in vertical RL
+          } else {
+            flipPage(1); // Next page in horizontal
+          }
+        }
+        // Center 50% of screen: Toggle Navigation / Toolbar
+        else {
+          if (onClick) {
+            onClick(e as any);
+          }
         }
       }
     };
 
-    container.addEventListener('touchstart', handleTouchStart);
-    container.addEventListener('touchend', handleTouchEnd);
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchend', handleTouchEnd, { passive: true });
+
     return () => {
       container.removeEventListener('touchstart', handleTouchStart);
       container.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [paginated, vertical, flipPage]);
+  }, [vertical, flipPage, onClick]);
 
   // Mouse wheel
   useEffect(() => {

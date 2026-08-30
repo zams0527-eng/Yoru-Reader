@@ -3676,7 +3676,7 @@ const Library = React.memo(function Library({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
                   {renderSidebarBtn('sec-general', lang === 'es' ? 'Apariencia e Idioma' : 'Appearance & Language', Palette, 'tema theme idioma lang interface language tutorial guia atajos general')}
                   {renderSidebarBtn('sec-dicts', lang === 'es' ? 'Diccionarios' : 'Dictionaries', BookOpen, 'diccionario dictionary offline jmdict frecuencia meta meta_bank zip')}
-                  {renderSidebarBtn('sec-keybindings', lang === 'es' ? 'Atajos de teclado' : 'Keyboard Shortcuts', Keyboard, 'keybins keybindings atajos teclado shortcuts keys full screen pantalla completa')}
+                  {!isMobile && renderSidebarBtn('sec-keybindings', lang === 'es' ? 'Atajos de teclado' : 'Keyboard Shortcuts', Keyboard, 'keybins keybindings atajos teclado shortcuts keys full screen pantalla completa')}
                 </div>
               </div>
   
@@ -3700,7 +3700,7 @@ const Library = React.memo(function Library({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', paddingLeft: '14px', borderLeft: '1px solid rgba(255,255,255,0.04)' }}>
                   {renderSidebarBtn('sec-vocab-manage', lang === 'es' ? 'Gestión de Vocabulario y Anki' : 'Vocabulary & Anki Management', Database, 'vocabulario vocabulary import export jpdb anki file frequency')}
                   {renderSidebarBtn('sec-cloud-sync', lang === 'es' ? 'Sincronización Cloud' : 'Cloud Sync', Cloud, 'sync merge sincronizar combinar conflicto storage sync settings gdrive drive cloud cloud-sync')}
-                  {renderSidebarBtn('sec-discord', 'Discord', MessageSquare, 'discord rpc presence enabled timer icon stats blacklist')}
+                  {!isMobile && renderSidebarBtn('sec-discord', 'Discord', MessageSquare, 'discord rpc presence enabled timer icon stats blacklist')}
                 </div>
               </div>
   
@@ -3959,7 +3959,7 @@ const Library = React.memo(function Library({
           )}
 
           {/* Card: Atajos de teclado */}
-          {matchesSearch('keybins keybindings atajos teclado shortcuts keys full screen pantalla completa') && (settingsSearchQuery || activeSettingsSection === 'sec-keybindings') && (
+          {!isMobile && matchesSearch('keybins keybindings atajos teclado shortcuts keys full screen pantalla completa') && (settingsSearchQuery || activeSettingsSection === 'sec-keybindings') && (
             <div id="sec-keybindings" className="settings-section-card">
               <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Keyboard size={18} style={{ color: 'var(--primary)' }} />
@@ -4597,7 +4597,7 @@ const Library = React.memo(function Library({
           )}
 
           {/* Card: Discord Rich Presence */}
-          {matchesSearch('discord rpc presence enabled timer icon stats blacklist') && (settingsSearchQuery || activeSettingsSection === 'sec-discord') && (
+          {!isMobile && matchesSearch('discord rpc presence enabled timer icon stats blacklist') && (settingsSearchQuery || activeSettingsSection === 'sec-discord') && (
             <div id="sec-discord" className="settings-section-card">
               <h3 className="settings-card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <MessageSquare size={18} style={{ color: 'var(--primary)' }} />
@@ -5432,7 +5432,7 @@ const Library = React.memo(function Library({
           marginTop: '24px'
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-light)', paddingBottom: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '16px', borderBottom: '1px solid var(--border-light)', paddingBottom: '12px' }}>
           <h3 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-main)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span>📅</span>
             <span>{lang === 'es' ? 'Calendario de Actividad' : 'Activity Calendar'}</span>

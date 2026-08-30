@@ -35,6 +35,22 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
   lang = 'en'
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
+  const checkModalMobile = () => (typeof window !== 'undefined' && (
+    ((window as any).Capacitor && (window as any).Capacitor.getPlatform() === 'android') ||
+    window.innerWidth <= 768 ||
+    'ontouchstart' in window ||
+    (navigator.maxTouchPoints && navigator.maxTouchPoints > 0) ||
+    /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent)
+  ));
+  const [isMobile, setIsMobile] = useState(checkModalMobile);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(checkModalMobile());
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
   const [installedDicts, setInstalledDicts] = useState<any[]>([]);
   const [isInstalling, setIsInstalling] = useState(false);
   const [installMsg, setInstallMsg] = useState('');
@@ -180,8 +196,9 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '20px',
-        animation: 'fadeIn 0.2s ease-out'
+        padding: isMobile ? '8px' : '20px',
+        animation: 'fadeIn 0.2s ease-out',
+        boxSizing: 'border-box'
       }}
       onClick={(e) => {
         if (e.target === e.currentTarget) handleFinish();
@@ -190,17 +207,19 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
       <div 
         style={{
           width: '100%',
-          maxWidth: '680px',
+          maxWidth: isMobile ? '100%' : '680px',
+          maxHeight: isMobile ? '94vh' : '90vh',
           background: '#0d0d10',
           border: '1px solid rgba(255, 224, 0, 0.3)',
-          borderRadius: '16px',
+          borderRadius: isMobile ? '14px' : '16px',
           boxShadow: '0 20px 60px rgba(0, 0, 0, 0.8), 0 0 30px rgba(255, 224, 0, 0.1)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
           position: 'relative',
           color: '#e8e8f0',
-          fontFamily: 'var(--font-ui), sans-serif'
+          fontFamily: 'var(--font-ui), sans-serif',
+          boxSizing: 'border-box'
         }}
       >
         {/* Header with Close */}
@@ -208,7 +227,7 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '16px 24px',
+          padding: isMobile ? '12px 14px' : '16px 24px',
           borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
           background: 'rgba(255, 255, 255, 0.02)'
         }}>
@@ -269,7 +288,7 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
                   : 'Your complete Japanese novel reader equipped with integrated immersion and learning tools.'}
               </p>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                 <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '12px 14px' }}>
                   <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#FFE000', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Layers size={15} /> {lang === 'es' ? 'Formatos Soportados' : 'Supported Formats'}
@@ -466,16 +485,22 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ background: 'rgba(255, 224, 0, 0.08)', border: '1px solid rgba(255, 224, 0, 0.3)', borderRadius: '10px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <span style={{ background: '#FFE000', color: '#000', padding: '4px 8px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 800, flexShrink: 0 }}>
-                    SHIFT
+                    {isMobile ? (lang === 'es' ? 'TOCA' : 'TAP') : 'SHIFT'}
                   </span>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#FFE000' }}>
-                      {lang === 'es' ? 'Coloca el cursor + Presiona Shift' : 'Hover word + Press Shift'}
+                      {isMobile 
+                        ? (lang === 'es' ? 'Toca cualquier palabra' : 'Tap any word')
+                        : (lang === 'es' ? 'Coloca el cursor + Presiona Shift' : 'Hover word + Press Shift')}
                     </div>
                     <div style={{ fontSize: '0.8rem', color: '#ccc' }}>
-                      {lang === 'es' 
-                        ? 'En el modo de lectura, pon el ratón sobre cualquier palabra y presiona Shift para abrir el diccionario.' 
-                        : 'In reading mode, place your cursor over any word and press Shift to show definition.'}
+                      {isMobile
+                        ? (lang === 'es' 
+                            ? 'En el modo de lectura, toca cualquier palabra japonesa para abrir su definición, furigana y audio instantáneamente.' 
+                            : 'In reading mode, tap any Japanese word to instantly view its definition, furigana, and audio.')
+                        : (lang === 'es' 
+                            ? 'En el modo de lectura, pon el ratón sobre cualquier palabra y presiona Shift para abrir el diccionario.' 
+                            : 'In reading mode, place your cursor over any word and press Shift to show definition.')}
                     </div>
                   </div>
                 </div>
@@ -499,7 +524,7 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
             </div>
           )}
 
-          {/* STEP 4: Essential Keyboard Shortcuts */}
+          {/* STEP 4: Touch Controls / Keyboard Shortcuts */}
           {currentStep === 3 && (
             <div style={{ animation: 'fadeIn 0.25s ease-out' }}>
               <div style={{
@@ -517,49 +542,77 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
                 <Keyboard size={28} />
               </div>
               <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: '6px', color: '#fff' }}>
-                {lang === 'es' ? 'Atajos de Teclado Esenciales' : 'Essential Keyboard Shortcuts'}
+                {isMobile 
+                  ? (lang === 'es' ? 'Gestos y Controles Táctiles' : 'Touch Controls & Gestures')
+                  : (lang === 'es' ? 'Atajos de Teclado Esenciales' : 'Essential Keyboard Shortcuts')}
               </h2>
               <p style={{ color: '#a0a0b0', fontSize: '0.88rem', marginBottom: '14px' }}>
-                {lang === 'es' ? 'Navega y controla el lector a máxima velocidad:' : 'Control and navigate the reader with speed:'}
+                {isMobile
+                  ? (lang === 'es' ? 'Lee cómodamente con gestos táctiles en tu teléfono:' : 'Read seamlessly using mobile touch gestures:')
+                  : (lang === 'es' ? 'Navega y controla el lector a máxima velocidad:' : 'Control and navigate the reader with speed:')}
               </p>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div style={{ background: 'rgba(255, 224, 0, 0.06)', border: '1px solid rgba(255, 224, 0, 0.25)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.82rem', color: '#fff', fontWeight: 600 }}>{lang === 'es' ? 'Ver Diccionario' : 'Inspect Dictionary'}</span>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    <span style={{ background: '#FFE000', color: '#000', padding: '2px 7px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 800 }}>Shift</span>
-                    <span style={{ fontSize: '0.75rem', color: '#FFE000', display: 'flex', alignItems: 'center' }}>+ Hover</span>
+              {isMobile ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ background: 'rgba(255, 224, 0, 0.06)', border: '1px solid rgba(255, 224, 0, 0.25)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#fff', fontWeight: 600 }}>{lang === 'es' ? 'Paginación' : 'Page Navigation'}</span>
+                    <span style={{ background: '#FFE000', color: '#000', padding: '2px 7px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 800 }}>{lang === 'es' ? 'Tocar Bordes / Swipe' : 'Tap Edges / Swipe'}</span>
+                  </div>
+
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#ccc' }}>{lang === 'es' ? 'Menú de Lectura' : 'Reading Menu'}</span>
+                    <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 7px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 600, color: '#FFE000' }}>{lang === 'es' ? 'Tocar Centro' : 'Tap Center'}</span>
+                  </div>
+
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#ccc' }}>{lang === 'es' ? 'Diccionario Instantáneo' : 'Instant Dictionary'}</span>
+                    <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 7px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 600, color: '#FFE000' }}>{lang === 'es' ? 'Tocar Palabra' : 'Tap Word'}</span>
+                  </div>
+
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#ccc' }}>{lang === 'es' ? 'Modo Vertical (縦書き)' : 'Vertical Mode (縦書き)'}</span>
+                    <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 7px', borderRadius: '4px', fontSize: '0.72rem', fontWeight: 600, color: '#FFE000' }}>{lang === 'es' ? 'Ajustes o Rotación' : 'Settings / Rotation'}</span>
                   </div>
                 </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div style={{ background: 'rgba(255, 224, 0, 0.06)', border: '1px solid rgba(255, 224, 0, 0.25)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#fff', fontWeight: 600 }}>{lang === 'es' ? 'Ver Diccionario' : 'Inspect Dictionary'}</span>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <span style={{ background: '#FFE000', color: '#000', padding: '2px 7px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 800 }}>Shift</span>
+                      <span style={{ fontSize: '0.75rem', color: '#FFE000', display: 'flex', alignItems: 'center' }}>+ Hover</span>
+                    </div>
+                  </div>
 
-                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.82rem', color: '#ccc' }}>{lang === 'es' ? 'Avanzar / Retroceder' : 'Next / Prev page'}</span>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 7px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, color: '#FFE000' }}>Space</span>
-                    <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 7px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, color: '#FFE000' }}>J / K</span>
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#ccc' }}>{lang === 'es' ? 'Avanzar / Retroceder' : 'Next / Prev page'}</span>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 7px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, color: '#FFE000' }}>Space</span>
+                      <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 7px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, color: '#FFE000' }}>J / K</span>
+                    </div>
+                  </div>
+
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#ccc' }}>{lang === 'es' ? 'Pantalla Completa' : 'Toggle Fullscreen'}</span>
+                    <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 7px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, color: '#FFE000' }}>F</span>
+                  </div>
+
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#ccc' }}>{lang === 'es' ? 'Vertical / Horizontal' : 'Vertical / Horizontal'}</span>
+                    <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 7px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, color: '#FFE000' }}>V</span>
+                  </div>
+
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#ccc' }}>{lang === 'es' ? 'Crear tarjeta Anki / SRS' : 'Create Anki/SRS Card'}</span>
+                    <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 7px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, color: '#FFE000' }}>A</span>
+                  </div>
+
+                  <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.82rem', color: '#ccc' }}>{lang === 'es' ? 'Ajustes de Lectura' : 'Reading Settings'}</span>
+                    <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 7px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, color: '#FFE000' }}>Q</span>
                   </div>
                 </div>
-
-                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.82rem', color: '#ccc' }}>{lang === 'es' ? 'Pantalla Completa' : 'Toggle Fullscreen'}</span>
-                  <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 7px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, color: '#FFE000' }}>F</span>
-                </div>
-
-                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.82rem', color: '#ccc' }}>{lang === 'es' ? 'Vertical / Horizontal' : 'Vertical / Horizontal'}</span>
-                  <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 7px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, color: '#FFE000' }}>V</span>
-                </div>
-
-                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.82rem', color: '#ccc' }}>{lang === 'es' ? 'Crear tarjeta Anki / SRS' : 'Create Anki/SRS Card'}</span>
-                  <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 7px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, color: '#FFE000' }}>A</span>
-                </div>
-
-                <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '8px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.82rem', color: '#ccc' }}>{lang === 'es' ? 'Ajustes de Lectura' : 'Reading Settings'}</span>
-                  <span style={{ background: 'rgba(255,255,255,0.1)', padding: '2px 7px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600, color: '#FFE000' }}>Q</span>
-                </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -589,7 +642,7 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
                   : 'Everything you need to memorize vocabulary and track reading progress in real time:'}
               </p>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: '10px' }}>
                 <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: '10px', padding: '14px' }}>
                   <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#FFE000', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Zap size={16} /> {lang === 'es' ? 'Yoru SRS (Repaso Espaciado)' : 'Yoru SRS (Spaced Repetition)'}
@@ -653,7 +706,7 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '16px 24px',
+          padding: isMobile ? '10px 14px' : '16px 24px',
           borderTop: '1px solid rgba(255, 255, 255, 0.08)',
           background: 'rgba(255, 255, 255, 0.02)'
         }}>
