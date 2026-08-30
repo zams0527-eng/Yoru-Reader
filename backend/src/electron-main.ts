@@ -921,74 +921,113 @@ app.on('window-all-closed', () => {
 });
 
 // -------------------------------------------------------------
-// Discord Rich Presence (IPC Named Pipe)
+// Discord Rich Presence (IPC Named Pipe Engine)
 // -------------------------------------------------------------
 
 let discordRpcSocket: net.Socket | null = null;
-const discordRpcClientId = '1326462719280054363';
+let discordRpcClientId = '1441571345942052935'; // Registered Yoru Reader Discord App ID
 let discordRpcActivePresence: any = null;
 let isDiscordConnecting = false;
+let isDiscordReady = false;
+
+function sendDiscordFrame(socket: net.Socket, opcode: number, payload: any): void {
+  try {
+    const payloadStr = JSON.stringify(payload);
+    const length = Buffer.byteLength(payloadStr);
+    const buffer = Buffer.alloc(8 + length);
+    buffer.writeInt32LE(opcode, 0);
+    buffer.writeInt32LE(length, 4);
+    buffer.write(payloadStr, 8);
+    socket.write(buffer);
+  } catch (err) {
+    console.error('[Discord RPC] Send frame error:', err);
+  }
+}
 
 function connectDiscordRpc(): Promise<net.Socket> {
-  if (discordRpcSocket) return Promise.resolve(discordRpcSocket);
+  if (discordRpcSocket && isDiscordReady) return Promise.resolve(discordRpcSocket);
   if (isDiscordConnecting) {
     return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        if (discordRpcSocket) resolve(discordRpcSocket);
-        else reject(new Error('Discord connection timeout'));
-      }, 1000);
+      let checks = 0;
+      const interval = setInterval(() => {
+        checks++;
+        if (discordRpcSocket && isDiscordReady) {
+          clearInterval(interval);
+          resolve(discordRpcSocket);
+        } else if (checks > 20) {
+          clearInterval(interval);
+          reject(new Error('Discord connection timeout'));
+        }
+      }, 100);
     });
   }
 
   isDiscordConnecting = true;
+  isDiscordReady = false;
+
   return new Promise((resolve, reject) => {
-    let pipePath = '\\\\?\\pipe\\discord-ipc-0';
-    if (process.platform !== 'win32') {
-      const tempDir = process.env.XDG_RUNTIME_DIR || process.env.TMPDIR || process.env.TMP || process.env.TEMP || '/tmp';
-      pipePath = path.join(tempDir, 'discord-ipc-0');
-    }
+    let pipeIndex = 0;
 
-    const socket = net.createConnection(pipePath, () => {
-      discordRpcSocket = socket;
-      isDiscordConnecting = false;
+    const tryNextPipe = () => {
+      if (pipeIndex >= 10) {
+        isDiscordConnecting = false;
+        return reject(new Error('No active Discord IPC pipe found'));
+      }
 
-      // Handshake: Opcode 0 (Handshake)
-      const handshake = JSON.stringify({ v: 1, client_id: discordRpcClientId });
-      const length = Buffer.byteLength(handshake);
-      const buffer = Buffer.alloc(8 + length);
-      buffer.writeInt32LE(0, 0); // Opcode 0
-      buffer.writeInt32LE(length, 4); // Length
-      buffer.write(handshake, 8);
-      socket.write(buffer);
-      resolve(socket);
-    });
+      let pipePath = process.platform === 'win32'
+        ? `\\\\.\\pipe\\discord-ipc-${pipeIndex}`
+        : path.join(process.env.XDG_RUNTIME_DIR || process.env.TMPDIR || process.env.TMP || process.env.TEMP || '/tmp', `discord-ipc-${pipeIndex}`);
 
-    socket.on('error', (err) => {
-      isDiscordConnecting = false;
-      discordRpcSocket = null;
-      reject(err);
-    });
+      const socket = net.createConnection(pipePath, () => {
+        discordRpcSocket = socket;
 
-    socket.on('close', () => {
-      isDiscordConnecting = false;
-      discordRpcSocket = null;
-    });
+        // Opcode 0: Handshake
+        const handshake = JSON.stringify({ v: 1, client_id: discordRpcClientId });
+        sendDiscordFrame(socket, 0, JSON.parse(handshake));
+
+        socket.on('data', (data) => {
+          try {
+            const op = data.readInt32LE(0);
+            const len = data.readInt32LE(4);
+            const payload = JSON.parse(data.slice(8, 8 + len).toString());
+            if (payload.evt === 'READY') {
+              isDiscordConnecting = false;
+              isDiscordReady = true;
+              if (discordRpcActivePresence) {
+                sendDiscordFrame(socket, 1, {
+                  cmd: 'SET_ACTIVITY',
+                  args: { pid: process.pid, activity: discordRpcActivePresence },
+                  nonce: String(Date.now())
+                });
+              }
+              resolve(socket);
+            }
+          } catch (e) {
+            // ignore non-json frames
+          }
+        });
+      });
+
+      socket.on('error', () => {
+        socket.destroy();
+        pipeIndex++;
+        tryNextPipe();
+      });
+
+      socket.on('close', () => {
+        isDiscordConnecting = false;
+        isDiscordReady = false;
+        discordRpcSocket = null;
+      });
+    };
+
+    tryNextPipe();
   });
-}
-
-function sendDiscordFrame(socket: net.Socket, opcode: number, payload: any): void {
-  const payloadStr = JSON.stringify(payload);
-  const length = Buffer.byteLength(payloadStr);
-  const buffer = Buffer.alloc(8 + length);
-  buffer.writeInt32LE(opcode, 0);
-  buffer.writeInt32LE(length, 4);
-  buffer.write(payloadStr, 8);
-  socket.write(buffer);
 }
 
 ipcMain.handle('update-discord-presence', async (_event, presence) => {
   if (!presence) {
-    if (discordRpcSocket) {
+    if (discordRpcSocket && isDiscordReady) {
       sendDiscordFrame(discordRpcSocket, 1, {
         cmd: 'SET_ACTIVITY',
         args: { pid: process.pid, activity: null },
@@ -1008,7 +1047,8 @@ ipcMain.handle('update-discord-presence', async (_event, presence) => {
       nonce: String(Date.now())
     });
     return true;
-  } catch {
+  } catch (e) {
+    console.warn('[Discord RPC] Could not update presence:', e);
     return false;
   }
 });
