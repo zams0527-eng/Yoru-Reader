@@ -1,8 +1,8 @@
 {
-  "appVersion": "1.1.4",
+  "appVersion": "1.1.5",
   "backendVersion": "1.2.0",
-  "hotUpdateVersion": "1.1.4",
+  "hotUpdateVersion": "1.1.5",
   "hotUpdateUrl": "https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/main/dist.zip",
   "url": "https://github.com/zams0527-eng/Yoru-Reader/releases/latest",
-  "description": "Yoru Reader v1.1.4 (Review Heatmap Anki, motor FSRS-6 verificado y Live OTA Updater)"
+  "description": "Yoru Reader v1.1.5 (Discord Rich Presence oficial verificado, motor de diccionarios instantáneo y tutorial actualizado)"
 }
