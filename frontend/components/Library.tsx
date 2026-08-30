@@ -390,7 +390,7 @@ const Library = React.memo(function Library({
 
   useEffect(() => {
     const handleResize = () => {
-      const mobile = window.innerWidth <= 768;
+      const mobile = checkIsMobileDevice();
       setIsMobile(mobile);
       if (!mobile) setIsSidebarOpen(false);
     };
