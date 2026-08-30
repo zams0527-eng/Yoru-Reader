@@ -930,15 +930,17 @@ let discordRpcActivePresence: any = null;
 let isDiscordConnecting = false;
 let isDiscordReady = false;
 
-function sendDiscordFrame(socket: net.Socket, opcode: number, payload: any): void {
+function sendDiscordRpcFrame(socket: net.Socket, opcode: number, payload: any): void {
   try {
-    const payloadStr = JSON.stringify(payload);
-    const length = Buffer.byteLength(payloadStr);
-    const buffer = Buffer.alloc(8 + length);
-    buffer.writeInt32LE(opcode, 0);
-    buffer.writeInt32LE(length, 4);
-    buffer.write(payloadStr, 8);
-    socket.write(buffer);
+    const payloadStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    const payloadBuffer = Buffer.from(payloadStr, 'utf8');
+    const totalLength = 8 + payloadBuffer.length;
+    const packet = Buffer.alloc(totalLength);
+    packet.writeInt32LE(opcode, 0);
+    packet.writeInt32LE(payloadBuffer.length, 4);
+    payloadBuffer.copy(packet, 8);
+
+    socket.write(packet);
   } catch (err) {
     console.error('[Discord RPC] Send frame error:', err);
   }
@@ -983,7 +985,7 @@ function connectDiscordRpc(): Promise<net.Socket> {
 
         // Opcode 0: Handshake
         const handshake = JSON.stringify({ v: 1, client_id: discordRpcClientId });
-        sendDiscordFrame(socket, 0, JSON.parse(handshake));
+        sendDiscordRpcFrame(socket, 0, JSON.parse(handshake));
 
         socket.on('data', (data) => {
           try {
@@ -994,7 +996,7 @@ function connectDiscordRpc(): Promise<net.Socket> {
               isDiscordConnecting = false;
               isDiscordReady = true;
               if (discordRpcActivePresence) {
-                sendDiscordFrame(socket, 1, {
+                sendDiscordRpcFrame(socket, 1, {
                   cmd: 'SET_ACTIVITY',
                   args: { pid: process.pid, activity: discordRpcActivePresence },
                   nonce: String(Date.now())
@@ -1028,7 +1030,7 @@ function connectDiscordRpc(): Promise<net.Socket> {
 ipcMain.handle('update-discord-presence', async (_event, presence) => {
   if (!presence) {
     if (discordRpcSocket && isDiscordReady) {
-      sendDiscordFrame(discordRpcSocket, 1, {
+      sendDiscordRpcFrame(discordRpcSocket, 1, {
         cmd: 'SET_ACTIVITY',
         args: { pid: process.pid, activity: null },
         nonce: String(Date.now())
@@ -1041,7 +1043,7 @@ ipcMain.handle('update-discord-presence', async (_event, presence) => {
   discordRpcActivePresence = presence;
   try {
     const socket = await connectDiscordRpc();
-    sendDiscordFrame(socket, 1, {
+    sendDiscordRpcFrame(socket, 1, {
       cmd: 'SET_ACTIVITY',
       args: { pid: process.pid, activity: presence },
       nonce: String(Date.now())

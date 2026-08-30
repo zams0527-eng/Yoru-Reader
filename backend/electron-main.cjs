@@ -1229,12 +1229,13 @@ function sendDiscordRpcFrame(socket, opcode, payload) {
   try {
     const payloadStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
     const payloadBuffer = Buffer.from(payloadStr, 'utf8');
-    const headerBuffer = Buffer.alloc(8);
-    headerBuffer.writeInt32LE(opcode, 0);
-    headerBuffer.writeInt32LE(payloadBuffer.length, 4);
+    const totalLength = 8 + payloadBuffer.length;
+    const packet = Buffer.alloc(totalLength);
+    packet.writeInt32LE(opcode, 0);
+    packet.writeInt32LE(payloadBuffer.length, 4);
+    payloadBuffer.copy(packet, 8);
 
-    socket.write(headerBuffer);
-    socket.write(payloadBuffer);
+    socket.write(packet);
   } catch (err) {
     console.error('[Discord RPC] Send frame error:', err);
   }
