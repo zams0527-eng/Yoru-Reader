@@ -17,13 +17,11 @@ function getLargeImageKey(discordIcon?: string): string {
 function buildPresence(details: string, state: string, largeImageKey: string, startTimestamp?: number, lang: 'es' | 'en' = 'en'): any {
   const isEs = lang === 'es';
   const presence: any = {
-    details,
-    state,
+    details: details ? details.substring(0, 127) : undefined,
+    state: state ? state.substring(0, 127) : undefined,
     assets: {
       large_image: largeImageKey,
-      large_text: 'Yoru Reader - Japanese Immersion',
-      small_image: DEFAULT_ICON_URL,
-      small_text: isEs ? 'Leyendo japonés' : 'Reading Japanese'
+      large_text: 'Yoru Reader - Japanese Immersion'
     },
     buttons: [
       { label: isEs ? 'Ver Yoru Reader' : 'Get Yoru Reader', url: 'https://github.com/zams0527-eng/Yoru-Reader' }
@@ -32,7 +30,7 @@ function buildPresence(details: string, state: string, largeImageKey: string, st
 
   if (startTimestamp) {
     presence.timestamps = {
-      start: startTimestamp
+      start: Math.floor(startTimestamp)
     };
   }
 
