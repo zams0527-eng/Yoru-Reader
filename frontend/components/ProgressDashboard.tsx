@@ -256,16 +256,16 @@ export default function ProgressDashboard({ books, lang = 'en', excludedBookIds 
   }, [filteredDbStats, books, lang]);
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto', color: 'var(--text-main)', background: 'transparent', minHeight: '100vh', fontFamily: "'Outfit', 'Inter', sans-serif" }}>
+    <div style={{ padding: '16px', maxWidth: '1200px', margin: '0 auto', color: 'var(--text-main)', background: 'transparent', minHeight: '100vh', fontFamily: "'Outfit', 'Inter', sans-serif", boxSizing: 'border-box' }}>
       {/* HEADER SECTION */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px', marginBottom: '24px' }}>
         <div>
-          <h1 style={{ fontSize: '2rem', fontWeight: 800, margin: 0, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>{t.progress}</h1>
-          <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>{t.subtitle}</p>
+          <h1 style={{ fontSize: '1.75rem', fontWeight: 850, margin: 0, color: 'var(--text-main)', letterSpacing: '-0.02em' }}>{t.progress}</h1>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>{t.subtitle}</p>
         </div>
 
         {/* TIME WINDOW PICKER */}
-        <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-card)', border: '1px solid var(--border-light)', padding: '4px', borderRadius: '8px' }}>
+        <div style={{ display: 'flex', gap: '4px', background: 'var(--bg-card)', border: '1px solid var(--border-light)', padding: '4px', borderRadius: '10px' }}>
           {(['7D', '30D', '90D', 'All'] as const).map((opt) => {
             const active = timeWindow === opt;
             return (
@@ -273,15 +273,15 @@ export default function ProgressDashboard({ books, lang = 'en', excludedBookIds 
                 key={opt}
                 onClick={() => setTimeWindow(opt)}
                 style={{
-                  padding: '6px 14px',
+                  padding: '6px 12px',
                   borderRadius: '6px',
-                  fontSize: '0.8rem',
+                  fontSize: '0.78rem',
                   fontWeight: 700,
                   border: 'none',
                   cursor: 'pointer',
                   transition: 'all 0.2s',
                   background: active ? 'var(--primary)' : 'transparent',
-                  color: active ? 'var(--bg-panel)' : 'var(--text-muted)',
+                  color: active ? '#000000' : 'var(--text-muted)',
                 }}
               >
                 {opt === 'All' ? t.allTime : opt}
@@ -291,12 +291,10 @@ export default function ProgressDashboard({ books, lang = 'en', excludedBookIds 
         </div>
       </div>
 
-
-
       {/* GRID OF 4 CARDS */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', marginBottom: '20px' }}>
         {/* CARD 1: TODAY */}
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px' }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)', letterSpacing: '0.05em' }}>
             <Clock size={14} style={{ color: 'var(--primary)' }} />
             <span>{t.today}</span>
@@ -347,23 +345,23 @@ export default function ProgressDashboard({ books, lang = 'en', excludedBookIds 
       </div>
 
       {/* HEATMAP PANEL */}
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px', marginBottom: '20px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '16px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '16px' }}>
           <div>
-            <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-main)' }}>{t.heatmap}</h3>
-            <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>{t.heatmapDesc}</p>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)' }}>{t.heatmap}</h3>
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t.heatmapDesc}</p>
           </div>
-          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary)', padding: '4px 10px', background: 'var(--bg-app)', border: '1px solid var(--border-light)', borderRadius: '6px' }}>
+          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--primary)', padding: '4px 10px', background: 'var(--bg-app)', border: '1px solid var(--border-light)', borderRadius: '6px' }}>
             {hoveredDay ? (
               `${hoveredDay.dateStr}: ${formatDuration(hoveredDay.time)} — ${hoveredDay.chars.toLocaleString()} ${t.chars}`
             ) : (
-              lang === 'es' ? 'Pasa el cursor sobre un día' : 'Hover a day for details'
+              lang === 'es' ? 'Toca o pasa el cursor sobre un día' : 'Tap or hover a day for details'
             )}
           </div>
         </div>
 
         {/* Heatmap Grid rendering */}
-        <div style={{ overflowX: 'auto', display: 'flex', gap: '2px', padding: '8px 0' }}>
+        <div style={{ overflowX: 'auto', display: 'flex', gap: '2px', padding: '8px 0', WebkitOverflowScrolling: 'touch' }}>
           {timeWindow === 'All' ? (
             // Full 53-week layout columns
             <div style={{ display: 'flex', gap: '3px' }}>
@@ -376,6 +374,7 @@ export default function ProgressDashboard({ books, lang = 'en', excludedBookIds 
                     return (
                       <div
                         key={dIdx}
+                        onClick={() => setHoveredDay({ dateStr: cell.dateKey, time: cell.time, chars: cell.chars })}
                         onMouseEnter={() => setHoveredDay({ dateStr: cell.dateKey, time: cell.time, chars: cell.chars })}
                         onMouseLeave={() => setHoveredDay(null)}
                         style={{
@@ -398,6 +397,7 @@ export default function ProgressDashboard({ books, lang = 'en', excludedBookIds 
               {heatmapCells.map((cell, idx) => (
                 <div
                   key={idx}
+                  onClick={() => setHoveredDay({ dateStr: cell.dateKey, time: cell.time, chars: cell.chars })}
                   onMouseEnter={() => setHoveredDay({ dateStr: cell.dateKey, time: cell.time, chars: cell.chars })}
                   onMouseLeave={() => setHoveredDay(null)}
                   style={{
@@ -417,7 +417,7 @@ export default function ProgressDashboard({ books, lang = 'en', excludedBookIds 
       </div>
 
       {/* TWO COLUMNS: RECENT SESSIONS & BY BOOK */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px', paddingBottom: '60px' }}>
         {/* COLUMN 1: RECENT SESSIONS */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: '12px', padding: '20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
