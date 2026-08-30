@@ -925,7 +925,7 @@ app.on('window-all-closed', () => {
 // -------------------------------------------------------------
 
 let discordRpcSocket: net.Socket | null = null;
-let discordRpcClientId = '1441571345942052935'; // Registered Yoru Reader Discord App ID
+let discordRpcClientId = '1543447663561678989'; // Registered Yoru Reader Discord App ID
 let discordRpcActivePresence: any = null;
 let isDiscordConnecting = false;
 let isDiscordReady = false;

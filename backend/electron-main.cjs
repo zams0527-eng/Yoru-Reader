@@ -1220,7 +1220,7 @@ app.on('window-all-closed', () => {
 
 // Discord Rich Presence (IPC Named Pipe)
 let discordRpcSocket = null;
-let discordRpcClientId = '1326462719280054363'; // Registered Client ID for Yoru Reader
+let discordRpcClientId = '1543447663561678989'; // Registered Client ID for Yoru Reader
 let discordRpcActivePresence = null;
 
 let isDiscordConnecting = false;
