@@ -34,28 +34,33 @@ const env = {
 execSync('.\\gradlew.bat assembleDebug', { cwd: androidDir, env, stdio: 'inherit' });
 
 // 5. Copy APK output
+const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
+const version = pkg.version || '1.1.6';
+
 const apkSource = path.join(androidDir, 'app/build/outputs/apk/debug/app-debug.apk');
-const apkDest = path.join(releasesDir, 'Yoru-Reader-v1.1.5.apk');
+const apkDestStandard = path.join(releasesDir, `Yoru-Reader-${version}.apk`);
+const apkDestV = path.join(releasesDir, `Yoru-Reader-v${version}.apk`);
 const apkDebugDest = path.join(releasesDir, 'app-debug.apk');
 
 if (fs.existsSync(apkSource)) {
-  fs.copyFileSync(apkSource, apkDest);
+  fs.copyFileSync(apkSource, apkDestStandard);
+  fs.copyFileSync(apkSource, apkDestV);
   fs.copyFileSync(apkSource, apkDebugDest);
-  const stats = fs.statSync(apkDest);
+  const stats = fs.statSync(apkDestStandard);
   const sizeMb = (stats.size / (1024 * 1024)).toFixed(2);
-  console.log(`✅ ¡APK generado con éxito! (${sizeMb} MB) -> ${apkDest}`);
+  console.log(`✅ ¡APK generado con éxito! (${sizeMb} MB) -> ${apkDestStandard}`);
 } else {
   console.error('❌ No se encontró el archivo APK generado por Gradle.');
 }
 
 // 6. Generate mobile-stable.json
 const mobileManifest = {
-  appVersion: "1.1.5",
-  versionCode: 10105,
-  hotUpdateVersion: "1.1.5",
+  appVersion: version,
+  versionCode: parseInt(version.replace(/\\./g, '')) || 10106,
+  hotUpdateVersion: version,
   hotUpdateUrl: "https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/main/mobile/mobile-dist.zip",
-  apkUrl: "https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/main/mobile/releases/Yoru-Reader-v1.1.5.apk",
-  description: "Yoru Reader Mobile v1.1.5 (Interfaz táctil optimizada, lector vertical y diccionarios offline)"
+  apkUrl: `https://github.com/zams0527-eng/Yoru-Reader/releases/download/v${version}/Yoru-Reader-${version}.apk`,
+  description: `Yoru Reader Mobile v${version} (Diccionario al toque con el dedo, deslizamiento swipe y mejoras táctiles)`
 };
 fs.writeFileSync(path.join(mobileDir, 'mobile-stable.json'), JSON.stringify(mobileManifest, null, 2), 'utf8');
 
