@@ -23,7 +23,11 @@
     "android:sync": "npm run build && npx cap sync",
     "android:open": "npx cap open android",
     "android:build": "npm run build && npx cap sync && npx cap copy android",
-    "android:release": "npm run android:build && xcopy /E /Y android\\app\\build\\outputs\\apk\\release\\* releases\\mobile\\ 2>nul || echo 'Build Android manualmente desde Android Studio'",
+    "android:release": "npm run android:build && xcopy /E /Y android\\app\\build\\outputs\\apk\\release\\* mobile\\releases\\ 2>nul || echo 'Build Android manualmente desde Android Studio'",
+    "mobile:sync": "npm run build && npx cap sync android",
+    "mobile:open": "npx cap open android",
+    "mobile:build": "npm run build && npx cap sync android",
+    "mobile:apk": "node mobile/scripts/build-android.js",
     "version": "node build/update-android-version.js"
   },
   "dependencies": {
