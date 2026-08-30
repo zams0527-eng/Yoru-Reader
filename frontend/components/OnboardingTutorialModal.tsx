@@ -87,7 +87,8 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
 
   const handleDirectInstall = async () => {
     const isEs = lang === 'es';
-    const dictUrl = isEs 
+    const localUrl = isEs ? './dictionaries/JMdict_spanish.zip' : './dictionaries/JMdict_english.zip';
+    const remoteUrl = isEs 
       ? 'https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMdict_spanish.zip'
       : 'https://github.com/yomidevs/jmdict-yomitan/releases/latest/download/JMdict_english.zip';
     const dictTitle = isEs ? 'JMdict (Spanish)' : 'JMdict (English)';
@@ -98,7 +99,10 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
     setInstallMsg(isEs ? 'Iniciando descarga de JMdict...' : 'Starting JMdict download...');
 
     try {
-      const response = await fetch(dictUrl);
+      let response = await fetch(localUrl).catch(() => null);
+      if (!response || !response.ok) {
+        response = await fetch(remoteUrl);
+      }
       if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 
       let arrayBuffer: ArrayBuffer;
