@@ -11,7 +11,7 @@ function getLargeImageKey(discordIcon?: string): string {
   if (icon === 'cute') return 'gsm_cute';
   if (icon === 'jacked') return 'gsm_jacked';
   if (icon === 'cursed') return 'gsm_cursed';
-  return 'cc65303d8e086fedc895fae709fe4ef5'; // Official App Icon hash registered in Discord Developer Portal
+  return 'icon'; // Official Art Asset name registered in Discord Developer Portal
 }
 
 function buildPresence(details: string, state: string, largeImageKey: string, startTimestamp?: number, lang: 'es' | 'en' = 'en'): any {
@@ -101,6 +101,8 @@ export function updateDiscordReading(book: any, settings: any, currentProgress?:
     } catch (e) {
       console.error('Error fetching cards mined count for Discord:', e);
     }
+  } else if (settings.discordShowStats === 'Active Reading Time') {
+    state = `${state} (${isEs ? 'Leyendo' : 'Reading'})`;
   }
 
   const largeImageKey = getLargeImageKey(settings.discordIcon);
