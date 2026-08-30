@@ -4,33 +4,29 @@ let readingStartTime: number | null = null;
 let currentBookId: string | null = null;
 let sessionStartChars = 0;
 
+const DEFAULT_ICON_URL = 'https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/main/icon.png';
+
 function getLargeImageKey(discordIcon?: string): string {
-  const icon = (discordIcon || 'Yoru').toLowerCase();
-  if (icon === 'yoru') {
-    return 'https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/master/yoru-reader-svelte/static/icons/regular-icon@192x192.png';
-  } else if (icon === 'cute') {
-    return 'gsm_cute';
-  } else if (icon === 'jacked') {
-    return 'gsm_jacked';
-  } else if (icon === 'cursed') {
-    return 'gsm_cursed';
-  }
-  return icon;
+  const icon = (discordIcon || 'yoru').toLowerCase();
+  if (icon === 'cute') return 'gsm_cute';
+  if (icon === 'jacked') return 'gsm_jacked';
+  if (icon === 'cursed') return 'gsm_cursed';
+  return DEFAULT_ICON_URL;
 }
 
-function buildPresence(details: string, state: string, largeImageKey: string, startTimestamp?: number): any {
+function buildPresence(details: string, state: string, largeImageKey: string, startTimestamp?: number, lang: 'es' | 'en' = 'en'): any {
+  const isEs = lang === 'es';
   const presence: any = {
     details,
     state,
     assets: {
       large_image: largeImageKey,
-      large_text: 'Yoru Reader',
-      large_url: 'https://github.com/zams0527-eng/Yoru-Reader'
+      large_text: 'Yoru Reader - Japanese Immersion',
+      small_image: DEFAULT_ICON_URL,
+      small_text: isEs ? 'Leyendo japonés' : 'Reading Japanese'
     },
-    state_url: 'https://github.com/zams0527-eng/Yoru-Reader',
-    details_url: 'https://github.com/zams0527-eng/Yoru-Reader',
     buttons: [
-      { label: 'GitHub Repository', url: 'https://github.com/zams0527-eng/Yoru-Reader' }
+      { label: isEs ? 'Ver Yoru Reader' : 'Get Yoru Reader', url: 'https://github.com/zams0527-eng/Yoru-Reader' }
     ]
   };
 
@@ -50,6 +46,9 @@ export function updateDiscordReading(book: any, settings: any, currentProgress?:
     return;
   }
 
+  const lang = settings.appLanguage || 'en';
+  const isEs = lang === 'es';
+
   // Check blacklist
   if (settings.discordBlacklist && book?.title) {
     const blacklist = settings.discordBlacklist.split('\n').map((line: string) => line.trim().toLowerCase());
@@ -67,12 +66,16 @@ export function updateDiscordReading(book: any, settings: any, currentProgress?:
       : (book.progress?.charactersRead || 0);
   }
 
-  const details = `Leyendo: ${book.title}`;
+  if (!readingStartTime) {
+    readingStartTime = Date.now();
+  }
+
+  const details = isEs ? `Leyendo: ${book.title}` : `Reading: ${book.title}`;
   const currChapterIdx = currentProgress && currentProgress.currSection !== undefined
     ? currentProgress.currSection
     : (book.progress?.currentChapter ?? 0);
   const chapter = book.chapters?.[currChapterIdx];
-  let state = chapter ? chapter.title : 'Novela ligera';
+  let state = chapter ? chapter.title : (isEs ? 'Novela ligera' : 'Light Novel');
 
   if (settings.discordShowStats === 'Progress') {
     const percent = currentProgress && currentProgress.totalChars > 0
@@ -86,29 +89,30 @@ export function updateDiscordReading(book: any, settings: any, currentProgress?:
     const sessionChars = Math.max(0, liveCharsRead - sessionStartChars);
     const elapsedHours = readingStartTime ? (Date.now() - readingStartTime) / (1000 * 60 * 60) : 0;
     const charsPerHour = elapsedHours > 0.005 ? Math.round(sessionChars / elapsedHours) : 0;
-    state = `${state} (${charsPerHour} car/h)`;
+    state = `${state} (${charsPerHour} ${isEs ? 'car/h' : 'chars/h'})`;
   } else if (settings.discordShowStats === 'Total Characters') {
     const liveCharsRead = currentProgress && currentProgress.currChars !== undefined
       ? currentProgress.currChars
       : (book.progress?.charactersRead || 0);
-    state = `${state} (${liveCharsRead} car.)`;
+    state = `${state} (${liveCharsRead} ${isEs ? 'car.' : 'chars'})`;
   } else if (settings.discordShowStats === 'Cards Mined') {
     try {
       const srsData = db.getSrsData();
       const cardsMined = Object.keys(srsData).filter(key => !key.startsWith('_')).length;
-      state = `${state} (${cardsMined} tarj.)`;
+      state = `${state} (${cardsMined} ${isEs ? 'tarj.' : 'cards'})`;
     } catch (e) {
       console.error('Error fetching cards mined count for Discord:', e);
     }
   }
 
   const largeImageKey = getLargeImageKey(settings.discordIcon);
-  const showTime = settings.discordShowStats === 'Time' || settings.discordShowStats === 'Active Reading Time';
+  const showTime = settings.discordShowStats !== 'None';
   const presence = buildPresence(
     details,
     state,
     largeImageKey,
-    showTime && readingStartTime ? readingStartTime : undefined
+    readingStartTime || Date.now(),
+    lang
   );
 
   window.electronAPI.updateDiscordPresence(presence);
@@ -121,12 +125,15 @@ export function updateDiscordReview(settings: any) {
     return;
   }
 
+  const lang = settings.appLanguage || 'en';
+  const isEs = lang === 'es';
   const largeImageKey = getLargeImageKey(settings.discordIcon);
   const presence = buildPresence(
-    'Repasando tarjetas',
-    'Sesión de SRS',
+    isEs ? 'Repasando tarjetas' : 'Reviewing Flashcards',
+    isEs ? 'Sesión de SRS (FSRS-6)' : 'SRS Review Session (FSRS-6)',
     largeImageKey,
-    Date.now()
+    Date.now(),
+    lang
   );
 
   window.electronAPI.updateDiscordPresence(presence);
@@ -146,11 +153,15 @@ export function updateDiscordLibrary(settings: any) {
     return;
   }
 
+  const lang = settings.appLanguage || 'en';
+  const isEs = lang === 'es';
   const largeImageKey = getLargeImageKey(settings.discordIcon);
   const presence = buildPresence(
-    'En la biblioteca',
-    'Navegando por la biblioteca',
-    largeImageKey
+    isEs ? 'En la biblioteca' : 'In Library',
+    isEs ? 'Explorando novelas' : 'Browsing Japanese Books',
+    largeImageKey,
+    undefined,
+    lang
   );
 
   window.electronAPI.updateDiscordPresence(presence);
