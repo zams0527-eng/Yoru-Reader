@@ -523,6 +523,69 @@ function ReaderEngineComponent({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [vertical, flipPage]);
 
+  // Hardware Volume Keys Navigation (Manatan Feature)
+  useEffect(() => {
+    if (readerSettings.volumeKeysNavigation === false) return;
+    const handleVolumeKey = (e: KeyboardEvent) => {
+      const isVolUp = e.key === 'VolumeUp' || e.key === 'AudioVolumeUp' || e.code === 'VolumeUp' || (e as any).keyCode === 175 || (e as any).keyCode === 24;
+      const isVolDown = e.key === 'VolumeDown' || e.key === 'AudioVolumeDown' || e.code === 'VolumeDown' || (e as any).keyCode === 174 || (e as any).keyCode === 25;
+
+      if (isVolUp || isVolDown) {
+        e.preventDefault();
+        const isForward = readerSettings.invertVolumeKeys ? isVolUp : isVolDown;
+        flipPage(isForward ? 1 : -1);
+      }
+    };
+
+    window.addEventListener('keydown', handleVolumeKey, { capture: true });
+    return () => window.removeEventListener('keydown', handleVolumeKey, { capture: true });
+  }, [readerSettings.volumeKeysNavigation, readerSettings.invertVolumeKeys, flipPage]);
+
+  // Continuous Auto-Scroll Engine (Manatan Feature)
+  useEffect(() => {
+    if (!readerSettings.autoScrollEnabled) return;
+    let isPaused = false;
+    let animationFrameId: number;
+    const container = containerRef.current;
+    if (!container) return;
+
+    let lastTime = performance.now();
+    const scrollSpeed = (readerSettings.autoScrollSpeed || 1.0) * 45; // px per second
+
+    const step = (time: number) => {
+      const dt = Math.min((time - lastTime) / 1000, 0.1);
+      lastTime = time;
+
+      if (!isPaused) {
+        if (vertical) {
+          container.scrollLeft -= scrollSpeed * dt;
+        } else {
+          container.scrollTop += scrollSpeed * dt;
+        }
+      }
+      animationFrameId = requestAnimationFrame(step);
+    };
+
+    animationFrameId = requestAnimationFrame(step);
+
+    const onUserTouch = () => {
+      isPaused = true;
+      clearTimeout((window as any)._yoruAutoScrollResume);
+      (window as any)._yoruAutoScrollResume = setTimeout(() => {
+        isPaused = false;
+      }, 2000);
+    };
+
+    window.addEventListener('touchstart', onUserTouch, { passive: true });
+    window.addEventListener('mousedown', onUserTouch, { passive: true });
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('touchstart', onUserTouch);
+      window.removeEventListener('mousedown', onUserTouch);
+    };
+  }, [readerSettings.autoScrollEnabled, readerSettings.autoScrollSpeed, vertical]);
+
   // Mobile Touch Swipe & Tap Zones
   useEffect(() => {
     const container = containerRef.current;
@@ -592,26 +655,26 @@ function ReaderEngineComponent({
         const screenWidth = window.innerWidth;
         const tapX = touchEndX;
 
-        // Left 25% of screen
-        if (tapX < screenWidth * 0.25) {
-          if (vertical) {
-            flipPage(1); // Next page in vertical RL
+        const tapMode = readerSettings.tapZoneMode || 'edge';
+        const invert = readerSettings.invertTapZones || false;
+
+        if (tapMode === 'kindle') {
+          // Kindle Style: 20% left is Prev, 80% right is Next
+          if (tapX < screenWidth * 0.20) {
+            flipPage(invert ? 1 : -1);
           } else {
-            flipPage(-1); // Prev page in horizontal
+            flipPage(invert ? -1 : 1);
           }
-        } 
-        // Right 25% of screen
-        else if (tapX > screenWidth * 0.75) {
-          if (vertical) {
-            flipPage(-1); // Prev page in vertical RL
+        } else {
+          // Edge Style: 25% Left, 50% Center, 25% Right
+          if (tapX < screenWidth * 0.25) {
+            const dir = vertical ? 1 : -1;
+            flipPage(invert ? -dir : dir);
+          } else if (tapX > screenWidth * 0.75) {
+            const dir = vertical ? -1 : 1;
+            flipPage(invert ? -dir : dir);
           } else {
-            flipPage(1); // Next page in horizontal
-          }
-        }
-        // Center 50% of screen: Toggle Navigation / Toolbar
-        else {
-          if (onClick) {
-            onClick(e as any);
+            if (onClick) onClick(e as any);
           }
         }
       }
@@ -690,13 +753,30 @@ function ReaderEngineComponent({
     if (onClick) onClick(e);
   }, [onClick]);
 
+  const maxWidthStyle = readerSettings.readerMaxWidth && readerSettings.readerMaxWidth !== 'none'
+    ? { maxWidth: readerSettings.readerMaxWidth, margin: '0 auto' }
+    : {};
+
   return (
     <div
       ref={containerRef}
-      style={containerStyle}
+      style={{ ...containerStyle, ...maxWidthStyle }}
       onClick={handleContentClick}
       className={`reader-engine-container book-content ${vertical ? 'book-content--writing-vertical-rl' : 'book-content--writing-horizontal-tb'}`}
     >
+      {/* In-App Reader Brightness Overlay (Manatan Feature) */}
+      {typeof readerSettings.readerBrightness === 'number' && readerSettings.readerBrightness < 100 && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: `rgba(0, 0, 0, ${(100 - readerSettings.readerBrightness) / 100})`,
+            pointerEvents: 'none',
+            zIndex: 99999,
+            transition: 'background-color 0.15s ease'
+          }}
+        />
+      )}
       <div
         ref={contentRef}
         id={`ttu-chapter-${currSection}`}

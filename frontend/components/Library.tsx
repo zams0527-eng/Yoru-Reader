@@ -96,6 +96,8 @@ const Library = React.memo(function Library({
   const [currentHotVersion, setCurrentHotVersion] = useState(stableManifest.hotUpdateVersion || '1.1.4');
   const [latestHotVersion, setLatestHotVersion] = useState('Unknown');
   const [showUpdateBanner, setShowUpdateBanner] = useState(false);
+  const [showAppUpdateModal, setShowAppUpdateModal] = useState(false);
+  const [showDownloadCompleteNotif, setShowDownloadCompleteNotif] = useState(false);
   const [remoteManifest, setRemoteManifest] = useState<any>(null);
   const [bindingKeyAction, setBindingKeyAction] = useState(null);
   const [updateProgress, setUpdateProgress] = useState(0);
@@ -282,6 +284,12 @@ const Library = React.memo(function Library({
       );
     }
     setCheckingUpdates(false);
+  };
+
+  const handleTriggerApkInstall = async () => {
+    setShowAppUpdateModal(false);
+    setShowDownloadCompleteNotif(true);
+    await handleUpdateNow();
   };
 
   const handleUpdateNow = async () => {

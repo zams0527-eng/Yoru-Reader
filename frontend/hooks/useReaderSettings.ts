@@ -17,6 +17,15 @@ export interface ReaderSettingsState {
   theme: 'light' | 'sepia' | 'dark';
   showProgressLine: boolean;
   direction: 'auto' | 'vertical' | 'horizontal';
+  autoScrollEnabled: boolean;
+  autoScrollSpeed: number;
+  tapZoneMode: 'edge' | 'kindle';
+  invertTapZones: boolean;
+  volumeKeysNavigation: boolean;
+  invertVolumeKeys: boolean;
+  readerBrightness: number;
+  readerMaxWidth: string;
+  pagePadding: 'compact' | 'normal' | 'spacious';
 }
 
 const LS_KEYS: Record<keyof ReaderSettingsState, string> = {
@@ -32,6 +41,15 @@ const LS_KEYS: Record<keyof ReaderSettingsState, string> = {
   theme: 'reader:theme',
   showProgressLine: 'reader:showProgressLine',
   direction: 'reader:direction',
+  autoScrollEnabled: 'reader:autoScrollEnabled',
+  autoScrollSpeed: 'reader:autoScrollSpeed',
+  tapZoneMode: 'reader:tapZoneMode',
+  invertTapZones: 'reader:invertTapZones',
+  volumeKeysNavigation: 'reader:volumeKeysNavigation',
+  invertVolumeKeys: 'reader:invertVolumeKeys',
+  readerBrightness: 'reader:readerBrightness',
+  readerMaxWidth: 'reader:readerMaxWidth',
+  pagePadding: 'reader:pagePadding',
 };
 
 function getNumber(key: string, fallback: number): number {
@@ -71,6 +89,15 @@ function loadSettings(): ReaderSettingsState {
     theme: getString(LS_KEYS.theme, 'dark') as 'light' | 'sepia' | 'dark',
     showProgressLine: getBool(LS_KEYS.showProgressLine, true),
     direction: getString(LS_KEYS.direction, 'auto') as 'auto' | 'vertical' | 'horizontal',
+    autoScrollEnabled: getBool(LS_KEYS.autoScrollEnabled, false),
+    autoScrollSpeed: getNumber(LS_KEYS.autoScrollSpeed, 1.0),
+    tapZoneMode: (getString(LS_KEYS.tapZoneMode, 'edge') as 'edge' | 'kindle'),
+    invertTapZones: getBool(LS_KEYS.invertTapZones, false),
+    volumeKeysNavigation: getBool(LS_KEYS.volumeKeysNavigation, true),
+    invertVolumeKeys: getBool(LS_KEYS.invertVolumeKeys, false),
+    readerBrightness: getNumber(LS_KEYS.readerBrightness, 100),
+    readerMaxWidth: getString(LS_KEYS.readerMaxWidth, 'none'),
+    pagePadding: (getString(LS_KEYS.pagePadding, 'normal') as 'compact' | 'normal' | 'spacious'),
   };
 }
 
