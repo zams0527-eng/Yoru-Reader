@@ -378,7 +378,11 @@ const Library = React.memo(function Library({
   const [previewBook, setPreviewBook] = useState(null);
   
   // Mobile responsive layout states
-  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const checkIsMobileDevice = () => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth <= 768 || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+  };
+  const [isMobile, setIsMobile] = useState(checkIsMobileDevice());
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [mobileSettingsSectionOpen, setMobileSettingsSectionOpen] = useState(false);
   const touchStartX = useRef(0);
@@ -7044,6 +7048,32 @@ const Library = React.memo(function Library({
       onTouchEnd={handleTouchEnd}
     >
       {/* 1. Sticky Header — Yoru Cafe style */}
+      {isMobile ? (
+        <header className="mobile-top-app-bar">
+          <button 
+            className="mobile-icon-btn" 
+            onClick={() => {
+              if (googleUser) {
+                showToast(lang === 'es' ? 'Sincronizado con Google Drive' : 'Synced with Google Drive', 'info');
+              } else {
+                handleGoogleLogin();
+              }
+            }} 
+            title="Google Drive"
+          >
+            <Cloud size={22} color={googleUser ? '#4ade80' : '#FFE000'} />
+          </button>
+          <h1 className="mobile-top-title">{lang === 'es' ? 'Novelas' : 'Novel'}</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <button className="mobile-icon-btn" onClick={() => fileInputRef.current?.click()} title="Import">
+              <Plus size={24} />
+            </button>
+            <button className="mobile-icon-btn" onClick={() => setIsDisplaySettingsOpen(true)} title="Options">
+              <MoreVertical size={20} />
+            </button>
+          </div>
+        </header>
+      ) : (
       <header className="library-header">
         {/* Left: brand name in neon yellow like Yoru Cafe + mobile menu button */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -7420,6 +7450,7 @@ const Library = React.memo(function Library({
           </div>
         </div>
       </header>
+      )}
 
 
 

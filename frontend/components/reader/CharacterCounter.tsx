@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 
 interface ReaderColors {
   textMain: string;
@@ -16,39 +16,31 @@ interface CharacterCounterProps {
   colors: ReaderColors;
 }
 
-/**
- * CharacterCounter — Floating widget showing reading progress.
- * Shows current/total characters and percentage.
- * Toggles visibility on click.
- */
 export default function CharacterCounter({ currChars, totalChars, colors }: CharacterCounterProps) {
-  const [visible, setVisible] = useState(true);
-
-  const percentage = totalChars > 0 ? ((currChars / totalChars) * 100).toFixed(2) : '0.00';
+  const percentage = totalChars > 0 ? ((currChars / totalChars) * 100).toFixed(1) : '0.0';
 
   return (
-    <span
-      onClick={() => setVisible(v => !v)}
+    <div
       style={{
         position: 'fixed',
-        right: '12px',
-        bottom: '12px',
+        left: 0,
+        right: 0,
+        bottom: 0,
         zIndex: 50,
-        fontSize: '0.72rem',
-        cursor: 'pointer',
-        color: colors.textMuted,
-        background: 'rgba(0,0,0,0.3)',
-        padding: visible ? '4px 10px' : '4px 8px',
-        borderRadius: '12px',
-        backdropFilter: 'blur(8px)',
-        transition: 'opacity 0.2s',
-        userSelect: 'none',
+        height: '3px',
+        background: 'rgba(255, 255, 255, 0.1)',
+        pointerEvents: 'none',
       }}
     >
-      {visible
-        ? `${currChars.toLocaleString()} / ${totalChars.toLocaleString()} (${percentage}%)`
-        : <span style={{ opacity: 0.3 }}>📖</span>
-      }
-    </span>
+      <div
+        style={{
+          height: '100%',
+          width: `${Math.max(1, parseFloat(percentage))}%`,
+          background: 'linear-gradient(90deg, #FFE000, #FFA500)',
+          boxShadow: '0 0 8px rgba(255, 224, 0, 0.6)',
+          transition: 'width 0.3s ease',
+        }}
+      />
+    </div>
   );
 }

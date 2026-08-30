@@ -1,10 +1,10 @@
-### 🌸 Yoru Reader Mobile v1.1.9 — Interfaz Móvil Reconstruida desde Cero
+### 🌸 Yoru Reader Mobile v1.2.0 — Interfaz Móvil Reconstruida desde Cero
 
 ¡Rediseño total de la biblioteca móvil, el lector y la barra de navegación!
 
 ---
 
-### 📱 Novedades de la Versión 1.1.9
+### 📱 Novedades de la Versión 1.2.0
 
 * 📚 **Biblioteca Móvil Totalmente Rediseñada**:
   * Eliminada por completo la barra superior de escritorio.
@@ -25,6 +25,6 @@
 
 ### 📥 Archivos Disponibles en Assets
 
-* 📱 **APK Oficial de Android**: `Yoru-Reader-1.1.9.apk`
+* 📱 **APK Oficial de Android**: `Yoru-Reader-1.2.0.apk`
 * ⚡ **Actualización Rápida Móvil (OTA)**: `mobile-dist.zip`
 * 🖥️ **Actualización Rápida Escritorio (OTA)**: `dist.zip`
