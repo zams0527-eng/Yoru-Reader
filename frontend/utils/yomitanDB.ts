@@ -328,7 +328,7 @@ export async function importYomitanZip(file: File, onProgress: (msg: string, per
   try {
     clearYomitanCache();
     const isEs = lang === 'es';
-    onProgress(isEs ? 'Leyendo archivo .zip...' : 'Reading .zip archive...', 0);
+    onProgress(isEs ? 'Leyendo archivo .zip...' : 'Reading .zip archive...', 5);
     zip = await JSZip.loadAsync(file);
     
     let indexData: any = null;
@@ -344,7 +344,7 @@ export async function importYomitanZip(file: File, onProgress: (msg: string, per
     if (dictTitle.startsWith('JMdict') && !dictTitle.includes('Spanish') && !dictTitle.includes('English') && !dictTitle.includes('Frecuencia')) {
       dictTitle = dictTitle.replace('JMdict', 'JMdict (English)');
     }
-    onProgress(isEs ? `Instalando ${dictTitle}...` : `Installing ${dictTitle}...`, 5);
+    onProgress(isEs ? `Instalando ${dictTitle}...` : `Installing ${dictTitle}...`, 15);
     
     const termFiles = Object.keys(zip.files).filter(name => name.startsWith('term_bank_') && name.endsWith('.json'));
     const metaFiles = Object.keys(zip.files).filter(name => name.startsWith('term_meta_bank_') && name.endsWith('.json'));
@@ -374,152 +374,129 @@ export async function importYomitanZip(file: File, onProgress: (msg: string, per
 
     let totalProcessed = 0;
 
-    // --- Ultra-Fast Parallel Extraction & Bulk Insertion for Terms ---
+    // --- 1-Shot All-Parallel Extraction & Bulk Insertion for Terms ---
     if (termFiles.length > 0) {
-      const totalFiles = termFiles.length;
-      onProgress(isEs ? 'Extrayendo términos en memoria...' : 'Extracting terms in parallel...', 15);
+      onProgress(isEs ? 'Procesando términos en memoria...' : 'Processing dictionary terms in memory...', 35);
       
-      // Extract in parallel groups of 10 files
-      const CHUNK_FILES = 10;
-      for (let fIdx = 0; fIdx < totalFiles; fIdx += CHUNK_FILES) {
-        const sliceFiles = termFiles.slice(fIdx, fIdx + CHUNK_FILES);
-        const parsedBanks = await Promise.all(
-          sliceFiles.map(async (filename) => {
-            const zf = zip!.file(filename);
-            if (!zf) return [];
-            const text = await zf.async('string');
-            return JSON.parse(text);
-          })
-        );
+      const parsedBanks = await Promise.all(
+        termFiles.map(async (filename) => {
+          const zf = zip!.file(filename);
+          if (!zf) return [];
+          const text = await zf.async('string');
+          return JSON.parse(text);
+        })
+      );
 
-        const currentPercent = 15 + Math.round(((fIdx + sliceFiles.length) / totalFiles) * 45);
-        onProgress(
-          isEs 
-            ? `Procesando términos ${Math.min(fIdx + sliceFiles.length, totalFiles)}/${totalFiles}...` 
-            : `Processing terms ${Math.min(fIdx + sliceFiles.length, totalFiles)}/${totalFiles}...`, 
-          currentPercent
-        );
+      onProgress(isEs ? 'Guardando en la base de datos...' : 'Writing terms to database...', 65);
 
-        await new Promise<void>((resolve, reject) => {
-          const tx = db.transaction(STORE_TERMS, 'readwrite');
-          const store = tx.objectStore(STORE_TERMS);
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(STORE_TERMS, 'readwrite');
+        const store = tx.objectStore(STORE_TERMS);
 
-          for (let b = 0; b < parsedBanks.length; b++) {
-            const bank = parsedBanks[b];
-            for (let k = 0; k < bank.length; k++) {
-              const termData = bank[k];
-              if (Array.isArray(termData)) {
-                store.add({
-                  dictionary: dictTitle,
-                  term: termData[0],
-                  reading: termData[1] || '',
-                  definitions: typeof termData[5] === 'string' ? [termData[5]] : termData[5] || [],
-                  tags: termData[2] || '',
-                  score: termData[4] || 0
-                });
-                totalProcessed++;
-              }
+        for (let b = 0; b < parsedBanks.length; b++) {
+          const bank = parsedBanks[b];
+          for (let k = 0; k < bank.length; k++) {
+            const termData = bank[k];
+            if (Array.isArray(termData)) {
+              store.add({
+                dictionary: dictTitle,
+                term: termData[0],
+                reading: termData[1] || '',
+                definitions: typeof termData[5] === 'string' ? [termData[5]] : termData[5] || [],
+                tags: termData[2] || '',
+                score: termData[4] || 0
+              });
+              totalProcessed++;
             }
           }
+        }
 
-          tx.oncomplete = () => resolve();
-          tx.onerror = reject;
-        });
-      }
+        tx.oncomplete = () => resolve();
+        tx.onerror = reject;
+      });
     }
 
-    // --- Ultra-Fast Parallel Extraction & Bulk Insertion for Frequencies/Pitch ---
+    // --- 1-Shot All-Parallel Extraction & Bulk Insertion for Frequencies/Pitch ---
     if (metaFiles.length > 0) {
-      const totalMetaFiles = metaFiles.length;
-      const CHUNK_FILES = 10;
-      for (let fIdx = 0; fIdx < totalMetaFiles; fIdx += CHUNK_FILES) {
-        const sliceFiles = metaFiles.slice(fIdx, fIdx + CHUNK_FILES);
-        const parsedMetaBanks = await Promise.all(
-          sliceFiles.map(async (filename) => {
-            const zf = zip!.file(filename);
-            if (!zf) return [];
-            const text = await zf.async('string');
-            return JSON.parse(text);
-          })
-        );
+      onProgress(isEs ? 'Procesando frecuencias...' : 'Processing frequencies and pitch...', 80);
+      
+      const parsedMetaBanks = await Promise.all(
+        metaFiles.map(async (filename) => {
+          const zf = zip!.file(filename);
+          if (!zf) return [];
+          const text = await zf.async('string');
+          return JSON.parse(text);
+        })
+      );
 
-        const currentPercent = 65 + Math.round(((fIdx + sliceFiles.length) / totalMetaFiles) * 30);
-        onProgress(
-          isEs 
-            ? `Procesando frecuencias ${Math.min(fIdx + sliceFiles.length, totalMetaFiles)}/${totalMetaFiles}...` 
-            : `Processing frequencies ${Math.min(fIdx + sliceFiles.length, totalMetaFiles)}/${totalMetaFiles}...`, 
-          currentPercent
-        );
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction([STORE_FREQS, STORE_PITCHES], 'readwrite');
+        const storeFreq = tx.objectStore(STORE_FREQS);
+        const storePitch = tx.objectStore(STORE_PITCHES);
 
-        await new Promise<void>((resolve, reject) => {
-          const tx = db.transaction([STORE_FREQS, STORE_PITCHES], 'readwrite');
-          const storeFreq = tx.objectStore(STORE_FREQS);
-          const storePitch = tx.objectStore(STORE_PITCHES);
+        for (let b = 0; b < parsedMetaBanks.length; b++) {
+          const metaArray = parsedMetaBanks[b];
+          for (let k = 0; k < metaArray.length; k++) {
+            const metaData = metaArray[k];
+            if (Array.isArray(metaData)) {
+              const term = metaData[0];
+              const type = metaData[1];
 
-          for (let b = 0; b < parsedMetaBanks.length; b++) {
-            const metaArray = parsedMetaBanks[b];
-            for (let k = 0; k < metaArray.length; k++) {
-              const metaData = metaArray[k];
-              if (Array.isArray(metaData)) {
-                const term = metaData[0];
-                const type = metaData[1];
-
-                if (type === 'freq') {
-                  let value = 0;
-                  let displayValue = '';
-                  let freqVal = null;
-                  if (metaData.length === 3) {
-                    freqVal = metaData[2];
-                  } else if (metaData.length === 4) {
-                    freqVal = metaData[3];
+              if (type === 'freq') {
+                let value = 0;
+                let displayValue = '';
+                let freqVal = null;
+                if (metaData.length === 3) {
+                  freqVal = metaData[2];
+                } else if (metaData.length === 4) {
+                  freqVal = metaData[3];
+                }
+                if (typeof freqVal === 'number') {
+                  value = freqVal;
+                  displayValue = '#' + freqVal;
+                } else if (typeof freqVal === 'string') {
+                  const parsed = parseInt(freqVal, 10);
+                  value = isNaN(parsed) ? 0 : parsed;
+                  displayValue = freqVal;
+                } else if (freqVal && typeof freqVal === 'object') {
+                  if (typeof freqVal.value === 'number') {
+                    value = freqVal.value;
+                    displayValue = '#' + value;
+                  } else if (typeof freqVal.frequency === 'number') {
+                    value = freqVal.frequency;
+                    displayValue = '#' + value;
                   }
-                  if (typeof freqVal === 'number') {
-                    value = freqVal;
-                    displayValue = '#' + freqVal;
-                  } else if (typeof freqVal === 'string') {
-                    const parsed = parseInt(freqVal, 10);
-                    value = isNaN(parsed) ? 0 : parsed;
-                    displayValue = freqVal;
-                  } else if (freqVal && typeof freqVal === 'object') {
-                    if (typeof freqVal.value === 'number') {
-                      value = freqVal.value;
-                      displayValue = '#' + value;
-                    } else if (typeof freqVal.frequency === 'number') {
-                      value = freqVal.frequency;
-                      displayValue = '#' + value;
-                    }
-                    if (freqVal.displayValue) {
-                      displayValue = freqVal.displayValue;
-                    }
+                  if (freqVal.displayValue) {
+                    displayValue = freqVal.displayValue;
                   }
+                }
 
-                  storeFreq.add({
+                storeFreq.add({
+                  dictionary: dictTitle,
+                  term: term,
+                  value: value,
+                  displayValue: displayValue
+                });
+                totalProcessed++;
+              } else if (type === 'pitch') {
+                const pitchData = metaData[2];
+                if (pitchData && typeof pitchData === 'object') {
+                  storePitch.add({
                     dictionary: dictTitle,
                     term: term,
-                    value: value,
-                    displayValue: displayValue
+                    reading: pitchData.reading || '',
+                    pitches: pitchData.pitches || []
                   });
                   totalProcessed++;
-                } else if (type === 'pitch') {
-                  const pitchData = metaData[2];
-                  if (pitchData && typeof pitchData === 'object') {
-                    storePitch.add({
-                      dictionary: dictTitle,
-                      term: term,
-                      reading: pitchData.reading || '',
-                      pitches: pitchData.pitches || []
-                    });
-                    totalProcessed++;
-                  }
                 }
               }
             }
           }
+        }
 
-          tx.oncomplete = () => resolve();
-          tx.onerror = reject;
-        });
-      }
+        tx.oncomplete = () => resolve();
+        tx.onerror = reject;
+      });
     }
     
     onProgress(isEs ? '¡Instalación completada!' : 'Installation completed!', 100);
