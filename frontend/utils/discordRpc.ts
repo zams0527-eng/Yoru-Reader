@@ -11,7 +11,7 @@ function getLargeImageKey(discordIcon?: string): string {
   if (icon === 'cute') return 'gsm_cute';
   if (icon === 'jacked') return 'gsm_jacked';
   if (icon === 'cursed') return 'gsm_cursed';
-  return 'https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/main/icon.png';
+  return 'cc65303d8e086fedc895fae709fe4ef5'; // Official App Icon hash registered in Discord Developer Portal
 }
 
 function buildPresence(details: string, state: string, largeImageKey: string, startTimestamp?: number, lang: 'es' | 'en' = 'en'): any {
