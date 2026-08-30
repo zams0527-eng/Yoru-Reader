@@ -70,10 +70,10 @@ const DEFAULT_SETTINGS: Settings = {
   audioGender: 'male',
   audioVoiceOption: 'masaru',
   readingOrientation: 'horizontal',
-  discordEnabled: false,
+  discordEnabled: true,
   discordInactivityTimer: 300,
   discordIcon: 'Yoru',
-  discordShowStats: 'None',
+  discordShowStats: 'Cards Mined',
   discordBlacklist: ''
 };
 
