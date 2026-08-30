@@ -323,12 +323,13 @@ export async function deleteDictionary(title: string): Promise<void> {
 /**
  * Importa un diccionario Yomitan en formato ZIP liberando memoria de forma proactiva.
  */
-export async function importYomitanZip(file: File, onProgress: (msg: string, percent: number) => void): Promise<any> {
+export async function importYomitanZip(file: File, onProgress: (msg: string, percent: number) => void, lang: 'es' | 'en' = 'es'): Promise<any> {
   let zip: JSZip | null = null;
   try {
     // Invalidar cachés: un nuevo diccionario cambia los resultados de búsqueda
     clearYomitanCache();
-    onProgress('Leyendo archivo .zip...', 0);
+        const isEs = lang === 'es';
+    onProgress(isEs ? 'Leyendo archivo .zip...' : 'Reading .zip archive...', 0);
     zip = await JSZip.loadAsync(file);
     
     let indexData: any = null;
@@ -344,7 +345,7 @@ export async function importYomitanZip(file: File, onProgress: (msg: string, per
     if (dictTitle.startsWith('JMdict') && !dictTitle.includes('Spanish') && !dictTitle.includes('English') && !dictTitle.includes('Frecuencia')) {
       dictTitle = dictTitle.replace('JMdict', 'JMdict (English)');
     }
-    onProgress(`Instalando ${dictTitle}...`, 10);
+    onProgress(isEs ? `Instalando ${dictTitle}...` : `Installing ${dictTitle}...`, 10);
     
     const termFiles = Object.keys(zip.files).filter(name => name.startsWith('term_bank_') && name.endsWith('.json'));
     const metaFiles = Object.keys(zip.files).filter(name => name.startsWith('term_meta_bank_') && name.endsWith('.json'));

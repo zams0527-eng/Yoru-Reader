@@ -135,7 +135,7 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
       await importYomitanZip(file, (msg, prog) => {
         setInstallMsg(msg);
         setInstallProgress(50 + Math.round(prog * 0.5));
-      });
+      }, lang);
 
       try {
         const dbInst = await getDB();
@@ -673,7 +673,7 @@ export const OnboardingTutorialModal: React.FC<OnboardingTutorialModalProps> = (
                     padding: 0,
                     transition: 'all 0.2s ease'
                   }}
-                  title={`Paso ${idx + 1}`}
+                  title={lang === 'es' ? `Paso ${idx + 1}` : `Step ${idx + 1}`}
                 />
               );
             })}
