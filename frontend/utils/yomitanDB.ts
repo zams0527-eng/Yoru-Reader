@@ -374,9 +374,9 @@ export async function importYomitanZip(file: File, onProgress: (msg: string, per
 
     let totalProcessed = 0;
 
-    // --- 1-Shot All-Parallel Extraction & Bulk Insertion for Terms ---
+    // --- 1. Parallel Extraction of All Term Banks ---
     if (termFiles.length > 0) {
-      onProgress(isEs ? 'Procesando términos en memoria...' : 'Processing dictionary terms in memory...', 35);
+      onProgress(isEs ? 'Extrayendo términos en memoria...' : 'Extracting terms in parallel...', 25);
       
       const parsedBanks = await Promise.all(
         termFiles.map(async (filename) => {
@@ -387,38 +387,60 @@ export async function importYomitanZip(file: File, onProgress: (msg: string, per
         })
       );
 
-      onProgress(isEs ? 'Guardando en la base de datos...' : 'Writing terms to database...', 65);
-
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(STORE_TERMS, 'readwrite');
-        const store = tx.objectStore(STORE_TERMS);
-
-        for (let b = 0; b < parsedBanks.length; b++) {
-          const bank = parsedBanks[b];
-          for (let k = 0; k < bank.length; k++) {
-            const termData = bank[k];
-            if (Array.isArray(termData)) {
-              store.add({
-                dictionary: dictTitle,
-                term: termData[0],
-                reading: termData[1] || '',
-                definitions: typeof termData[5] === 'string' ? [termData[5]] : termData[5] || [],
-                tags: termData[2] || '',
-                score: termData[4] || 0
-              });
-              totalProcessed++;
-            }
+      // Flatten terms into one optimized array
+      const allTerms: any[] = [];
+      for (let b = 0; b < parsedBanks.length; b++) {
+        const bank = parsedBanks[b];
+        for (let k = 0; k < bank.length; k++) {
+          const termData = bank[k];
+          if (Array.isArray(termData)) {
+            allTerms.push({
+              dictionary: dictTitle,
+              term: termData[0],
+              reading: termData[1] || '',
+              definitions: typeof termData[5] === 'string' ? [termData[5]] : termData[5] || [],
+              tags: termData[2] || '',
+              score: termData[4] || 0
+            });
           }
         }
+      }
 
-        tx.oncomplete = () => resolve();
-        tx.onerror = reject;
-      });
+      // Write in smooth 15,000-term chunks with real-time UI progression
+      const WRITE_CHUNK = 15000;
+      const totalTermsCount = allTerms.length;
+      for (let i = 0; i < totalTermsCount; i += WRITE_CHUNK) {
+        const chunk = allTerms.slice(i, i + WRITE_CHUNK);
+        const writtenSoFar = Math.min(i + WRITE_CHUNK, totalTermsCount);
+        const writePct = Math.round((writtenSoFar / totalTermsCount) * 100);
+        const overallPct = 30 + Math.round((writtenSoFar / totalTermsCount) * 45);
+
+        onProgress(
+          isEs 
+            ? `Guardando términos: ${writePct}%...` 
+            : `Writing terms: ${writePct}%...`, 
+          overallPct
+        );
+
+        await new Promise<void>((resolve, reject) => {
+          const tx = db.transaction(STORE_TERMS, 'readwrite');
+          const store = tx.objectStore(STORE_TERMS);
+          for (let c = 0; c < chunk.length; c++) {
+            store.add(chunk[c]);
+            totalProcessed++;
+          }
+          tx.oncomplete = () => resolve();
+          tx.onerror = reject;
+        });
+
+        // Yield to browser event loop so animation & progress render smoothly
+        await new Promise(r => setTimeout(r, 0));
+      }
     }
 
-    // --- 1-Shot All-Parallel Extraction & Bulk Insertion for Frequencies/Pitch ---
+    // --- 2. Parallel Extraction & Fast Chunked Write for Frequencies/Pitch ---
     if (metaFiles.length > 0) {
-      onProgress(isEs ? 'Procesando frecuencias...' : 'Processing frequencies and pitch...', 80);
+      onProgress(isEs ? 'Extrayendo frecuencias...' : 'Extracting frequencies and pitch...', 80);
       
       const parsedMetaBanks = await Promise.all(
         metaFiles.map(async (filename) => {
@@ -429,69 +451,81 @@ export async function importYomitanZip(file: File, onProgress: (msg: string, per
         })
       );
 
+      const freqItems: any[] = [];
+      const pitchItems: any[] = [];
+
+      for (let b = 0; b < parsedMetaBanks.length; b++) {
+        const metaArray = parsedMetaBanks[b];
+        for (let k = 0; k < metaArray.length; k++) {
+          const metaData = metaArray[k];
+          if (Array.isArray(metaData)) {
+            const term = metaData[0];
+            const type = metaData[1];
+
+            if (type === 'freq') {
+              let value = 0;
+              let displayValue = '';
+              let freqVal = null;
+              if (metaData.length === 3) {
+                freqVal = metaData[2];
+              } else if (metaData.length === 4) {
+                freqVal = metaData[3];
+              }
+              if (typeof freqVal === 'number') {
+                value = freqVal;
+                displayValue = '#' + freqVal;
+              } else if (typeof freqVal === 'string') {
+                const parsed = parseInt(freqVal, 10);
+                value = isNaN(parsed) ? 0 : parsed;
+                displayValue = freqVal;
+              } else if (freqVal && typeof freqVal === 'object') {
+                if (typeof freqVal.value === 'number') {
+                  value = freqVal.value;
+                  displayValue = '#' + value;
+                } else if (typeof freqVal.frequency === 'number') {
+                  value = freqVal.frequency;
+                  displayValue = '#' + value;
+                }
+                if (freqVal.displayValue) {
+                  displayValue = freqVal.displayValue;
+                }
+              }
+
+              freqItems.push({
+                dictionary: dictTitle,
+                term: term,
+                value: value,
+                displayValue: displayValue
+              });
+            } else if (type === 'pitch') {
+              const pitchData = metaData[2];
+              if (pitchData && typeof pitchData === 'object') {
+                pitchItems.push({
+                  dictionary: dictTitle,
+                  term: term,
+                  reading: pitchData.reading || '',
+                  pitches: pitchData.pitches || []
+                });
+              }
+            }
+          }
+        }
+      }
+
+      // Write meta in bulk
+      onProgress(isEs ? 'Guardando frecuencias...' : 'Writing frequencies...', 90);
       await new Promise<void>((resolve, reject) => {
         const tx = db.transaction([STORE_FREQS, STORE_PITCHES], 'readwrite');
         const storeFreq = tx.objectStore(STORE_FREQS);
         const storePitch = tx.objectStore(STORE_PITCHES);
 
-        for (let b = 0; b < parsedMetaBanks.length; b++) {
-          const metaArray = parsedMetaBanks[b];
-          for (let k = 0; k < metaArray.length; k++) {
-            const metaData = metaArray[k];
-            if (Array.isArray(metaData)) {
-              const term = metaData[0];
-              const type = metaData[1];
-
-              if (type === 'freq') {
-                let value = 0;
-                let displayValue = '';
-                let freqVal = null;
-                if (metaData.length === 3) {
-                  freqVal = metaData[2];
-                } else if (metaData.length === 4) {
-                  freqVal = metaData[3];
-                }
-                if (typeof freqVal === 'number') {
-                  value = freqVal;
-                  displayValue = '#' + freqVal;
-                } else if (typeof freqVal === 'string') {
-                  const parsed = parseInt(freqVal, 10);
-                  value = isNaN(parsed) ? 0 : parsed;
-                  displayValue = freqVal;
-                } else if (freqVal && typeof freqVal === 'object') {
-                  if (typeof freqVal.value === 'number') {
-                    value = freqVal.value;
-                    displayValue = '#' + value;
-                  } else if (typeof freqVal.frequency === 'number') {
-                    value = freqVal.frequency;
-                    displayValue = '#' + value;
-                  }
-                  if (freqVal.displayValue) {
-                    displayValue = freqVal.displayValue;
-                  }
-                }
-
-                storeFreq.add({
-                  dictionary: dictTitle,
-                  term: term,
-                  value: value,
-                  displayValue: displayValue
-                });
-                totalProcessed++;
-              } else if (type === 'pitch') {
-                const pitchData = metaData[2];
-                if (pitchData && typeof pitchData === 'object') {
-                  storePitch.add({
-                    dictionary: dictTitle,
-                    term: term,
-                    reading: pitchData.reading || '',
-                    pitches: pitchData.pitches || []
-                  });
-                  totalProcessed++;
-                }
-              }
-            }
-          }
+        for (let i = 0; i < freqItems.length; i++) {
+          storeFreq.add(freqItems[i]);
+          totalProcessed++;
+        }
+        for (let i = 0; i < pitchItems.length; i++) {
+          storePitch.add(pitchItems[i]);
+          totalProcessed++;
         }
 
         tx.oncomplete = () => resolve();
