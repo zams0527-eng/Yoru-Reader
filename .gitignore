@@ -63,7 +63,9 @@ node_modules/
 dist/
 dist-android/
 dist-electron/
-releases/
+/releases/
+!mobile/releases/
+!mobile/releases/*.apk
 yoru-reader-*/
 
 # Carpetas de compilación nativa de Android
