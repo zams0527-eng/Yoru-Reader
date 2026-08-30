@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Plus, Info, Trash2, ListChecks, Check, BarChart3, HelpCircle, Pencil, X, ArrowUpDown, Settings, SlidersHorizontal, Calendar, BookOpen, Clock, Flame, Download, Upload, MoreVertical, Search, EyeOff, User, Tag, RotateCcw, CircleSlash, Play, Pause, ChevronDown, Database, Palette, Cloud, FolderOpen, Globe, Type, Plug, Layers, AlertTriangle, Keyboard, Bug, Megaphone, Maximize, Menu, Zap, RefreshCw, MessageSquare, Sparkles } from 'lucide-react';
+import { Plus, Info, Trash2, ListChecks, Check, BarChart3, HelpCircle, Pencil, X, ArrowUpDown, Settings, SlidersHorizontal, Calendar, BookOpen, Clock, Flame, Download, Upload, MoreVertical, Search, EyeOff, User, Tag, RotateCcw, CircleSlash, Play, Pause, ChevronDown, ChevronRight, CloudOff, Database, Palette, Cloud, FolderOpen, Globe, Type, Plug, Layers, AlertTriangle, Keyboard, Bug, Megaphone, Maximize, Menu, Zap, RefreshCw, MessageSquare, Sparkles } from 'lucide-react';
 import SettingsModal from './SettingsModal';
 import { OnboardingTutorialModal } from './OnboardingTutorialModal';
 import JSZip from 'jszip';
@@ -7063,14 +7063,33 @@ const Library = React.memo(function Library({
           >
             <Cloud size={22} color={gDriveTokens ? '#4ade80' : '#FFE000'} />
           </button>
-          <h1 className="mobile-top-title">{lang === 'es' ? 'Novelas' : 'Novel'}</h1>
+          <h1 className="mobile-top-title">
+            {activeTab === 'library' ? (lang === 'es' ? 'Novelas' : 'Novel') :
+             activeTab === 'srs' ? 'Yoru SRS' :
+             activeTab === 'statistics' ? (lang === 'es' ? 'Estadísticas' : 'Progress') :
+             (lang === 'es' ? 'Más' : 'More')}
+          </h1>
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <button className="mobile-icon-btn" onClick={() => fileInputRef.current?.click()} title="Import">
-              <Plus size={24} />
-            </button>
-            <button className="mobile-icon-btn" onClick={() => setIsDisplaySettingsOpen(true)} title="Options">
-              <MoreVertical size={20} />
-            </button>
+            {activeTab === 'library' && (
+              <>
+                <button className="mobile-icon-btn" onClick={() => fileInputRef.current?.click()} title="Import">
+                  <Plus size={24} />
+                </button>
+                <button className="mobile-icon-btn" onClick={() => setIsDisplaySettingsOpen(true)} title="Options">
+                  <MoreVertical size={20} />
+                </button>
+              </>
+            )}
+            {activeTab === 'srs' && (
+              <button className="mobile-icon-btn" onClick={() => setActiveTab('settings')} title="Settings">
+                <Settings size={20} />
+              </button>
+            )}
+            {activeTab === 'statistics' && (
+              <button className="mobile-icon-btn" onClick={() => setShowDetailsDropdownOpen(!isDetailsDropdownOpen)} title="Options">
+                <MoreVertical size={20} />
+              </button>
+            )}
           </div>
         </header>
       ) : (

@@ -1,8 +1,8 @@
 {
-  "appVersion": "1.2.1",
+  "appVersion": "1.2.2",
   "backendVersion": "1.2.0",
-  "hotUpdateVersion": "1.2.1",
+  "hotUpdateVersion": "1.2.2",
   "hotUpdateUrl": "https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/main/dist.zip",
   "url": "https://github.com/zams0527-eng/Yoru-Reader/releases/latest",
-  "description": "Yoru Reader v1.2.1 (Hotfix for Google Drive reference error & clean mobile UI)"
+  "description": "Yoru Reader v1.2.2 (Full Mobile Polish: Scroll fix on stats, Settings crash fixed, and Tab-aware header)"
 }

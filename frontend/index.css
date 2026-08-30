@@ -7911,3 +7911,26 @@ body:has(.reader-container) #ajb-reader {
 .yoru-gallery-spoilered.revealed {
   filter: none;
 }
+
+
+/* Ensure all tabs and stats are smoothly scrollable on mobile */
+@media (max-width: 768px) {
+  .library-container {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    padding-bottom: 84px !important;
+    box-sizing: border-box !important;
+  }
+
+  .stats-tab-content,
+  .progress-dashboard,
+  .mas-screen-container,
+  .srs-tab-container,
+  .mobile-novel-grid {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 90px !important;
+  }
+}
