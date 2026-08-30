@@ -523,7 +523,7 @@ function ReaderEngineComponent({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [vertical, flipPage]);
 
-  // Hardware Volume Keys Navigation (Manatan Feature)
+  // Hardware Volume Keys Navigation (Yoru Feature)
   useEffect(() => {
     if (readerSettings.volumeKeysNavigation === false) return;
     const handleVolumeKey = (e: KeyboardEvent) => {
@@ -541,7 +541,7 @@ function ReaderEngineComponent({
     return () => window.removeEventListener('keydown', handleVolumeKey, { capture: true });
   }, [readerSettings.volumeKeysNavigation, readerSettings.invertVolumeKeys, flipPage]);
 
-  // Continuous Auto-Scroll Engine (Manatan Feature)
+  // Continuous Auto-Scroll Engine (Yoru Feature)
   useEffect(() => {
     if (!readerSettings.autoScrollEnabled) return;
     let isPaused = false;
@@ -764,7 +764,7 @@ function ReaderEngineComponent({
       onClick={handleContentClick}
       className={`reader-engine-container book-content ${vertical ? 'book-content--writing-vertical-rl' : 'book-content--writing-horizontal-tb'}`}
     >
-      {/* In-App Reader Brightness Overlay (Manatan Feature) */}
+      {/* In-App Reader Brightness Overlay (Yoru Feature) */}
       {typeof readerSettings.readerBrightness === 'number' && readerSettings.readerBrightness < 100 && (
         <div
           style={{

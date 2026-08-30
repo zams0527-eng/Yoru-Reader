@@ -3316,16 +3316,16 @@ const DEFAULT_HOSTS = [
         custom: 'AozoraParser',
     },
     {
-        id: 'manatan-manga',
-        name: 'Manatan parser (manga)',
-        description: 'Parses locally hosted Manatan mangas.',
+        id: 'yoru-manga',
+        name: 'Yoru parser (manga)',
+        description: 'Parses locally hosted Yoru mangas.',
         host: ['*://localhost:4568/manga/*'],
         auto: true,
         optOut: true,
         allFrames: true,
         parseVisibleObserver: true,
         collapseWhitespace: true,
-        custom: 'ManatanMangaParser',
+        custom: 'YoruMangaParser',
         css: [
             '.gemini-ocr-text-box[data-jiten-parsed] {',
             '  color: transparent !important;',
@@ -3336,7 +3336,7 @@ const DEFAULT_HOSTS = [
             '.gemini-ocr-text-box[data-jiten-parsed]:hover {',
             '  opacity: 1 !important;',
             '}',
-            '.jiten-manatan-overlay {',
+            '.jiten-yoru-overlay {',
             '  position: absolute;',
             '  inset: 0;',
             '  pointer-events: none;',
@@ -3344,10 +3344,10 @@ const DEFAULT_HOSTS = [
             '  color: var(--ocr-text-color, #333);',
             '  -webkit-text-fill-color: initial;',
             '}',
-            '.jiten-manatan-overlay .jiten-word { margin-inline: 0; }',
-            '.jiten-manatan-overlay .jiten-word[wordId] { pointer-events: auto; }',
-            '.jiten-manatan-pass-through .jiten-manatan-overlay .jiten-word[wordId] { pointer-events: none; }',
-            '.jiten-manatan-overlay .jiten-word::before {',
+            '.jiten-yoru-overlay .jiten-word { margin-inline: 0; }',
+            '.jiten-yoru-overlay .jiten-word[wordId] { pointer-events: auto; }',
+            '.jiten-yoru-pass-through .jiten-yoru-overlay .jiten-word[wordId] { pointer-events: none; }',
+            '.jiten-yoru-overlay .jiten-word::before {',
             '  content: attr(data-text);',
             '  text-shadow: inherit;',
             '}',
@@ -3357,9 +3357,9 @@ const DEFAULT_HOSTS = [
         },
     },
     {
-        id: 'manatan-ln',
-        name: 'Manatan parser (LNs)',
-        description: 'Parses locally hosted Manatan light novels.',
+        id: 'yoru-ln',
+        name: 'Yoru parser (LNs)',
+        description: 'Parses locally hosted Yoru light novels.',
         host: ['*://localhost:4568/ln/*'],
         auto: true,
         optOut: true,
@@ -3371,9 +3371,9 @@ const DEFAULT_HOSTS = [
         },
     },
     {
-        id: 'manatan-anime',
-        name: 'Manatan parser (anime)',
-        description: 'Parses locally hosted Manatan anime.',
+        id: 'yoru-anime',
+        name: 'Yoru parser (anime)',
+        description: 'Parses locally hosted Yoru anime.',
         host: ['*://localhost:4568/anime/*'],
         auto: true,
         optOut: true,
@@ -11704,7 +11704,7 @@ __webpack_require__.r(__webpack_exports__);
 /* harmony import */ var _custom_parsers_aozora_parser__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(153);
 /* harmony import */ var _custom_parsers_bunpro_parser__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(154);
 /* harmony import */ var _custom_parsers_ex_static_parser__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(155);
-/* harmony import */ var _custom_parsers_manatan_manga_parser__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(156);
+/* harmony import */ var _custom_parsers_yoru_manga_parser__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(156);
 /* harmony import */ var _custom_parsers_mokuro_legacy_parser__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(159);
 /* harmony import */ var _custom_parsers_mokuro_parser__WEBPACK_IMPORTED_MODULE_6__ = __webpack_require__(161);
 /* harmony import */ var _custom_parsers_readwok_parser__WEBPACK_IMPORTED_MODULE_7__ = __webpack_require__(162);
@@ -11726,7 +11726,7 @@ const getCustomParser = (name, meta) => {
     const parsers = {
         AozoraParser: _custom_parsers_aozora_parser__WEBPACK_IMPORTED_MODULE_1__.AozoraParser,
         BunproParser: _custom_parsers_bunpro_parser__WEBPACK_IMPORTED_MODULE_2__.BunproParser,
-        ManatanMangaParser: _custom_parsers_manatan_manga_parser__WEBPACK_IMPORTED_MODULE_4__.ManatanMangaParser,
+        YoruMangaParser: _custom_parsers_yoru_manga_parser__WEBPACK_IMPORTED_MODULE_4__.YoruMangaParser,
         MokuroParser: _custom_parsers_mokuro_parser__WEBPACK_IMPORTED_MODULE_6__.MokuroParser,
         MokuroLegacyParser: _custom_parsers_mokuro_legacy_parser__WEBPACK_IMPORTED_MODULE_5__.MokuroLegacyParser,
         ReadwokParser: _custom_parsers_readwok_parser__WEBPACK_IMPORTED_MODULE_7__.ReadwokParser,
@@ -11901,21 +11901,21 @@ class ExStaticParser extends _automatic_parser__WEBPACK_IMPORTED_MODULE_0__.Auto
 "use strict";
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
-/* harmony export */   ManatanMangaParser: () => (/* binding */ ManatanMangaParser)
+/* harmony export */   YoruMangaParser: () => (/* binding */ YoruMangaParser)
 /* harmony export */ });
 /* harmony import */ var _shared_configuration_get_configuration__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(1);
 /* harmony import */ var _shared_extension_get_url__WEBPACK_IMPORTED_MODULE_1__ = __webpack_require__(17);
 /* harmony import */ var _integration_registry__WEBPACK_IMPORTED_MODULE_2__ = __webpack_require__(90);
 /* harmony import */ var _automatic_parser__WEBPACK_IMPORTED_MODULE_3__ = __webpack_require__(150);
-/* harmony import */ var _manatan_manga_get_manatan_manga_paragraphs__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(157);
-/* harmony import */ var _manatan_manga_manatan_manga_apply_tokens__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(158);
+/* harmony import */ var _yoru_manga_get_yoru_manga_paragraphs__WEBPACK_IMPORTED_MODULE_4__ = __webpack_require__(157);
+/* harmony import */ var _yoru_manga_yoru_manga_apply_tokens__WEBPACK_IMPORTED_MODULE_5__ = __webpack_require__(158);
 
 
 
 
 
 
-class ManatanMangaParser extends _automatic_parser__WEBPACK_IMPORTED_MODULE_3__.AutomaticParser {
+class YoruMangaParser extends _automatic_parser__WEBPACK_IMPORTED_MODULE_3__.AutomaticParser {
     constructor() {
         super(...arguments);
         this._textObservers = new Map();
@@ -11947,7 +11947,7 @@ class ManatanMangaParser extends _automatic_parser__WEBPACK_IMPORTED_MODULE_3__.
         if (this._visibilityHandler) {
             document.removeEventListener('visibilitychange', this._visibilityHandler);
         }
-        document.body.classList.remove(ManatanMangaParser.YOMITAN_PASS_THROUGH_CLASS);
+        document.body.classList.remove(YoruMangaParser.YOMITAN_PASS_THROUGH_CLASS);
         this._pressedCodes.clear();
         this._keyboardPassThrough = false;
         this._middleClickPassThrough = false;
@@ -11994,14 +11994,14 @@ class ManatanMangaParser extends _automatic_parser__WEBPACK_IMPORTED_MODULE_3__.
         }
     }
     installMainWorldCaretPatch() {
-        const existing = document.getElementById(ManatanMangaParser.MAIN_WORLD_SCRIPT_ID);
+        const existing = document.getElementById(YoruMangaParser.MAIN_WORLD_SCRIPT_ID);
         if (existing) {
             this.sendMainWorldPatchControl('install');
             return;
         }
         const script = document.createElement('script');
-        script.id = ManatanMangaParser.MAIN_WORLD_SCRIPT_ID;
-        script.src = (0,_shared_extension_get_url__WEBPACK_IMPORTED_MODULE_1__.getURL)('assets/manatan-main-world-caret-patch.js');
+        script.id = YoruMangaParser.MAIN_WORLD_SCRIPT_ID;
+        script.src = (0,_shared_extension_get_url__WEBPACK_IMPORTED_MODULE_1__.getURL)('assets/yoru-main-world-caret-patch.js');
         script.onload = () => {
             script.remove();
             this.sendMainWorldPatchControl('install');
@@ -12097,22 +12097,22 @@ class ManatanMangaParser extends _automatic_parser__WEBPACK_IMPORTED_MODULE_3__.
         }
     }
     mapCodeToState(code) {
-        return ManatanMangaParser.MODIFIER_CODE_MAP[code] ?? code;
+        return YoruMangaParser.MODIFIER_CODE_MAP[code] ?? code;
     }
     syncPassThroughClass() {
         const passThrough = this._keyboardPassThrough || this._middleClickPassThrough;
-        document.body.classList.toggle(ManatanMangaParser.YOMITAN_PASS_THROUGH_CLASS, passThrough);
+        document.body.classList.toggle(YoruMangaParser.YOMITAN_PASS_THROUGH_CLASS, passThrough);
     }
     sendMainWorldPatchControl(action) {
-        window.dispatchEvent(new CustomEvent(ManatanMangaParser.MAIN_WORLD_CONTROL_EVENT, {
+        window.dispatchEvent(new CustomEvent(YoruMangaParser.MAIN_WORLD_CONTROL_EVENT, {
             detail: { action },
         }));
     }
     registerBox(box) {
         _integration_registry__WEBPACK_IMPORTED_MODULE_2__.Registry.batchController.registerNode(box, {
-            getParagraphsFn: _manatan_manga_get_manatan_manga_paragraphs__WEBPACK_IMPORTED_MODULE_4__.getManatanMangaParagraphs,
+            getParagraphsFn: _yoru_manga_get_yoru_manga_paragraphs__WEBPACK_IMPORTED_MODULE_4__.getYoruMangaParagraphs,
             applyFn: (paragraph, tokens) => {
-                (0,_manatan_manga_manatan_manga_apply_tokens__WEBPACK_IMPORTED_MODULE_5__.manatanMangaApplyTokens)(paragraph, tokens);
+                (0,_yoru_manga_yoru_manga_apply_tokens__WEBPACK_IMPORTED_MODULE_5__.yoruMangaApplyTokens)(paragraph, tokens);
             },
         });
     }
@@ -12127,7 +12127,7 @@ class ManatanMangaParser extends _automatic_parser__WEBPACK_IMPORTED_MODULE_3__.
                 }
                 const nodes = [...m.addedNodes, ...m.removedNodes];
                 return (nodes.length > 0 &&
-                    nodes.every((n) => n instanceof HTMLElement && n.classList.contains('jiten-manatan-overlay')));
+                    nodes.every((n) => n instanceof HTMLElement && n.classList.contains('jiten-yoru-overlay')));
             });
             if (isOverlayChange) {
                 return;
@@ -12149,17 +12149,17 @@ class ManatanMangaParser extends _automatic_parser__WEBPACK_IMPORTED_MODULE_3__.
         this._textObservers.set(box, observer);
     }
     reparseTextBox(box) {
-        box.querySelector('.jiten-manatan-overlay')?.remove();
+        box.querySelector('.jiten-yoru-overlay')?.remove();
         box.removeAttribute('data-jiten-parsed');
         _integration_registry__WEBPACK_IMPORTED_MODULE_2__.Registry.batchController.dismissNode(box);
         this.registerBox(box);
         _integration_registry__WEBPACK_IMPORTED_MODULE_2__.Registry.batchController.parseBatches();
     }
 }
-ManatanMangaParser.MAIN_WORLD_CONTROL_EVENT = 'jiten:manatan-caret-patch-control';
-ManatanMangaParser.MAIN_WORLD_SCRIPT_ID = 'jiten-manatan-main-world-caret-patch';
-ManatanMangaParser.YOMITAN_PASS_THROUGH_CLASS = 'jiten-manatan-pass-through';
-ManatanMangaParser.MODIFIER_CODE_MAP = {
+YoruMangaParser.MAIN_WORLD_CONTROL_EVENT = 'jiten:yoru-caret-patch-control';
+YoruMangaParser.MAIN_WORLD_SCRIPT_ID = 'jiten-yoru-main-world-caret-patch';
+YoruMangaParser.YOMITAN_PASS_THROUGH_CLASS = 'jiten-yoru-pass-through';
+YoruMangaParser.MODIFIER_CODE_MAP = {
     ShiftLeft: 'Shift',
     ShiftRight: 'Shift',
     ControlLeft: 'Control',
@@ -12178,9 +12178,9 @@ ManatanMangaParser.MODIFIER_CODE_MAP = {
 "use strict";
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
-/* harmony export */   getManatanMangaParagraphs: () => (/* binding */ getManatanMangaParagraphs)
+/* harmony export */   getYoruMangaParagraphs: () => (/* binding */ getYoruMangaParagraphs)
 /* harmony export */ });
-const getManatanMangaParagraphs = (node) => {
+const getYoruMangaParagraphs = (node) => {
     const el = node;
     const boxes = el.classList?.contains('gemini-ocr-text-box')
         ? [el]
@@ -12213,12 +12213,12 @@ const getManatanMangaParagraphs = (node) => {
 "use strict";
 __webpack_require__.r(__webpack_exports__);
 /* harmony export */ __webpack_require__.d(__webpack_exports__, {
-/* harmony export */   manatanMangaApplyTokens: () => (/* binding */ manatanMangaApplyTokens)
+/* harmony export */   yoruMangaApplyTokens: () => (/* binding */ yoruMangaApplyTokens)
 /* harmony export */ });
 /* harmony import */ var _integration_registry__WEBPACK_IMPORTED_MODULE_0__ = __webpack_require__(90);
 
 let statsUpdateTimeout;
-const manatanMangaApplyTokens = (fragments, tokens) => {
+const yoruMangaApplyTokens = (fragments, tokens) => {
     if (!fragments.length) {
         return;
     }
@@ -12228,10 +12228,10 @@ const manatanMangaApplyTokens = (fragments, tokens) => {
     if (!box) {
         return;
     }
-    box.querySelector('.jiten-manatan-overlay')?.remove();
+    box.querySelector('.jiten-yoru-overlay')?.remove();
     box.setAttribute('data-jiten-parsed', '');
     const overlay = document.createElement('div');
-    overlay.className = 'jiten-manatan-overlay';
+    overlay.className = 'jiten-yoru-overlay';
     const fullText = textNode.data;
     let cursor = fragment.start;
     const sortedTokens = [...tokens].sort((a, b) => a.start - b.start);

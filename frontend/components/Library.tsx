@@ -425,6 +425,8 @@ const Library = React.memo(function Library({
 
   // Sidebar Navigation states
   const [activeFilter, setActiveFilter] = useState({ type: 'all', value: null });
+    const [downloadedOnly, setDownloadedOnly] = useState(false);
+  const [incognitoMode, setIncognitoMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Custom themed toast notifications
@@ -3495,6 +3497,211 @@ const Library = React.memo(function Library({
             100% { transform: rotate(360deg); }
           }
         `}</style>
+      </div>
+    );
+  };
+
+  
+  const renderMasScreen = () => {
+    return (
+      <div className="mas-screen-container" style={{ animation: 'fadeIn 0.2s ease-out' }}>
+        <h1 className="mas-screen-title">{lang === 'es' ? 'Más' : 'More'}</h1>
+
+        {/* Update progress card if downloading or installing */}
+        {updating && (
+          <div className="mas-card-installing">
+            <div style={{
+              width: '28px',
+              height: '28px',
+              borderRadius: '50%',
+              border: '3px solid rgba(255, 224, 0, 0.2)',
+              borderTopColor: '#FFE000',
+              animation: 'spin 1s linear infinite'
+            }} />
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontSize: '0.95rem', fontWeight: 700, color: '#fff' }}>
+                {lang === 'es' ? 'Instalando actualización de Yoru' : 'Installing Yoru update'}
+              </span>
+              <span style={{ fontSize: '0.8rem', color: '#a0a0b0' }}>
+                {lang === 'es' ? 'Confirma el mensaje de instalación de Android.' : 'Complete any Android confirmation prompt.'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Main Settings Group 1 */}
+        <div className="mas-item-group">
+          {/* Yoru Account / Cloud Sync */}
+          <div 
+            className="mas-list-item"
+            onClick={() => {
+              if (googleUser) {
+                showToast(lang === 'es' ? 'Sincronización activa con Google Drive' : 'Cloud sync active with Google Drive', 'info');
+              } else {
+                handleGoogleLogin();
+              }
+            }}
+          >
+            <div className="mas-item-left">
+              <div className="mas-item-icon">
+                <User size={20} />
+              </div>
+              <div>
+                <div className="mas-item-title">
+                  {googleUser ? (googleUser.name || 'Google Drive') : (lang === 'es' ? 'Cuenta Yoru / Google Drive' : 'Yoru account')}
+                </div>
+                <div className="mas-item-subtitle">
+                  {googleUser ? (lang === 'es' ? 'Sincronización en la nube activa' : 'Cloud sync active') : (lang === 'es' ? 'Inicia sesión para sincronizar y guardar' : 'Sign in for cloud sync and backups')}
+                </div>
+              </div>
+            </div>
+            <ChevronRight size={18} color="#8a8a9a" />
+          </div>
+
+          {/* Solo descargados toggle */}
+          <div className="mas-list-item">
+            <div className="mas-item-left">
+              <div className="mas-item-icon">
+                <CloudOff size={20} />
+              </div>
+              <div>
+                <div className="mas-item-title">
+                  {lang === 'es' ? 'Solo descargados' : 'Downloaded only'}
+                </div>
+                <div className="mas-item-subtitle">
+                  {lang === 'es' ? 'Filtra las novelas en tu biblioteca' : 'Filters all entries in your library'}
+                </div>
+              </div>
+            </div>
+            <label className="switch">
+              <input 
+                type="checkbox" 
+                checked={downloadedOnly}
+                onChange={(e) => setDownloadedOnly(e.target.checked)}
+              />
+              <span className="slider-round" />
+            </label>
+          </div>
+
+          {/* Modo incognito toggle */}
+          <div className="mas-list-item">
+            <div className="mas-item-left">
+              <div className="mas-item-icon">
+                <EyeOff size={20} />
+              </div>
+              <div>
+                <div className="mas-item-title">
+                  {lang === 'es' ? 'Modo incógnito' : 'Incognito mode'}
+                </div>
+                <div className="mas-item-subtitle">
+                  {lang === 'es' ? 'Pausa el historial de lectura' : 'Pause reading history & stats'}
+                </div>
+              </div>
+            </div>
+            <label className="switch">
+              <input 
+                type="checkbox" 
+                checked={incognitoMode}
+                onChange={(e) => setIncognitoMode(e.target.checked)}
+              />
+              <span className="slider-round" />
+            </label>
+          </div>
+        </div>
+
+        {/* Navigation Group 2 */}
+        <div className="mas-item-group">
+          {/* Yoru SRS */}
+          <div 
+            className="mas-list-item"
+            onClick={() => setActiveTab('srs')}
+          >
+            <div className="mas-item-left">
+              <div className="mas-item-icon">
+                <Zap size={20} />
+              </div>
+              <div>
+                <div className="mas-item-title">Yoru SRS</div>
+                <div className="mas-item-subtitle">
+                  {lang === 'es' ? 'Repaso de tarjetas y mazos de estudio' : 'Study decks and spaced repetition'}
+                </div>
+              </div>
+            </div>
+            <ChevronRight size={18} color="#8a8a9a" />
+          </div>
+
+          {/* Diccionarios */}
+          <div 
+            className="mas-list-item"
+            onClick={() => {
+              setActiveSettingsSection('sec-dictionaries');
+              setMobileSettingsSectionOpen(true);
+            }}
+          >
+            <div className="mas-item-left">
+              <div className="mas-item-icon">
+                <Search size={20} />
+              </div>
+              <div>
+                <div className="mas-item-title">
+                  {lang === 'es' ? 'Diccionarios' : 'Dictionaries'}
+                </div>
+                <div className="mas-item-subtitle">
+                  {lang === 'es' ? 'JMdict, Kanjidic, Pitch Accent y audio' : 'Manage Yomitan DB & audio'}
+                </div>
+              </div>
+            </div>
+            <ChevronRight size={18} color="#8a8a9a" />
+          </div>
+
+          {/* Ajustes de Lectura */}
+          <div 
+            className="mas-list-item"
+            onClick={() => {
+              setActiveSettingsSection('sec-general');
+              setMobileSettingsSectionOpen(true);
+            }}
+          >
+            <div className="mas-item-left">
+              <div className="mas-item-icon">
+                <BookOpen size={20} />
+              </div>
+              <div>
+                <div className="mas-item-title">
+                  {lang === 'es' ? 'Ajustes del Lector' : 'Reader Settings'}
+                </div>
+                <div className="mas-item-subtitle">
+                  {lang === 'es' ? 'Temas, tipografía y visualización' : 'Themes, typography & layout'}
+                </div>
+              </div>
+            </div>
+            <ChevronRight size={18} color="#8a8a9a" />
+          </div>
+
+          {/* Información y Actualizaciones */}
+          <div 
+            className="mas-list-item"
+            onClick={() => {
+              setActiveSettingsSection('sec-updates');
+              setMobileSettingsSectionOpen(true);
+            }}
+          >
+            <div className="mas-item-left">
+              <div className="mas-item-icon">
+                <Info size={20} />
+              </div>
+              <div>
+                <div className="mas-item-title">
+                  {lang === 'es' ? 'Información y Actualizaciones' : 'About & Updates'}
+                </div>
+                <div className="mas-item-subtitle">
+                  v{currentAppVersion} • {lang === 'es' ? 'Buscar nueva versión' : 'Check for updates'}
+                </div>
+              </div>
+            </div>
+            <ChevronRight size={18} color="#8a8a9a" />
+          </div>
+        </div>
       </div>
     );
   };
@@ -7785,7 +7992,7 @@ const Library = React.memo(function Library({
       )}
 
       {activeTab === 'statistics' && renderStatisticsTab()}
-      {activeTab === 'settings' && renderSettingsTab()}
+      {activeTab === 'settings' && (isMobile && !mobileSettingsSectionOpen ? renderMasScreen() : renderSettingsTab())}
       {activeTab === 'notes' && renderNotesTab()}
       {activeTab === 'srs' && renderSrsTab()}
 

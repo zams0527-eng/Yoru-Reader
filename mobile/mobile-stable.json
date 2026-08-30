@@ -1,8 +1,8 @@
 {
-  "appVersion": "1.1.7",
-  "versionCode": 117,
-  "hotUpdateVersion": "1.1.7",
+  "appVersion": "1.1.8",
+  "versionCode": 118,
+  "hotUpdateVersion": "1.1.8",
   "hotUpdateUrl": "https://raw.githubusercontent.com/zams0527-eng/Yoru-Reader/main/mobile/mobile-dist.zip",
-  "apkUrl": "https://github.com/zams0527-eng/Yoru-Reader/releases/download/v1.1.7/Yoru-Reader-1.1.7.apk",
-  "description": "Yoru Reader Mobile v1.1.7 (Diccionario al toque con el dedo, deslizamiento swipe y mejoras táctiles)"
+  "apkUrl": "https://github.com/zams0527-eng/Yoru-Reader/releases/download/v1.1.8/Yoru-Reader-1.1.8.apk",
+  "description": "Yoru Reader Mobile v1.1.8 (Diccionario al toque con el dedo, deslizamiento swipe y mejoras táctiles)"
 }
